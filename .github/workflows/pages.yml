@@ -24,6 +24,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Remove old files and folders
+        run: |
+          rm -rf package-lock.json
+          rm -rf dist
+          rm -rf js/modules
+          mkdir js/modules
       - name: install node v16
         uses: actions/setup-node@v3
         with:
@@ -35,9 +41,6 @@ jobs:
       - name: Compile TypeScript
         run: |
           set -e
-          rm -rf dist
-          rm -rf js/modules
-          mkdir js/modules
           npm install
           NODE_ENV=production npm exec -- tsc
           NODE_ENV=production npm exec -- rollup -c
@@ -45,7 +48,7 @@ jobs:
         run: |
           cp dist/web/*.js js/modules/
           mv js/modules/index.js js/modules/esptool.js
-          ls js/modules/
+          #ls js/modules/
       - name: Commit Distribution Files
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
