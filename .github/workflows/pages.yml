@@ -36,12 +36,13 @@ jobs:
         run: |
           set -e
           rm -rf dist
+          rm -rf js/modules
+          mkdir js/modules
+          npm install
           NODE_ENV=production npm exec -- tsc
           NODE_ENV=production npm exec -- rollup -c
       - name: Rename and copy build artifact
         run: |
-          rm -rf js/modules
-          mkdir js/modules
           cp dist/web/*.js js/modules/
           mv js/modules/index.js js/modules/esptool.js
           ls js/modules/
