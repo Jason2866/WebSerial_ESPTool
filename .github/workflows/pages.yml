@@ -40,6 +40,7 @@ jobs:
           NODE_ENV=production npm exec -- rollup -c
       - name: Rename and copy build artifact
         run: |
+          rm -rf js/modules
           mkdir js/modules
           cp dist/web/*.js js/modules/
           mv js/modules/index.js js/modules/esptool.js
