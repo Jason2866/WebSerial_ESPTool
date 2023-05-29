@@ -49,8 +49,6 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "Github Action: Updated dist files"
-          status_options: '--ignored=matching'
-          add_options: '-fA'
       - name: Setup Pages
         uses: actions/configure-pages@v3
       - name: Upload artifact
