@@ -53,7 +53,7 @@ jobs:
       - name: Commit Distribution Files
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: "Github Action: Updated dist files"
+          commit_message: "Github Action: Updated files"
       - name: Publish to NPM registry
         uses: JS-DevTools/npm-publish@v2
         with:
