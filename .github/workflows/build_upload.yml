@@ -56,7 +56,8 @@ jobs:
           commit_message: "Github Action: Updated files"
       - name: Publish to NPM registry
         run: |
-          npm login --registry=https://npm.pkg.github.com --auth-type=legacy
+          npm login @Jason2866:registry=https://npm.pkg.github.com
+          //npm.pkg.github.com/:_authToken=TOKEN
           npm ci
           npm publish
         env:
