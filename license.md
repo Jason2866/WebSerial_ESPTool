@@ -1,5 +1,6 @@
 MIT License
 
+Copyright (c) 2023 Johann Obermeier
 Copyright (c) 2021 Nabu Casa
 Copyright (c) 2020 Melissa LeBlanc-Williams for Adafruit Industries
 
