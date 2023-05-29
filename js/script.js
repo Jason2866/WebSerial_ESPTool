@@ -144,7 +144,7 @@ function errorMsg(text) {
 
 /**
  * @name updateTheme
- * Sets the theme to  Adafruit (dark) mode. Can be refactored later for more themes
+ * Sets the theme to dark mode. Can be refactored later for more themes
  */
 function updateTheme() {
   // Disable all themes

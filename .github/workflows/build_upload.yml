@@ -1,0 +1,71 @@
+name: Build and upload
+
+on:
+  push:
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment
+concurrency:
+  group: environment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build from Source and Deploy
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Remove old files and folders
+        run: |
+          rm -rf package-lock.json
+          rm -rf dist
+          rm -rf js/modules
+          mkdir js/modules
+      - name: install node v16
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16.x'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install Yarn with NPM
+        run: npm install -g yarn
+      - name: yarn install
+        run: yarn install
+      - name: Compile TypeScript
+        run: |
+          set -e
+          npm install
+          NODE_ENV=production npm exec -- tsc
+          NODE_ENV=production npm exec -- rollup -c
+      - name: Rename and copy build artifact
+        run: |
+          cp dist/web/*.js js/modules/
+          mv js/modules/index.js js/modules/esptool.js
+          #ls js/modules/
+      - name: Commit Distribution Files
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Github Action: Updated dist files"
+      - name: Publish to NPM registry
+        uses: JS-DevTools/npm-publish@v2
+        with:
+          registry: https://registry.npmjs.org/
+          token: ${{ secrets.NPM_TOKEN }}
+          strategy: all
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
