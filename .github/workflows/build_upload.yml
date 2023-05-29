@@ -34,7 +34,6 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '16.x'
-          registry-url: 'https://registry.npmjs.org'
           token: ${{ secrets.TOKEN }}
       - name: Install Yarn with NPM
         run: npm install -g yarn
@@ -51,16 +50,22 @@ jobs:
           cp dist/web/*.js js/modules/
           mv js/modules/index.js js/modules/esptool.js
           #ls js/modules/
-      - name: Commit Distribution Files
-        uses: stefanzweifel/git-auto-commit-action@v4
+      - name: install node v16
+        uses: actions/setup-node@v3
         with:
-          commit_message: "Github Action: Updated files"
+          node-version: '16.x'
+          registry-url: 'https://registry.npmjs.org'
+          token: ${{ secrets.TOKEN }}
       - name: Publish to NPM registry
         run: |
           npm ci
           npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Commit Distribution Files
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Github Action: Updated files"
       - name: Setup Pages
         uses: actions/configure-pages@v3
       - name: Upload artifact
