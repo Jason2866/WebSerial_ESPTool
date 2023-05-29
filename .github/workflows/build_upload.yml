@@ -35,10 +35,6 @@ jobs:
         with:
           node-version: '16.x'
           token: ${{ secrets.TOKEN }}
-      - name: Install Yarn with NPM
-        run: npm install -g yarn
-      - name: yarn install
-        run: yarn install
       - name: Compile TypeScript
         run: |
           set -e
@@ -50,12 +46,6 @@ jobs:
           cp dist/web/*.js js/modules/
           mv js/modules/index.js js/modules/esptool.js
           #ls js/modules/
-      - name: install node v16
-        uses: actions/setup-node@v3
-        with:
-          node-version: '16.x'
-          registry-url: 'https://npm.pkg.github.com'
-          token: ${{ secrets.TOKEN }}
       - name: Publish to NPM registry
         run: |
           npm ci
