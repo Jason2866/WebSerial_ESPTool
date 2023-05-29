@@ -56,6 +56,7 @@ jobs:
       - name: Publish to NPM registry
         uses: JS-DevTools/npm-publish@v2
         with:
+          registry: https://registry.npmjs.org/
           token: ${{ secrets.NPM_TOKEN }}
           strategy: all
       - name: Setup Pages
