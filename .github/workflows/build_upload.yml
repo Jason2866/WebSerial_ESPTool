@@ -55,11 +55,10 @@ jobs:
         with:
           commit_message: "Github Action: Updated files"
       - name: Publish to NPM registry
-        uses: JS-DevTools/npm-publish@v2
-        with:
-          registry: https://registry.npmjs.org/
-          token: ${{ secrets.NPM_TOKEN }}
-          strategy: all
+        run: npm ci
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Setup Pages
         uses: actions/configure-pages@v3
       - name: Upload artifact
