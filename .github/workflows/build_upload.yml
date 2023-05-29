@@ -36,7 +36,6 @@ jobs:
           node-version: '16.x'
           registry-url: 'https://registry.npmjs.org'
           token: ${{ secrets.TOKEN }}
-      - run: npm login --scope=@Jason2866 --registry=https://npm.pkg.github.com
       - name: Install Yarn with NPM
         run: npm install -g yarn
       - name: yarn install
