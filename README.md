@@ -4,7 +4,7 @@ JavaScript package to install firmware on ESP devices via the browser using WebS
 
 ## Changes done to upstream
 
-- added auto download mode for CDC 
+- added auto download mode for CDC
 
 ## Local development
 

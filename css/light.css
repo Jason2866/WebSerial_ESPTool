@@ -8,12 +8,15 @@ body {
   color: #000;
 }
 
-input, select, button {
+input,
+select,
+button {
   background-color: #fff;
   color: #000;
 }
 
-.notSupported, .notSupported a {
+.notSupported,
+.notSupported a {
   background-color: red;
   color: white;
 }

@@ -332,19 +332,19 @@ export const getSpiFlashAddresses = (
         flashOffs: ESP32C2_BOOTLOADER_FLASH_OFFSET,
       };
     case CHIP_FAMILY_ESP32C3:
-        return {
-          regBase: ESP32C3_SPI_REG_BASE,
-          baseFuse: ESP32C3_BASEFUSEADDR,
-          macFuse: ESP32C3_MACFUSEADDR,
-          usrOffs: ESP32C3_SPI_USR_OFFS,
-          usr1Offs: ESP32C3_SPI_USR1_OFFS,
-          usr2Offs: ESP32C3_SPI_USR2_OFFS,
-          mosiDlenOffs: ESP32C3_SPI_MOSI_DLEN_OFFS,
-          misoDlenOffs: ESP32C3_SPI_MISO_DLEN_OFFS,
-          w0Offs: ESP32C3_SPI_W0_OFFS,
-          uartDateReg: ESP32C3_UART_DATE_REG_ADDR,
-          flashOffs: ESP32C3_BOOTLOADER_FLASH_OFFSET,
-        };
+      return {
+        regBase: ESP32C3_SPI_REG_BASE,
+        baseFuse: ESP32C3_BASEFUSEADDR,
+        macFuse: ESP32C3_MACFUSEADDR,
+        usrOffs: ESP32C3_SPI_USR_OFFS,
+        usr1Offs: ESP32C3_SPI_USR1_OFFS,
+        usr2Offs: ESP32C3_SPI_USR2_OFFS,
+        mosiDlenOffs: ESP32C3_SPI_MOSI_DLEN_OFFS,
+        misoDlenOffs: ESP32C3_SPI_MISO_DLEN_OFFS,
+        w0Offs: ESP32C3_SPI_W0_OFFS,
+        uartDateReg: ESP32C3_UART_DATE_REG_ADDR,
+        flashOffs: ESP32C3_BOOTLOADER_FLASH_OFFSET,
+      };
     case CHIP_FAMILY_ESP32C6:
       return {
         regBase: ESP32C6_SPI_REG_BASE,

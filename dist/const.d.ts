@@ -1,32 +1,32 @@
 export interface Logger {
-    log(msg: string, ...args: any[]): void;
-    error(msg: string, ...args: any[]): void;
-    debug(msg: string, ...args: any[]): void;
+  log(msg: string, ...args: any[]): void;
+  error(msg: string, ...args: any[]): void;
+  debug(msg: string, ...args: any[]): void;
 }
 export declare const baudRates: number[];
 export declare const FLASH_SIZES: {
-    "512KB": number;
-    "256KB": number;
-    "1MB": number;
-    "2MB": number;
-    "4MB": number;
-    "2MB-c1": number;
-    "4MB-c1": number;
-    "8MB": number;
-    "16MB": number;
+  "512KB": number;
+  "256KB": number;
+  "1MB": number;
+  "2MB": number;
+  "4MB": number;
+  "2MB-c1": number;
+  "4MB-c1": number;
+  "8MB": number;
+  "16MB": number;
 };
 export declare const ESP32_FLASH_SIZES: {
-    "1MB": number;
-    "2MB": number;
-    "4MB": number;
-    "8MB": number;
-    "16MB": number;
-    "32MB": number;
-    "64MB": number;
-    "128MB": number;
+  "1MB": number;
+  "2MB": number;
+  "4MB": number;
+  "8MB": number;
+  "16MB": number;
+  "32MB": number;
+  "64MB": number;
+  "128MB": number;
 };
 interface FlashSize {
-    [key: number]: string;
+  [key: number]: string;
 }
 export declare const DETECTED_FLASH_SIZES: FlashSize;
 export declare const FLASH_WRITE_SIZE = 1024;
@@ -123,17 +123,17 @@ export declare const ESP32H2_SPI_W0_OFFS = 88;
 export declare const ESP32H2_UART_DATE_REG_ADDR = 1610612860;
 export declare const ESP32H2_BOOTLOADER_FLASH_OFFSET = 0;
 export interface SpiFlashAddresses {
-    regBase: number;
-    baseFuse: number;
-    macFuse: number;
-    usrOffs: number;
-    usr1Offs: number;
-    usr2Offs: number;
-    mosiDlenOffs: number;
-    misoDlenOffs: number;
-    w0Offs: number;
-    uartDateReg: number;
-    flashOffs: number;
+  regBase: number;
+  baseFuse: number;
+  macFuse: number;
+  usrOffs: number;
+  usr1Offs: number;
+  usr2Offs: number;
+  mosiDlenOffs: number;
+  misoDlenOffs: number;
+  w0Offs: number;
+  uartDateReg: number;
+  flashOffs: number;
 }
 export declare const SYNC_PACKET: number[];
 export declare const CHIP_DETECT_MAGIC_REG_ADDR = 1073745920;
@@ -145,12 +145,20 @@ export declare const CHIP_FAMILY_ESP32C2 = 12994;
 export declare const CHIP_FAMILY_ESP32C3 = 12995;
 export declare const CHIP_FAMILY_ESP32C6 = 12998;
 export declare const CHIP_FAMILY_ESP32H2 = 12914;
-export type ChipFamily = typeof CHIP_FAMILY_ESP8266 | typeof CHIP_FAMILY_ESP32 | typeof CHIP_FAMILY_ESP32S2 | typeof CHIP_FAMILY_ESP32S3 | typeof CHIP_FAMILY_ESP32C2 | typeof CHIP_FAMILY_ESP32C3 | typeof CHIP_FAMILY_ESP32C6 | typeof CHIP_FAMILY_ESP32H2;
+export type ChipFamily =
+  | typeof CHIP_FAMILY_ESP8266
+  | typeof CHIP_FAMILY_ESP32
+  | typeof CHIP_FAMILY_ESP32S2
+  | typeof CHIP_FAMILY_ESP32S3
+  | typeof CHIP_FAMILY_ESP32C2
+  | typeof CHIP_FAMILY_ESP32C3
+  | typeof CHIP_FAMILY_ESP32C6
+  | typeof CHIP_FAMILY_ESP32H2;
 interface ChipInfo {
-    [magicValue: number]: {
-        name: string;
-        family: ChipFamily;
-    };
+  [magicValue: number]: {
+    name: string;
+    family: ChipFamily;
+  };
 }
 export declare const CHIP_DETECT_MAGIC_VALUES: ChipInfo;
 export declare const ESP_FLASH_BEGIN = 2;
@@ -185,9 +193,14 @@ export declare const MEM_END_ROM_TIMEOUT = 500;
  * @name timeoutPerMb
  * Scales timeouts which are size-specific
  */
-export declare const timeoutPerMb: (secondsPerMb: number, sizeBytes: number) => number;
-export declare const getSpiFlashAddresses: (chipFamily: ChipFamily) => SpiFlashAddresses;
+export declare const timeoutPerMb: (
+  secondsPerMb: number,
+  sizeBytes: number
+) => number;
+export declare const getSpiFlashAddresses: (
+  chipFamily: ChipFamily
+) => SpiFlashAddresses;
 export declare class SlipReadError extends Error {
-    constructor(message: string);
+  constructor(message: string);
 }
 export {};
