@@ -1,4 +1,4 @@
-import { CHIP_FAMILY_ESP32, CHIP_FAMILY_ESP32S2, CHIP_FAMILY_ESP32S3, CHIP_FAMILY_ESP32C3, CHIP_FAMILY_ESP8266, MAX_TIMEOUT, DEFAULT_TIMEOUT, ERASE_REGION_TIMEOUT_PER_MB, ESP_CHANGE_BAUDRATE, ESP_CHECKSUM_MAGIC, ESP_FLASH_BEGIN, ESP_FLASH_DATA, ESP_FLASH_END, ESP_MEM_BEGIN, ESP_MEM_DATA, ESP_MEM_END, ESP_READ_REG, ESP_WRITE_REG, ESP_SPI_ATTACH, ESP_SYNC, FLASH_SECTOR_SIZE, FLASH_WRITE_SIZE, STUB_FLASH_WRITE_SIZE, MEM_END_ROM_TIMEOUT, ROM_INVALID_RECV_MSG, SYNC_PACKET, SYNC_TIMEOUT, USB_RAM_BLOCK, ESP_ERASE_FLASH, CHIP_ERASE_TIMEOUT, timeoutPerMb, ESP_ROM_BAUD, USB_JTAG_SERIAL_PID, ESP_FLASH_DEFL_BEGIN, ESP_FLASH_DEFL_DATA, ESP_FLASH_DEFL_END, getSpiFlashAddresses, DETECTED_FLASH_SIZES, CHIP_DETECT_MAGIC_REG_ADDR, CHIP_DETECT_MAGIC_VALUES, SlipReadError, } from "./const";
+import { CHIP_FAMILY_ESP32, CHIP_FAMILY_ESP32S2, CHIP_FAMILY_ESP32S3, CHIP_FAMILY_ESP32C2, CHIP_FAMILY_ESP32C3, CHIP_FAMILY_ESP32C6, CHIP_FAMILY_ESP32H2, CHIP_FAMILY_ESP8266, MAX_TIMEOUT, DEFAULT_TIMEOUT, ERASE_REGION_TIMEOUT_PER_MB, ESP_CHANGE_BAUDRATE, ESP_CHECKSUM_MAGIC, ESP_FLASH_BEGIN, ESP_FLASH_DATA, ESP_FLASH_END, ESP_MEM_BEGIN, ESP_MEM_DATA, ESP_MEM_END, ESP_READ_REG, ESP_WRITE_REG, ESP_SPI_ATTACH, ESP_SYNC, FLASH_SECTOR_SIZE, FLASH_WRITE_SIZE, STUB_FLASH_WRITE_SIZE, MEM_END_ROM_TIMEOUT, ROM_INVALID_RECV_MSG, SYNC_PACKET, SYNC_TIMEOUT, USB_RAM_BLOCK, ESP_ERASE_FLASH, CHIP_ERASE_TIMEOUT, timeoutPerMb, ESP_ROM_BAUD, USB_JTAG_SERIAL_PID, ESP_FLASH_DEFL_BEGIN, ESP_FLASH_DEFL_DATA, ESP_FLASH_DEFL_END, getSpiFlashAddresses, DETECTED_FLASH_SIZES, CHIP_DETECT_MAGIC_REG_ADDR, CHIP_DETECT_MAGIC_VALUES, SlipReadError, } from "./const";
 import { getStubCode } from "./stubs";
 import { hexFormatter, sleep, slipEncode, toHex } from "./util";
 // @ts-ignore
@@ -175,7 +175,10 @@ export class ESPLoader extends EventTarget {
         }
         else if (this.chipFamily == CHIP_FAMILY_ESP32S2 ||
             this.chipFamily == CHIP_FAMILY_ESP32S3 ||
-            this.chipFamily == CHIP_FAMILY_ESP32C3) {
+            this.chipFamily == CHIP_FAMILY_ESP32C2 ||
+            this.chipFamily == CHIP_FAMILY_ESP32C3 ||
+            this.chipFamily == CHIP_FAMILY_ESP32C6 ||
+            this.chipFamily == CHIP_FAMILY_ESP32H2) {
             macAddr[0] = (mac1 >> 8) & 0xff;
             macAddr[1] = mac1 & 0xff;
             macAddr[2] = (mac0 >> 24) & 0xff;
@@ -218,7 +221,10 @@ export class ESPLoader extends EventTarget {
             CHIP_FAMILY_ESP32,
             CHIP_FAMILY_ESP32S2,
             CHIP_FAMILY_ESP32S3,
+            CHIP_FAMILY_ESP32C2,
             CHIP_FAMILY_ESP32C3,
+            CHIP_FAMILY_ESP32C6,
+            CHIP_FAMILY_ESP32H2,
         ].includes(this.chipFamily)) {
             statusLen = 4;
         }
@@ -572,7 +578,10 @@ export class ESPLoader extends EventTarget {
                 CHIP_FAMILY_ESP32,
                 CHIP_FAMILY_ESP32S2,
                 CHIP_FAMILY_ESP32S3,
+                CHIP_FAMILY_ESP32C2,
                 CHIP_FAMILY_ESP32C3,
+                CHIP_FAMILY_ESP32C6,
+                CHIP_FAMILY_ESP32H2,
             ].includes(this.chipFamily)) {
             await this.checkCommand(ESP_SPI_ATTACH, new Array(8).fill(0));
         }
@@ -595,7 +604,10 @@ export class ESPLoader extends EventTarget {
         if (this.chipFamily == CHIP_FAMILY_ESP32 ||
             this.chipFamily == CHIP_FAMILY_ESP32S2 ||
             this.chipFamily == CHIP_FAMILY_ESP32S3 ||
-            this.chipFamily == CHIP_FAMILY_ESP32C3) {
+            this.chipFamily == CHIP_FAMILY_ESP32C2 ||
+            this.chipFamily == CHIP_FAMILY_ESP32C3 ||
+            this.chipFamily == CHIP_FAMILY_ESP32C6 ||
+            this.chipFamily == CHIP_FAMILY_ESP32H2) {
             buffer = buffer.concat(pack("<I", encrypted ? 1 : 0));
         }
         this.logger.log("Erase size " +
