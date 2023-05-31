@@ -4,12 +4,6 @@ on:
   push:
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
-permissions:
-  contents: write
-  pages: write
-  id-token: write
-
 # Allow one concurrent deployment
 concurrency:
   group: environment-${{ github.ref }}
