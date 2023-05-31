@@ -4,5 +4,10 @@ set -e
 cd "$(dirname "$0")/.."
 
 rm -rf dist
+rm -rf dist
+rm -rf js/modules
+mkdir js/modules
 NODE_ENV=production npm exec -- tsc
 NODE_ENV=production npm exec -- rollup -c
+cp dist/web/*.js js/modules/
+mv js/modules/index.js js/modules/esptool.js
