@@ -4,23 +4,13 @@ on:
   push:
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
-permissions:
-  contents: write
-  pages: write
-  id-token: write
-
 # Allow one concurrent deployment
 concurrency:
   group: environment-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Build from Source and Deploy
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -66,6 +56,18 @@ jobs:
         uses: actions/upload-pages-artifact@v1
         with:
           path: '.'
+ 
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v2
