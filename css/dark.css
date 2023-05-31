@@ -8,7 +8,9 @@ body {
   color: #fff;
 }
 
-input, select, button {
+input,
+select,
+button {
   background-color: #333;
   color: #fff;
 }
@@ -33,7 +35,6 @@ input, select, button {
   background-color: #fff;
 }
 
-
 #commands button {
   border-color: #fff;
   background-color: #333;
@@ -45,7 +46,8 @@ input, select, button {
   color: #333;
 }
 
-.notSupported, .notSupported a {
+.notSupported,
+.notSupported a {
   background-color: red;
   color: white;
 }
@@ -76,7 +78,7 @@ input {
 }
 
 #commands .buttons button:disabled,
-#commands .buttons button:disabled:hover{
+#commands .buttons button:disabled:hover {
   border-color: #999;
   background-color: #888;
   color: #ccc;
