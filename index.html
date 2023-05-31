@@ -38,7 +38,7 @@
       window.esptoolPackage = import(
         // In development we import locally.
         window.location.hostname === "localhost"
-          ? "/dist/web/index.js"
+          ? "./js/modules/esptool.js"
           : "./js/modules/esptool.js"
       );
     </script>
