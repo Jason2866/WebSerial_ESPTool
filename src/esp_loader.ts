@@ -171,8 +171,8 @@ export class ESPLoader extends EventTarget {
         // esp32c3 esp32s3 etc. build-in USB serial.
         // when connect to computer direct via usb, using following signals
         // to enter flash mode automatically.
-        await this.setRTS(false);
         await this.setDTR(false);
+        await this.setRTS(false);
         await this.sleep(100);
 
         await this.setDTR(true);
@@ -184,8 +184,8 @@ export class ESPLoader extends EventTarget {
         await this.setRTS(true);
 
         await this.sleep(100);
-        await this.setRTS(false);
         await this.setDTR(false);
+        await this.setRTS(false);
       } else {
         // otherwise, esp chip should be connected to computer via usb-serial
         // bridge chip like ch340,CP2102 etc.
