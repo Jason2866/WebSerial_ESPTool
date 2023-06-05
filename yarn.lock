@@ -54,7 +54,7 @@
   dependencies:
     "@rollup/pluginutils" "^5.0.1"
 
-"@rollup/plugin-node-resolve@^15.0.2":
+"@rollup/plugin-node-resolve@^15.1.0":
   "integrity" "sha512-xeZHCgsiZ9pzYVgAo9580eCGqwh/XCEUM9q6iQfGNocjgkufHAqC3exA+45URvhiYV8sBF9RlBai650eNs7AsA=="
   "resolved" "https://registry.npmjs.org/@rollup/plugin-node-resolve/-/plugin-node-resolve-15.1.0.tgz"
   "version" "15.1.0"
@@ -97,7 +97,7 @@
   "resolved" "https://registry.npmjs.org/@types/estree/-/estree-1.0.1.tgz"
   "version" "1.0.1"
 
-"@types/node@^20.2.3":
+"@types/node@^20.2.5":
   "integrity" "sha512-JJulVEQXmiY9Px5axXHeYGLSjhkZEnD+MDPDGbCbIAbMslkKwmygtZFy1X6s/075Yo94sf8GuSlFfPzysQrWZQ=="
   "resolved" "https://registry.npmjs.org/@types/node/-/node-20.2.5.tgz"
   "version" "20.2.5"
@@ -583,7 +583,7 @@
   "resolved" "https://registry.npmjs.org/picomatch/-/picomatch-2.3.1.tgz"
   "version" "2.3.1"
 
-"prettier@2.8.8":
+"prettier@^2.8.8":
   "integrity" "sha512-tdN8qQGvNjw4CHbY+XXk0JgCXn9QiF21a55rBe5LJAU+kDyC4WQn4+awm2Xfk2lQMk5fKup9XgzTZtGkjBdP9Q=="
   "resolved" "https://registry.npmjs.org/prettier/-/prettier-2.8.8.tgz"
   "version" "2.8.8"
@@ -649,7 +649,7 @@
     "path-parse" "^1.0.7"
     "supports-preserve-symlinks-flag" "^1.0.0"
 
-"rollup@^1.20.0||^2.0.0||^3.0.0", "rollup@^2.14.0||^3.0.0", "rollup@^2.78.0||^3.0.0", "rollup@^2.x || ^3.x", "rollup@^3.23.0":
+"rollup@^1.20.0||^2.0.0||^3.0.0", "rollup@^2.14.0||^3.0.0", "rollup@^2.78.0||^3.0.0", "rollup@^2.x || ^3.x", "rollup@^3.23.1":
   "integrity" "sha512-ybRdFVHOoljGEFILHLd2g/qateqUdjE6YS41WXq4p3C/WwD3xtWxV4FYWETA1u9TeXQc5K8L8zHE5d/scOvrOQ=="
   "resolved" "https://registry.npmjs.org/rollup/-/rollup-3.23.1.tgz"
   "version" "3.23.1"
@@ -803,7 +803,7 @@
     "commander" "^2.20.0"
     "source-map-support" "~0.5.20"
 
-"tslib@*", "tslib@^2.5.2":
+"tslib@*", "tslib@^2.5.3":
   "integrity" "sha512-mSxlJJwl3BMEQCUNnxXBU9jP4JBktcEGhURcPR6VQVlnP0FdDEsIaz0C35dXNGLyRfrATNofF0F5p2KPxQgB+w=="
   "resolved" "https://registry.npmjs.org/tslib/-/tslib-2.5.3.tgz"
   "version" "2.5.3"
@@ -813,7 +813,7 @@
   "resolved" "https://registry.npmjs.org/type-fest/-/type-fest-2.19.0.tgz"
   "version" "2.19.0"
 
-"typescript@^5.0.4", "typescript@>=3.7.0":
+"typescript@^5.1.3", "typescript@>=3.7.0":
   "integrity" "sha512-XH627E9vkeqhlZFQuL+UsyAXEnibT0kWR2FWONlr4sTjvxyJYnyefgrkyECLzM5NenmKzRAy2rR/OlYLA1HkZw=="
   "resolved" "https://registry.npmjs.org/typescript/-/typescript-5.1.3.tgz"
   "version" "5.1.3"
