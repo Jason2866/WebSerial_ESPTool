@@ -31,6 +31,7 @@
   "dependencies": {
     "@types/node": "^20.2.5",
     "pako": "^2.1.0",
-    "tslib": "^2.5.3"
+    "tslib": "^2.5.3",
+    "yarn": "^1.22.19"
   }
 }
