@@ -85,8 +85,8 @@
   resolved "https://registry.npmjs.org/@types/estree/-/estree-1.0.1.tgz"
 
 "@types/node@^20.2.5":
-  version "20.2.5"
-  resolved "https://registry.npmjs.org/@types/node/-/node-20.2.5.tgz"
+  version "20.3.1"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-20.3.1.tgz#e8a83f1aa8b649377bb1fb5d7bac5cb90e784dfe"
 
 "@types/pako@^2.0.0":
   version "2.0.0"
