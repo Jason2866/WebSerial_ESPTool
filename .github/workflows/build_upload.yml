@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Remove old files and folders
         run: |
           rm -rf package-lock.json
@@ -23,8 +23,7 @@ jobs:
       - name: install node v16
         uses: actions/setup-node@v3
         with:
-          node-version: "16.x"
-          registry-url: "https://registry.npmjs.org"
+          node-version: 16
       - name: Install Yarn with NPM
         run: npm install -g yarn
       - name: yarn install
@@ -32,7 +31,7 @@ jobs:
       - name: Compile TypeScript
         run: |
           set -e
-          npm install
+          rm -rf dist
           NODE_ENV=production npm exec -- tsc
           NODE_ENV=production npm exec -- rollup -c
       - name: Rename and copy build artifact
