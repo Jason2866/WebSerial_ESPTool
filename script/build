@@ -4,7 +4,6 @@ set -e
 cd "$(dirname "$0")/.."
 
 rm -rf dist
-rm -rf dist
 rm -rf js/modules
 mkdir js/modules
 NODE_ENV=production npm exec -- tsc
