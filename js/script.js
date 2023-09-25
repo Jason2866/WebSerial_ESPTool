@@ -127,7 +127,7 @@ function debugMsg(...args) {
           Array.from(arg)
             .map((value) => toHex(value))
             .join(", ") +
-          "]"
+          "]",
       );
     } else {
       logMsg(prefix + "Unhandled type of argument:" + typeof arg);
@@ -308,7 +308,7 @@ async function clickProgram() {
           progressBar.style.width =
             Math.floor((bytesWritten / totalBytes) * 100) + "%";
         },
-        offset
+        offset,
       );
       await sleep(100);
     } catch (e) {
