@@ -2,10 +2,6 @@
 
 JavaScript package to install firmware on ESP devices via the browser using WebSerial.
 
-## Changes done to upstream
-
-- added auto download mode for CDC
-
 ## Local development
 
 - Clone this repository.
