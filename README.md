@@ -5,7 +5,7 @@ JavaScript package to install firmware on ESP devices via the browser using WebS
 ## Local development
 
 - Clone this repository.
-- Install dependencies with `npm` or `yarn`
+- Install dependencies with `yarn`
 - Run `script/develop`
 - Open http://localhost:5004/
 
