@@ -108,9 +108,9 @@
   integrity sha512-60BCwRFOZCQhDncwQdxxeOEEkbc5dIMccYLwbxsS4TUNeVECQ/pBJ0j09mrHOl/JJvpRPGwO9SvE4nR2Nb/a4Q==
 
 "@types/w3c-web-serial@^1.0.3":
-  version "1.0.3"
-  resolved "https://registry.npmjs.org/@types/w3c-web-serial/-/w3c-web-serial-1.0.3.tgz"
-  integrity sha512-R4J/OjqKAUFQoXVIkaUTfzb/sl6hLh/ZhDTfowJTRMa7LhgEmI/jXV4zsL1u8HpNa853BxwNmDIr0pauizzwSQ==
+  version "1.0.5"
+  resolved "https://registry.yarnpkg.com/@types/w3c-web-serial/-/w3c-web-serial-1.0.5.tgz#09ed1265b642703c7f5556f36717bf4b1eddb10c"
+  integrity sha512-gpWNghA1RjPc92puT2HRRRFjv0MDVcpS9yTjJPLwCRU+w1YQTmJommTEL1w7l6Llq5/2cbzH1B4jHx/EP0PcjQ==
 
 "@zeit/schemas@2.29.0":
   version "2.29.0"
