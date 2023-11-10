@@ -20,10 +20,10 @@ jobs:
           rm -rf dist
           rm -rf js/modules
           mkdir js/modules
-      - name: install node v16
+      - name: install node v18
         uses: actions/setup-node@v4
         with:
-          node-version: 16
+          node-version: 18
       - name: Install Yarn with NPM
         run: npm install -g yarn
       - name: yarn install
