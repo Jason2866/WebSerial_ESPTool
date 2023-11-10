@@ -44,7 +44,7 @@ jobs:
         with:
           commit_message: "Github Action: Updated dist files"
       - name: Publish to NPM registry
-        uses: JS-DevTools/npm-publish@v2
+        uses: JS-DevTools/npm-publish@v3
         with:
           registry: https://registry.npmjs.org/
           token: ${{ secrets.NPM_TOKEN }}
