@@ -215,6 +215,7 @@ export const CHIP_DETECT_MAGIC_VALUES: ChipInfo = {
   0x9: { name: "ESP32-S3", family: CHIP_FAMILY_ESP32S3 },
   0x6f51306f: { name: "ESP32-C2", family: CHIP_FAMILY_ESP32C2 },
   0x7c41a06f: { name: "ESP32-C2", family: CHIP_FAMILY_ESP32C2 },
+  0x0c21e06f: { name: "ESP32-C2", family: CHIP_FAMILY_ESP32C2 },
   0x6921506f: { name: "ESP32-C3", family: CHIP_FAMILY_ESP32C3 },
   0x1b31506f: { name: "ESP32-C3", family: CHIP_FAMILY_ESP32C3 },
   0x4881606f: { name: "ESP32-C3", family: CHIP_FAMILY_ESP32C3 },
