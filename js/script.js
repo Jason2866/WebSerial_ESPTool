@@ -1,7 +1,7 @@
 import { ESPLoader, Transport } from "https://unpkg.com/esptool-js@0.5.4/bundle.js";
 //import { ESPLoader, Transport } from "./esptool-js/bundle.js";
 
-const baudRates = [921600, 115200, 230400, 460800];
+const baudRates = [1500000, 115200, 230400, 460800];
 
 const maxLogLength = 100;
 const log = document.getElementById("log");
