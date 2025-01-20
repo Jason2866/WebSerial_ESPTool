@@ -1,11 +1,6 @@
-# Adafruit WebSerial ESPTool
+# WebSerial ESPTool
 
 Web tool to install firmware on ESP devices via the browser using WebSerial.
-
-## Used by
-
-- [Adafruit WipperSnapper](https://learn.adafruit.com/quickstart-adafruit-io-wippersnapper)
-- [Adafruit CircuitPython Installer](https://circuitpython.org/downloads)
 
 ## Local development
 
