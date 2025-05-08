@@ -1,6 +1,6 @@
 {
   "name": "tasmota-webserial-esptool",
-  "version": "6.3.0",
+  "version": "6.3.1",
   "description": "Flash ESP devices using WebSerial",
   "main": "dist/index.js",
   "repository": {
