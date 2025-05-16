@@ -4,6 +4,7 @@ import {
   CHIP_FAMILY_ESP32S3,
   CHIP_FAMILY_ESP32C2,
   CHIP_FAMILY_ESP32C3,
+  CHIP_FAMILY_ESP32C5,
   CHIP_FAMILY_ESP32C6,
   CHIP_FAMILY_ESP32H2,
   CHIP_FAMILY_ESP32P4,
@@ -248,6 +249,7 @@ export class ESPLoader extends EventTarget {
       this.chipFamily == CHIP_FAMILY_ESP32S3 ||
       this.chipFamily == CHIP_FAMILY_ESP32C2 ||
       this.chipFamily == CHIP_FAMILY_ESP32C3 ||
+      this.chipFamily == CHIP_FAMILY_ESP32C5 ||
       this.chipFamily == CHIP_FAMILY_ESP32C6 ||
       this.chipFamily == CHIP_FAMILY_ESP32H2 ||
       this.chipFamily == CHIP_FAMILY_ESP32P4
@@ -305,6 +307,7 @@ export class ESPLoader extends EventTarget {
         CHIP_FAMILY_ESP32S3,
         CHIP_FAMILY_ESP32C2,
         CHIP_FAMILY_ESP32C3,
+        CHIP_FAMILY_ESP32C5,
         CHIP_FAMILY_ESP32C6,
         CHIP_FAMILY_ESP32H2,
         CHIP_FAMILY_ESP32P4,
@@ -740,6 +743,7 @@ export class ESPLoader extends EventTarget {
         CHIP_FAMILY_ESP32S3,
         CHIP_FAMILY_ESP32C2,
         CHIP_FAMILY_ESP32C3,
+        CHIP_FAMILY_ESP32C5,
         CHIP_FAMILY_ESP32C6,
         CHIP_FAMILY_ESP32H2,
         CHIP_FAMILY_ESP32P4,
@@ -769,6 +773,7 @@ export class ESPLoader extends EventTarget {
       this.chipFamily == CHIP_FAMILY_ESP32S3 ||
       this.chipFamily == CHIP_FAMILY_ESP32C2 ||
       this.chipFamily == CHIP_FAMILY_ESP32C3 ||
+      this.chipFamily == CHIP_FAMILY_ESP32C5 ||
       this.chipFamily == CHIP_FAMILY_ESP32C6 ||
       this.chipFamily == CHIP_FAMILY_ESP32H2 ||
       this.chipFamily == CHIP_FAMILY_ESP32P4
