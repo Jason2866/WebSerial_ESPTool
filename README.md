@@ -2,7 +2,7 @@
 
 JavaScript package to install firmware on ESP devices via the browser using WebSerial.
 
-This fork supports additionally the ESP32-P4
+This fork is **not** based on esptool.js
 
 
 ## Local development
