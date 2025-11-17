@@ -150,6 +150,18 @@ export const ESP32C6_SPI_W0_OFFS = 0x58;
 export const ESP32C6_UART_DATE_REG_ADDR = 0x6000007c;
 export const ESP32C6_BOOTLOADER_FLASH_OFFSET = 0x0;
 
+export const ESP32C61_SPI_REG_BASE = 0x60003000;
+export const ESP32C61_BASEFUSEADDR = 0x600b4800;
+export const ESP32C61_MACFUSEADDR = 0x600b4800 + 0x044;
+export const ESP32C61_SPI_USR_OFFS = 0x18;
+export const ESP32C61_SPI_USR1_OFFS = 0x1c;
+export const ESP32C61_SPI_USR2_OFFS = 0x20;
+export const ESP32C61_SPI_MOSI_DLEN_OFFS = 0x24;
+export const ESP32C61_SPI_MISO_DLEN_OFFS = 0x28;
+export const ESP32C61_SPI_W0_OFFS = 0x58;
+export const ESP32C61_UART_DATE_REG_ADDR = 0x6000007c;
+export const ESP32C61_BOOTLOADER_FLASH_OFFSET = 0x0;
+
 export const ESP32H2_SPI_REG_BASE = 0x60003000;
 export const ESP32H2_BASEFUSEADDR = 0x6001a000;
 export const ESP32H2_MACFUSEADDR = 0x6001a000 + 0x044;
@@ -201,6 +213,7 @@ export const CHIP_FAMILY_ESP32C2 = 0x32c2;
 export const CHIP_FAMILY_ESP32C3 = 0x32c3;
 export const CHIP_FAMILY_ESP32C5 = 0x32c5;
 export const CHIP_FAMILY_ESP32C6 = 0x32c6;
+export const CHIP_FAMILY_ESP32C61 = 0x32c61;
 export const CHIP_FAMILY_ESP32H2 = 0x3272;
 export const CHIP_FAMILY_ESP32P4 = 0x3280;
 export type ChipFamily =
@@ -212,6 +225,7 @@ export type ChipFamily =
   | typeof CHIP_FAMILY_ESP32C3
   | typeof CHIP_FAMILY_ESP32C5
   | typeof CHIP_FAMILY_ESP32C6
+  | typeof CHIP_FAMILY_ESP32C61
   | typeof CHIP_FAMILY_ESP32H2
   | typeof CHIP_FAMILY_ESP32P4;
 
@@ -240,6 +254,7 @@ export const CHIP_DETECT_MAGIC_VALUES: ChipInfo = {
   0x5C501458: { name: "ESP32-C5", family: CHIP_FAMILY_ESP32C5 },
   0xd7b73e80: { name: "ESP32-H2", family: CHIP_FAMILY_ESP32H2 },
   0x2ce0806f: { name: "ESP32-C6", family: CHIP_FAMILY_ESP32C6 },
+  0x7211606f: { name: "ESP32-C61", family: CHIP_FAMILY_ESP32C61 },
   0x0addbad0: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
   0x7039ad9: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
   0x0: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
@@ -408,6 +423,20 @@ export const getSpiFlashAddresses = (
         w0Offs: ESP32C6_SPI_W0_OFFS,
         uartDateReg: ESP32C6_UART_DATE_REG_ADDR,
         flashOffs: ESP32C6_BOOTLOADER_FLASH_OFFSET,
+      };
+    case CHIP_FAMILY_ESP32C61:
+      return {
+        regBase: ESP32C61_SPI_REG_BASE,
+        baseFuse: ESP32C61_BASEFUSEADDR,
+        macFuse: ESP32C61_MACFUSEADDR,
+        usrOffs: ESP32C61_SPI_USR_OFFS,
+        usr1Offs: ESP32C61_SPI_USR1_OFFS,
+        usr2Offs: ESP32C61_SPI_USR2_OFFS,
+        mosiDlenOffs: ESP32C61_SPI_MOSI_DLEN_OFFS,
+        misoDlenOffs: ESP32C61_SPI_MISO_DLEN_OFFS,
+        w0Offs: ESP32C61_SPI_W0_OFFS,
+        uartDateReg: ESP32C61_UART_DATE_REG_ADDR,
+        flashOffs: ESP32C61_BOOTLOADER_FLASH_OFFSET,
       };
     case CHIP_FAMILY_ESP32H2:
       return {

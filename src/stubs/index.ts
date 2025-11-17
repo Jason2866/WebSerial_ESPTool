@@ -8,6 +8,7 @@ import {
   CHIP_FAMILY_ESP32C3,
   CHIP_FAMILY_ESP32C5,
   CHIP_FAMILY_ESP32C6,
+  CHIP_FAMILY_ESP32C61,
   CHIP_FAMILY_ESP32H2,
   CHIP_FAMILY_ESP32P4
 } from "../const";
@@ -48,6 +49,8 @@ export const getStubCode = async (chipFamily: ChipFamily): Promise<Stub> => {
     stubcode = await import("./esp32c5.json");
   } else if (chipFamily == CHIP_FAMILY_ESP32C6) {
     stubcode = await import("./esp32c6.json");
+  } else if (chipFamily == CHIP_FAMILY_ESP32C61) {
+    stubcode = await import("./esp32c61.json");
   } else if (chipFamily == CHIP_FAMILY_ESP32H2) {
     stubcode = await import("./esp32h2.json");
   } else if (chipFamily == CHIP_FAMILY_ESP32P4) {
