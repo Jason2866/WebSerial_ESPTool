@@ -12,6 +12,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # required to use OIDC
     steps:
       - uses: actions/checkout@v5
       - name: Remove old files and folders
@@ -47,7 +50,7 @@ jobs:
         uses: JS-DevTools/npm-publish@v3
         with:
           registry: https://registry.npmjs.org/
-          token: ${{ secrets.NPM_TOKEN }}
+#          token: ${{ secrets.NPM_TOKEN }}
           strategy: all
       - name: Setup Pages
         uses: actions/configure-pages@v5
