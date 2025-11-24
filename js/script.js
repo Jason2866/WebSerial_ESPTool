@@ -204,7 +204,6 @@ async function clickConnect() {
     let baud = parseInt(baudRate.value);
     if (baudRates.includes(baud)) {
       await espStub.setBaudrate(baud);
-      logMsg("Changed baud rate to " + baud);
     }
     
     espStub.addEventListener("disconnect", () => {

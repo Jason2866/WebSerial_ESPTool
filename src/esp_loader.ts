@@ -634,6 +634,8 @@ export class ESPLoader extends EventTarget {
     } else {
       await this.reconfigurePort(baud);
     }
+
+    this.logger.log(`Changed baud rate to ${baud}`);
   }
 
   async reconfigurePort(baud: number) {
@@ -650,8 +652,6 @@ export class ESPLoader extends EventTarget {
 
       // Restart Readloop
       this.readLoop();
-
-      this.logger.log(`Changed baud rate to ${baud}`);
     } catch (e) {
       console.error(e);
       throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
