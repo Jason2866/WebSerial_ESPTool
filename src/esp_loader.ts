@@ -129,7 +129,7 @@ export class ESPLoader extends EventTarget {
         if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
           this.chipRevision = await this.getChipRevision();
           this.logger.debug(`ESP32-P4 revision: ${this.chipRevision}`);
-          
+
           // Set chip variant based on revision
           if (this.chipRevision >= 300) {
             this.chipVariant = "rev300";
@@ -168,12 +168,12 @@ export class ESPLoader extends EventTarget {
     }
     this.chipName = chip.name;
     this.chipFamily = chip.family;
-    
+
     // For ESP32-P4 detected via magic value (old revisions), set variant
     if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
       this.chipRevision = await this.getChipRevision();
       this.logger.debug(`ESP32-P4 revision: ${this.chipRevision}`);
-      
+
       if (this.chipRevision >= 300) {
         this.chipVariant = "rev300";
       } else {
@@ -181,7 +181,7 @@ export class ESPLoader extends EventTarget {
       }
       this.logger.debug(`ESP32-P4 variant: ${this.chipVariant}`);
     }
-    
+
     this.logger.debug(
       `Detected chip via magic value: ${toHex(chipMagicValue >>> 0, 8)} (${this.chipName})`,
     );
