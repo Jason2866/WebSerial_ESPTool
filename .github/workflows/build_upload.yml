@@ -16,7 +16,7 @@ jobs:
       contents: read
       id-token: write  # required to use OIDC
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Remove old files and folders
         run: |
           rm -rf package-lock.json
