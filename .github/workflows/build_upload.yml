@@ -43,7 +43,7 @@ jobs:
           mv js/modules/index.js js/modules/esptool.js
           #ls js/modules/
       - name: Commit Distribution Files
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "Github Action: Updated dist files"
       - name: Publish to NPM registry
