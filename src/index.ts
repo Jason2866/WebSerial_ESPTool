@@ -1,3 +1,5 @@
+/// <reference types="@types/w3c-web-serial" />
+
 import { ESP_ROM_BAUD, Logger } from "./const";
 import { ESPLoader } from "./esp_loader";
 

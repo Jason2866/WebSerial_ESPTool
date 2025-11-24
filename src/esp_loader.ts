@@ -1,3 +1,5 @@
+/// <reference types="@types/w3c-web-serial" />
+
 import {
   CHIP_FAMILY_ESP32,
   CHIP_FAMILY_ESP32S2,
@@ -116,26 +118,32 @@ export class ESPLoader extends EventTarget {
       // Try GET_SECURITY_INFO command first (ESP32-C3 and later)
       const securityInfo = await this.getSecurityInfo();
       const chipId = securityInfo.chipId;
-      
+
       const chipInfo = CHIP_ID_TO_INFO[chipId];
       if (chipInfo) {
         this.chipName = chipInfo.name;
         this.chipFamily = chipInfo.family;
-        
+
         // Get chip revision for ESP32-P4
         if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
           this.chipRevision = await this.getChipRevision();
           this.logger.debug(`ESP32-P4 revision: ${this.chipRevision}`);
         }
-        
-        this.logger.debug(`Detected chip via IMAGE_CHIP_ID: ${chipId} (${this.chipName})`);
+
+        this.logger.debug(
+          `Detected chip via IMAGE_CHIP_ID: ${chipId} (${this.chipName})`,
+        );
         return;
       }
-      
-      this.logger.debug(`Unknown IMAGE_CHIP_ID: ${chipId}, falling back to magic value detection`);
+
+      this.logger.debug(
+        `Unknown IMAGE_CHIP_ID: ${chipId}, falling back to magic value detection`,
+      );
     } catch (err) {
       // GET_SECURITY_INFO not supported, fall back to magic value detection
-      this.logger.debug(`GET_SECURITY_INFO failed, using magic value detection: ${err}`);
+      this.logger.debug(
+        `GET_SECURITY_INFO failed, using magic value detection: ${err}`,
+      );
     }
 
     // Fallback: Use magic value detection for ESP8266, ESP32, ESP32-S2, and ESP32-P4 RC versions
@@ -151,7 +159,9 @@ export class ESPLoader extends EventTarget {
     }
     this.chipName = chip.name;
     this.chipFamily = chip.family;
-    this.logger.debug(`Detected chip via magic value: ${toHex(chipMagicValue >>> 0, 8)} (${this.chipName})`);
+    this.logger.debug(
+      `Detected chip via magic value: ${toHex(chipMagicValue >>> 0, 8)} (${this.chipName})`,
+    );
   }
 
   /**
@@ -165,13 +175,13 @@ export class ESPLoader extends EventTarget {
     // Read from EFUSE_BLOCK1 to get chip revision
     // Word 2 contains revision info for ESP32-P4
     const word2 = await this.readRegister(ESP32P4_EFUSE_BLOCK1_ADDR + 8);
-    
+
     // Minor revision: bits [3:0]
     const minorRev = word2 & 0x0f;
-    
+
     // Major revision: bits [23] << 2 | bits [5:4]
-    const majorRev = ((word2 >> 23) & 1) << 2 | ((word2 >> 4) & 0x03);
-    
+    const majorRev = (((word2 >> 23) & 1) << 2) | ((word2 >> 4) & 0x03);
+
     // Revision is major * 100 + minor
     return majorRev * 100 + minorRev;
   }
@@ -186,21 +196,29 @@ export class ESPLoader extends EventTarget {
     chipId: number;
     apiVersion: number;
   }> {
-    const response = await this.checkCommand(
+    const [_, responseData] = await this.checkCommand(
       ESP_GET_SECURITY_INFO,
-      new Uint8Array(0),
+      [],
       0,
     );
-    
-    if (response.length < 20) {
-      throw new Error(`Invalid security info response length: ${response.length}`);
+
+    if (responseData.length < 20) {
+      throw new Error(
+        `Invalid security info response length: ${responseData.length}`,
+      );
     }
 
-    const flags = unpack("<I", response.slice(0, 4))[0];
-    const flashCryptCnt = response[4];
-    const keyPurposes = Array.from(response.slice(5, 12));
-    const chipId = response.length >= 16 ? unpack("<I", response.slice(12, 16))[0] : 0;
-    const apiVersion = response.length >= 20 ? unpack("<I", response.slice(16, 20))[0] : 0;
+    const flags = unpack("<I", responseData.slice(0, 4))[0];
+    const flashCryptCnt = responseData[4];
+    const keyPurposes = Array.from(responseData.slice(5, 12));
+    const chipId =
+      responseData.length >= 16
+        ? unpack("<I", responseData.slice(12, 16))[0]
+        : 0;
+    const apiVersion =
+      responseData.length >= 20
+        ? unpack("<I", responseData.slice(16, 20))[0]
+        : 0;
 
     return {
       flags,

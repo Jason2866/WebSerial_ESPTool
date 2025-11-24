@@ -207,21 +207,6 @@ export const SYNC_PACKET = toByteArray(
 export const CHIP_DETECT_MAGIC_REG_ADDR = 0x40001000;
 
 // Image Chip IDs (used by ESP32-C3 and later for chip detection)
-interface ChipIdInfo {
-  name: string;
-  family: ChipFamily;
-}
-
-export const CHIP_ID_TO_INFO: { [chipId: number]: ChipIdInfo } = {
-  5: { name: "ESP32-C3", family: CHIP_FAMILY_ESP32C3 },
-  9: { name: "ESP32-S3", family: CHIP_FAMILY_ESP32S3 },
-  12: { name: "ESP32-C2", family: CHIP_FAMILY_ESP32C2 },
-  13: { name: "ESP32-C6", family: CHIP_FAMILY_ESP32C6 },
-  16: { name: "ESP32-H2", family: CHIP_FAMILY_ESP32H2 },
-  17: { name: "ESP32-C5", family: CHIP_FAMILY_ESP32C5 },
-  18: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
-  20: { name: "ESP32-C61", family: CHIP_FAMILY_ESP32C61 },
-};
 // These values for the families are made up; nothing that esptool uses.
 export const CHIP_FAMILY_ESP8266 = 0x8266;
 export const CHIP_FAMILY_ESP32 = 0x32;
@@ -246,6 +231,22 @@ export type ChipFamily =
   | typeof CHIP_FAMILY_ESP32C61
   | typeof CHIP_FAMILY_ESP32H2
   | typeof CHIP_FAMILY_ESP32P4;
+
+interface ChipIdInfo {
+  name: string;
+  family: ChipFamily;
+}
+
+export const CHIP_ID_TO_INFO: { [chipId: number]: ChipIdInfo } = {
+  5: { name: "ESP32-C3", family: CHIP_FAMILY_ESP32C3 },
+  9: { name: "ESP32-S3", family: CHIP_FAMILY_ESP32S3 },
+  12: { name: "ESP32-C2", family: CHIP_FAMILY_ESP32C2 },
+  13: { name: "ESP32-C6", family: CHIP_FAMILY_ESP32C6 },
+  16: { name: "ESP32-H2", family: CHIP_FAMILY_ESP32H2 },
+  17: { name: "ESP32-C5", family: CHIP_FAMILY_ESP32C5 },
+  18: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
+  20: { name: "ESP32-C61", family: CHIP_FAMILY_ESP32C61 },
+};
 
 interface ChipInfo {
   [magicValue: number]: {
