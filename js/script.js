@@ -199,6 +199,14 @@ async function clickConnect() {
     espStub = await esploader.runStub();
     toggleUIConnected(true);
     toggleUIToolbar(true);
+    
+    // Set the selected baud rate
+    let baud = parseInt(baudRate.value);
+    if (baudRates.includes(baud)) {
+      await espStub.setBaudrate(baud);
+      logMsg("Changed baud rate to " + baud);
+    }
+    
     espStub.addEventListener("disconnect", () => {
       toggleUIConnected(false);
       espStub = false;
