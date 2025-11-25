@@ -13,7 +13,8 @@
     "noUnusedLocals": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
-    "importHelpers": true
+    "importHelpers": true,
+    "skipLibCheck": false
   },
   "include": ["src/*"]
 }

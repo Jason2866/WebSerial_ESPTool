@@ -176,6 +176,7 @@ export const ESP32H2_BOOTLOADER_FLASH_OFFSET = 0x0;
 
 export const ESP32P4_SPI_REG_BASE = 0x5008d000;
 export const ESP32P4_BASEFUSEADDR = 0x5012d000;
+export const ESP32P4_EFUSE_BLOCK1_ADDR = ESP32P4_BASEFUSEADDR + 0x044;
 export const ESP32P4_MACFUSEADDR = 0x5012d000 + 0x044;
 export const ESP32P4_SPI_USR_OFFS = 0x18;
 export const ESP32P4_SPI_USR1_OFFS = 0x1c;
@@ -204,6 +205,8 @@ export const SYNC_PACKET = toByteArray(
   "\x07\x07\x12 UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU",
 );
 export const CHIP_DETECT_MAGIC_REG_ADDR = 0x40001000;
+
+// Image Chip IDs (used by ESP32-C3 and later for chip detection)
 // These values for the families are made up; nothing that esptool uses.
 export const CHIP_FAMILY_ESP8266 = 0x8266;
 export const CHIP_FAMILY_ESP32 = 0x32;
@@ -228,6 +231,22 @@ export type ChipFamily =
   | typeof CHIP_FAMILY_ESP32C61
   | typeof CHIP_FAMILY_ESP32H2
   | typeof CHIP_FAMILY_ESP32P4;
+
+interface ChipIdInfo {
+  name: string;
+  family: ChipFamily;
+}
+
+export const CHIP_ID_TO_INFO: { [chipId: number]: ChipIdInfo } = {
+  5: { name: "ESP32-C3", family: CHIP_FAMILY_ESP32C3 },
+  9: { name: "ESP32-S3", family: CHIP_FAMILY_ESP32S3 },
+  12: { name: "ESP32-C2", family: CHIP_FAMILY_ESP32C2 },
+  13: { name: "ESP32-C6", family: CHIP_FAMILY_ESP32C6 },
+  16: { name: "ESP32-H2", family: CHIP_FAMILY_ESP32H2 },
+  18: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
+  20: { name: "ESP32-C61", family: CHIP_FAMILY_ESP32C61 },
+  23: { name: "ESP32-C5", family: CHIP_FAMILY_ESP32C5 },
+};
 
 interface ChipInfo {
   [magicValue: number]: {
@@ -259,6 +278,8 @@ export const CHIP_DETECT_MAGIC_VALUES: ChipInfo = {
   0x7211606f: { name: "ESP32-C61", family: CHIP_FAMILY_ESP32C61 },
   0x97e30068: { name: "ESP32-H2", family: CHIP_FAMILY_ESP32H2 },
   0xd7b73e80: { name: "ESP32-H2", family: CHIP_FAMILY_ESP32H2 },
+  // ESP32-P4 old revisions (< Rev. 300) - use magic value detection
+  // Rev. 300+ uses IMAGE_CHIP_ID detection instead
   0x0: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
   0x7039ad9: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
   0x0addbad0: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
@@ -282,6 +303,7 @@ export const ESP_SPI_SET_PARAMS = 0x0b;
 export const ESP_SPI_ATTACH = 0x0d;
 export const ESP_CHANGE_BAUDRATE = 0x0f;
 export const ESP_SPI_FLASH_MD5 = 0x13;
+export const ESP_GET_SECURITY_INFO = 0x14;
 export const ESP_CHECKSUM_MAGIC = 0xef;
 export const ESP_FLASH_DEFL_BEGIN = 0x10;
 export const ESP_FLASH_DEFL_DATA = 0x11;

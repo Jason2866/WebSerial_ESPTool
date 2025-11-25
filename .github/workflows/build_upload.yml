@@ -50,7 +50,7 @@ jobs:
         uses: JS-DevTools/npm-publish@v4
         with:
           registry: https://registry.npmjs.org/
-#          token: ${{ secrets.NPM_TOKEN }}
+          token: ${{ secrets.NPM_TOKEN }}
           strategy: all
       - name: Setup Pages
         uses: actions/configure-pages@v5

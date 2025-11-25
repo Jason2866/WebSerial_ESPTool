@@ -16,6 +16,7 @@ const autoscroll = document.getElementById("autoscroll");
 const lightSS = document.getElementById("light");
 const darkSS = document.getElementById("dark");
 const darkMode = document.getElementById("darkmode");
+const debugMode = document.getElementById("debugmode");
 const firmware = document.querySelectorAll(".upload .firmware input");
 const progress = document.querySelectorAll(".upload .progress-bar");
 const offsets = document.querySelectorAll(".upload .offset");
@@ -44,6 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
   autoscroll.addEventListener("click", clickAutoscroll);
   baudRate.addEventListener("change", changeBaudRate);
   darkMode.addEventListener("click", clickDarkMode);
+  debugMode.addEventListener("click", clickDebugMode);
   window.addEventListener("error", function (event) {
     console.log("Got an uncaught error: ", event.error);
   });
@@ -82,6 +84,10 @@ function logMsg(text) {
 }
 
 function debugMsg(...args) {
+  if (!debugMode.checked) {
+    return;
+  }
+  
   function getStackTrace() {
     let stack = new Error().stack;
     //console.log(stack);
@@ -199,6 +205,13 @@ async function clickConnect() {
     espStub = await esploader.runStub();
     toggleUIConnected(true);
     toggleUIToolbar(true);
+    
+    // Set the selected baud rate
+    let baud = parseInt(baudRate.value);
+    if (baudRates.includes(baud)) {
+      await espStub.setBaudrate(baud);
+    }
+    
     espStub.addEventListener("disconnect", () => {
       toggleUIConnected(false);
       espStub = false;
@@ -238,6 +251,15 @@ async function clickAutoscroll() {
 async function clickDarkMode() {
   updateTheme();
   saveSetting("darkmode", darkMode.checked);
+}
+
+/**
+ * @name clickDebugMode
+ * Change handler for the Debug Mode checkbox.
+ */
+async function clickDebugMode() {
+  saveSetting("debugmode", debugMode.checked);
+  logMsg("Debug mode " + (debugMode.checked ? "enabled" : "disabled"));
 }
 
 /**
@@ -420,6 +442,7 @@ function loadAllSettings() {
   autoscroll.checked = loadSetting("autoscroll", true);
   baudRate.value = loadSetting("baudrate", 1500000);
   darkMode.checked = loadSetting("darkmode", false);
+  debugMode.checked = loadSetting("debugmode", true);
 }
 
 function loadSetting(setting, defaultValue) {

@@ -30,7 +30,10 @@ interface Stub {
   data_start: number;
 }
 
-export const getStubCode = async (chipFamily: ChipFamily): Promise<Stub> => {
+export const getStubCode = async (
+  chipFamily: ChipFamily,
+  chipRevision?: number | null,
+): Promise<Stub> => {
   let stubcode!: LoadedStub;
 
   if (chipFamily == CHIP_FAMILY_ESP32) {
@@ -54,7 +57,12 @@ export const getStubCode = async (chipFamily: ChipFamily): Promise<Stub> => {
   } else if (chipFamily == CHIP_FAMILY_ESP32H2) {
     stubcode = await import("./esp32h2.json");
   } else if (chipFamily == CHIP_FAMILY_ESP32P4) {
-    stubcode = await import("./esp32p4.json");
+    // ESP32-P4: Use esp32p4r3.json for Rev. 300+, esp32p4.json for older revisions
+    if (chipRevision !== null && chipRevision !== undefined && chipRevision >= 300) {
+      stubcode = await import("./esp32p4r3.json");
+    } else {
+      stubcode = await import("./esp32p4.json");
+    }
   }
 
   // Base64 decode the text and data

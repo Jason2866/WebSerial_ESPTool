@@ -1,3 +1,5 @@
+/// <reference types="@types/w3c-web-serial" />
+
 import {
   CHIP_FAMILY_ESP32,
   CHIP_FAMILY_ESP32S2,
@@ -26,6 +28,7 @@ import {
   ESP_WRITE_REG,
   ESP_SPI_ATTACH,
   ESP_SYNC,
+  ESP_GET_SECURITY_INFO,
   FLASH_SECTOR_SIZE,
   FLASH_WRITE_SIZE,
   STUB_FLASH_WRITE_SIZE,
@@ -48,6 +51,8 @@ import {
   DETECTED_FLASH_SIZES,
   CHIP_DETECT_MAGIC_REG_ADDR,
   CHIP_DETECT_MAGIC_VALUES,
+  CHIP_ID_TO_INFO,
+  ESP32P4_EFUSE_BLOCK1_ADDR,
   SlipReadError,
 } from "./const";
 import { getStubCode } from "./stubs";
@@ -59,6 +64,8 @@ import { pack, unpack } from "./struct";
 export class ESPLoader extends EventTarget {
   chipFamily!: ChipFamily;
   chipName: string | null = null;
+  chipRevision: number | null = null;
+  chipVariant: string | null = null;
   _efuses = new Array(4).fill(0);
   _flashsize = 4 * 1024 * 1024;
   debug = false;
@@ -91,7 +98,77 @@ export class ESPLoader extends EventTarget {
     }
     await this.sync();
 
-    // Determine chip family and name
+    // Detect chip type
+    await this.detectChip();
+
+    // Read the OTP data for this chip and store into this.efuses array
+    let FlAddr = getSpiFlashAddresses(this.getChipFamily());
+    let AddrMAC = FlAddr.macFuse;
+    for (let i = 0; i < 4; i++) {
+      this._efuses[i] = await this.readRegister(AddrMAC + 4 * i);
+    }
+    this.logger.log(`Chip type ${this.chipName}`);
+    //this.logger.log("FLASHID");
+  }
+
+  /**
+   * Detect chip type using GET_SECURITY_INFO (for newer chips) or magic value (for older chips)
+   */
+  async detectChip() {
+    try {
+      // Try GET_SECURITY_INFO command first (ESP32-C3 and later)
+      const securityInfo = await this.getSecurityInfo();
+      const chipId = securityInfo.chipId;
+
+      const chipInfo = CHIP_ID_TO_INFO[chipId];
+      if (chipInfo) {
+        this.chipName = chipInfo.name;
+        this.chipFamily = chipInfo.family;
+
+        // Get chip revision for ESP32-P4
+        if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+          this.chipRevision = await this.getChipRevision();
+          this.logger.debug(`ESP32-P4 revision: ${this.chipRevision}`);
+
+          // Set chip variant based on revision
+          if (this.chipRevision >= 300) {
+            this.chipVariant = "rev300";
+          } else {
+            this.chipVariant = "rev0";
+          }
+          this.logger.debug(`ESP32-P4 variant: ${this.chipVariant}`);
+        }
+
+        this.logger.debug(
+          `Detected chip via IMAGE_CHIP_ID: ${chipId} (${this.chipName})`,
+        );
+        return;
+      }
+
+      this.logger.debug(
+        `Unknown IMAGE_CHIP_ID: ${chipId}, falling back to magic value detection`,
+      );
+    } catch (err) {
+      // GET_SECURITY_INFO not supported, fall back to magic value detection
+      this.logger.debug(
+        `GET_SECURITY_INFO failed, using magic value detection: ${err}`,
+      );
+
+      // Clear input buffer and re-sync to recover from failed command
+      this._inputBuffer.length = 0;
+      await sleep(100);
+
+      // Re-sync with the chip to ensure clean communication
+      try {
+        await this.sync();
+      } catch (syncErr) {
+        this.logger.debug(
+          `Re-sync after GET_SECURITY_INFO failure: ${syncErr}`,
+        );
+      }
+    }
+
+    // Fallback: Use magic value detection for ESP8266, ESP32, ESP32-S2, and ESP32-P4 RC versions
     let chipMagicValue = await this.readRegister(CHIP_DETECT_MAGIC_REG_ADDR);
     let chip = CHIP_DETECT_MAGIC_VALUES[chipMagicValue >>> 0];
     if (chip === undefined) {
@@ -105,14 +182,94 @@ export class ESPLoader extends EventTarget {
     this.chipName = chip.name;
     this.chipFamily = chip.family;
 
-    // Read the OTP data for this chip and store into this.efuses array
-    let FlAddr = getSpiFlashAddresses(this.getChipFamily());
-    let AddrMAC = FlAddr.macFuse;
-    for (let i = 0; i < 4; i++) {
-      this._efuses[i] = await this.readRegister(AddrMAC + 4 * i);
+    // For ESP32-P4 detected via magic value (old revisions), set variant
+    if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+      this.chipRevision = await this.getChipRevision();
+      this.logger.debug(`ESP32-P4 revision: ${this.chipRevision}`);
+
+      if (this.chipRevision >= 300) {
+        this.chipVariant = "rev300";
+      } else {
+        this.chipVariant = "rev0";
+      }
+      this.logger.debug(`ESP32-P4 variant: ${this.chipVariant}`);
     }
-    this.logger.log(`Chip type ${this.chipName}`);
-    //this.logger.log("FLASHID");
+
+    this.logger.debug(
+      `Detected chip via magic value: ${toHex(chipMagicValue >>> 0, 8)} (${this.chipName})`,
+    );
+  }
+
+  /**
+   * Get chip revision for ESP32-P4
+   */
+  async getChipRevision(): Promise<number> {
+    if (this.chipFamily !== CHIP_FAMILY_ESP32P4) {
+      return 0;
+    }
+
+    // Read from EFUSE_BLOCK1 to get chip revision
+    // Word 2 contains revision info for ESP32-P4
+    const word2 = await this.readRegister(ESP32P4_EFUSE_BLOCK1_ADDR + 8);
+
+    // Minor revision: bits [3:0]
+    const minorRev = word2 & 0x0f;
+
+    // Major revision: bits [23] << 2 | bits [5:4]
+    const majorRev = (((word2 >> 23) & 1) << 2) | ((word2 >> 4) & 0x03);
+
+    // Revision is major * 100 + minor
+    return majorRev * 100 + minorRev;
+  }
+
+  /**
+   * Get security info including chip ID (ESP32-C3 and later)
+   */
+  async getSecurityInfo(): Promise<{
+    flags: number;
+    flashCryptCnt: number;
+    keyPurposes: number[];
+    chipId: number;
+    apiVersion: number;
+  }> {
+    const [_, responseData] = await this.checkCommand(
+      ESP_GET_SECURITY_INFO,
+      [],
+      0,
+    );
+
+    // Some chips/ROM versions return empty response or don't support this command
+    if (responseData.length === 0) {
+      throw new Error(
+        `GET_SECURITY_INFO not supported or returned empty response`,
+      );
+    }
+
+    if (responseData.length < 12) {
+      throw new Error(
+        `Invalid security info response length: ${responseData.length} (expected at least 12 bytes)`,
+      );
+    }
+
+    const flags = unpack("<I", responseData.slice(0, 4))[0];
+    const flashCryptCnt = responseData[4];
+    const keyPurposes = Array.from(responseData.slice(5, 12));
+    const chipId =
+      responseData.length >= 16
+        ? unpack("<I", responseData.slice(12, 16))[0]
+        : 0;
+    const apiVersion =
+      responseData.length >= 20
+        ? unpack("<I", responseData.slice(16, 20))[0]
+        : 0;
+
+    return {
+      flags,
+      flashCryptCnt,
+      keyPurposes,
+      chipId,
+      apiVersion,
+    };
   }
 
   /**
@@ -318,7 +475,11 @@ export class ESPLoader extends EventTarget {
     ) {
       statusLen = 4;
     } else {
-      if ([2, 4].includes(data.length)) {
+      // When chipFamily is not yet set (e.g., during GET_SECURITY_INFO in detectChip),
+      // assume modern chips use 4-byte status
+      if (opcode === ESP_GET_SECURITY_INFO) {
+        statusLen = 4;
+      } else if ([2, 4].includes(data.length)) {
         statusLen = data.length;
       }
     }
@@ -520,6 +681,8 @@ export class ESPLoader extends EventTarget {
     } else {
       await this.reconfigurePort(baud);
     }
+
+    this.logger.log(`Changed baud rate to ${baud}`);
   }
 
   async reconfigurePort(baud: number) {
@@ -536,8 +699,6 @@ export class ESPLoader extends EventTarget {
 
       // Restart Readloop
       this.readLoop();
-
-      this.logger.log(`Changed baud rate to ${baud}`);
     } catch (e) {
       console.error(e);
       throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
@@ -1105,7 +1266,10 @@ export class ESPLoader extends EventTarget {
   }
 
   async runStub(): Promise<EspStubLoader> {
-    const stub: Record<string, any> = await getStubCode(this.chipFamily);
+    const stub: Record<string, any> = await getStubCode(
+      this.chipFamily,
+      this.chipRevision,
+    );
 
     // We're transferring over USB, right?
     let ramBlock = USB_RAM_BLOCK;
@@ -1192,7 +1356,7 @@ class EspStubLoader extends ESPLoader {
     blocksize: number,
     offset: number,
   ): Promise<any> {
-    let stub = await getStubCode(this.chipFamily);
+    let stub = await getStubCode(this.chipFamily, this.chipRevision);
     let load_start = offset;
     let load_end = offset + size;
     console.log(load_start, load_end);
