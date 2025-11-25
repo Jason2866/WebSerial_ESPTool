@@ -243,9 +243,9 @@ export const CHIP_ID_TO_INFO: { [chipId: number]: ChipIdInfo } = {
   12: { name: "ESP32-C2", family: CHIP_FAMILY_ESP32C2 },
   13: { name: "ESP32-C6", family: CHIP_FAMILY_ESP32C6 },
   16: { name: "ESP32-H2", family: CHIP_FAMILY_ESP32H2 },
-  17: { name: "ESP32-C5", family: CHIP_FAMILY_ESP32C5 },
   18: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
   20: { name: "ESP32-C61", family: CHIP_FAMILY_ESP32C61 },
+  23: { name: "ESP32-C5", family: CHIP_FAMILY_ESP32C5 },
 };
 
 interface ChipInfo {
