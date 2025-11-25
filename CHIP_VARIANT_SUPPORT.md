@@ -162,9 +162,23 @@ Die ESP32-P4 Revision wird aus den eFuses gelesen (EFUSE_BLOCK1):
 
 ### Erkennungsmethoden
 
-ESP32-P4 kann auf zwei Arten erkannt werden:
+Die Chip-Erkennung verwendet einen zweistufigen Ansatz:
 
-1. **IMAGE_CHIP_ID** (Rev. 300+): Verwendet `GET_SECURITY_INFO` Kommando
-2. **Magic Value** (Rev. < 300): Liest Magic-Wert aus Register
+1. **Primär: GET_SECURITY_INFO** (IMAGE_CHIP_ID)
+   - Unterstützt von: ESP32-C3 (neuere ROM), ESP32-S3, ESP32-C6, ESP32-H2, ESP32-P4 Rev. 300+
+   - Liefert direkt die Chip-ID
+   - Wenn nicht unterstützt oder leere Antwort → Fallback zu Magic Value
 
-In beiden Fällen wird die Revision gelesen und die entsprechende Variante gesetzt.
+2. **Fallback: Magic Value Detection**
+   - Unterstützt von: ESP8266, ESP32, ESP32-S2, ESP32-C3 (ältere ROM), ESP32-P4 Rev. < 300
+   - Liest Magic-Wert aus Register 0x40001000
+   - Zuverlässige Methode für ältere Chips
+
+**Für ESP32-P4:**
+- Beide Methoden funktionieren
+- Nach Erkennung wird die Revision aus eFuses gelesen
+- Basierend auf Revision wird `chipVariant` gesetzt:
+  - Rev. < 300 → `"rev0"`
+  - Rev. >= 300 → `"rev300"`
+
+**Hinweis:** Die Debug-Meldung "GET_SECURITY_INFO failed, using magic value detection" ist normal und erwartet für ältere Chips. Der Fallback-Mechanismus stellt sicher, dass alle Chips korrekt erkannt werden.

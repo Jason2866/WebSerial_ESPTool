@@ -225,9 +225,16 @@ export class ESPLoader extends EventTarget {
       0,
     );
 
-    if (responseData.length < 20) {
+    // Some chips/ROM versions return empty response or don't support this command
+    if (responseData.length === 0) {
       throw new Error(
-        `Invalid security info response length: ${responseData.length}`,
+        `GET_SECURITY_INFO not supported or returned empty response`,
+      );
+    }
+
+    if (responseData.length < 12) {
+      throw new Error(
+        `Invalid security info response length: ${responseData.length} (expected at least 12 bytes)`,
       );
     }
 
