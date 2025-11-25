@@ -154,9 +154,18 @@ export class ESPLoader extends EventTarget {
         `GET_SECURITY_INFO failed, using magic value detection: ${err}`,
       );
 
-      // Clear input buffer to remove any garbage data from failed command
+      // Clear input buffer and re-sync to recover from failed command
       this._inputBuffer.length = 0;
       await sleep(100);
+
+      // Re-sync with the chip to ensure clean communication
+      try {
+        await this.sync();
+      } catch (syncErr) {
+        this.logger.debug(
+          `Re-sync after GET_SECURITY_INFO failure: ${syncErr}`,
+        );
+      }
     }
 
     // Fallback: Use magic value detection for ESP8266, ESP32, ESP32-S2, and ESP32-P4 RC versions
