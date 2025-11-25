@@ -462,7 +462,11 @@ export class ESPLoader extends EventTarget {
     ) {
       statusLen = 4;
     } else {
-      if ([2, 4].includes(data.length)) {
+      // When chipFamily is not yet set (e.g., during GET_SECURITY_INFO in detectChip),
+      // assume modern chips use 4-byte status
+      if (opcode === ESP_GET_SECURITY_INFO) {
+        statusLen = 4;
+      } else if ([2, 4].includes(data.length)) {
         statusLen = data.length;
       }
     }
