@@ -402,6 +402,16 @@ export class ESPLoader extends EventTarget {
       macAddr[3] = (mac1 >> 16) & 0xff;
       macAddr[4] = (mac1 >> 8) & 0xff;
       macAddr[5] = mac1 & 0xff;
+    } else if (this.chipFamily == CHIP_FAMILY_ESP32H2) {
+      // ESP32-H2 has a different MAC address layout
+      // Python: struct.pack(">II", mac1, mac0)[2:]
+      // Big-endian pack of mac1, mac0, then skip first 2 bytes
+      macAddr[0] = (mac1 >> 16) & 0xff;
+      macAddr[1] = (mac1 >> 8) & 0xff;
+      macAddr[2] = mac1 & 0xff;
+      macAddr[3] = (mac0 >> 24) & 0xff;
+      macAddr[4] = (mac0 >> 16) & 0xff;
+      macAddr[5] = (mac0 >> 8) & 0xff;
     } else if (
       this.chipFamily == CHIP_FAMILY_ESP32S2 ||
       this.chipFamily == CHIP_FAMILY_ESP32S3 ||
@@ -410,7 +420,6 @@ export class ESPLoader extends EventTarget {
       this.chipFamily == CHIP_FAMILY_ESP32C5 ||
       this.chipFamily == CHIP_FAMILY_ESP32C6 ||
       this.chipFamily == CHIP_FAMILY_ESP32C61 ||
-      this.chipFamily == CHIP_FAMILY_ESP32H2 ||
       this.chipFamily == CHIP_FAMILY_ESP32P4
     ) {
       macAddr[0] = (mac1 >> 8) & 0xff;
