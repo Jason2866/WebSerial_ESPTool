@@ -1284,10 +1284,18 @@ export class ESPLoader extends EventTarget {
   }
 
   async runStub(): Promise<EspStubLoader> {
-    const stub: Record<string, any> = await getStubCode(
+    const stub: Record<string, any> | null = await getStubCode(
       this.chipFamily,
       this.chipRevision,
     );
+
+    // No stub available for this chip, return ROM loader
+    if (stub === null) {
+      this.logger.log(
+        `Stub flasher is not yet supported on ${this.chipName}, using ROM loader`,
+      );
+      return this as unknown as EspStubLoader;
+    }
 
     // We're transferring over USB, right?
     let ramBlock = USB_RAM_BLOCK;
@@ -1375,6 +1383,12 @@ class EspStubLoader extends ESPLoader {
     offset: number,
   ): Promise<any> {
     let stub = await getStubCode(this.chipFamily, this.chipRevision);
+
+    // Stub may be null for chips without stub support
+    if (stub === null) {
+      return;
+    }
+
     let load_start = offset;
     let load_end = offset + size;
     console.log(load_start, load_end);
