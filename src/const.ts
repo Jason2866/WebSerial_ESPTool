@@ -222,7 +222,7 @@ export const ESP32S31_SPI_MOSI_DLEN_OFFS = 0x24;
 export const ESP32S31_SPI_MISO_DLEN_OFFS = 0x28;
 export const ESP32S31_SPI_W0_OFFS = 0x58;
 export const ESP32S31_UART_DATE_REG_ADDR = 0x2038a000 + 0x8c;
-export const ESP32S31_BOOTLOADER_FLASH_OFFSET = 0x0;
+export const ESP32S31_BOOTLOADER_FLASH_OFFSET = 0x2000;
 
 export interface SpiFlashAddresses {
   regBase: number;
