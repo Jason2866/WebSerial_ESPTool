@@ -111,6 +111,9 @@ export class ESPLoader extends EventTarget {
       this._efuses[i] = await this.readRegister(AddrMAC + 4 * i);
     }
     this.logger.log(`Chip type ${this.chipName}`);
+    this.logger.debug(
+      `Bootloader flash offset: 0x${FlAddr.flashOffs.toString(16)}`,
+    );
     //this.logger.log("FLASHID");
   }
 
