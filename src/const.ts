@@ -46,6 +46,20 @@ export const DETECTED_FLASH_SIZES: FlashSize = {
   0x18: "16MB",
   0x19: "32MB",
   0x1a: "64MB",
+  0x1b: "128MB",
+  0x1c: "256MB",
+  0x20: "64MB",
+  0x21: "128MB",
+  0x22: "256MB",
+  0x32: "256KB",
+  0x33: "512KB",
+  0x34: "1MB",
+  0x35: "2MB",
+  0x36: "4MB",
+  0x37: "8MB",
+  0x38: "16MB",
+  0x39: "32MB",
+  0x3a: "64MB",
 };
 
 export const FLASH_WRITE_SIZE = 0x400;
