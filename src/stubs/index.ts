@@ -10,7 +10,10 @@ import {
   CHIP_FAMILY_ESP32C6,
   CHIP_FAMILY_ESP32C61,
   CHIP_FAMILY_ESP32H2,
-  CHIP_FAMILY_ESP32P4
+  CHIP_FAMILY_ESP32H4,
+  CHIP_FAMILY_ESP32H21,
+  CHIP_FAMILY_ESP32P4,
+  CHIP_FAMILY_ESP32S31
 } from "../const";
 import { toByteArray } from "../util";
 
@@ -56,6 +59,12 @@ export const getStubCode = async (
     stubcode = await import("./esp32c61.json");
   } else if (chipFamily == CHIP_FAMILY_ESP32H2) {
     stubcode = await import("./esp32h2.json");
+  } else if (chipFamily == CHIP_FAMILY_ESP32H4) {
+    stubcode = await import("./esp32h4.json");
+  } else if (chipFamily == CHIP_FAMILY_ESP32H21) {
+    stubcode = await import("./esp32h21.json");
+  } else if (chipFamily == CHIP_FAMILY_ESP32S31) {
+    stubcode = await import("./esp32s31.json");
   } else if (chipFamily == CHIP_FAMILY_ESP32P4) {
     // ESP32-P4: Use esp32p4r3.json for Rev. 300+, esp32p4.json for older revisions
     if (chipRevision !== null && chipRevision !== undefined && chipRevision >= 300) {

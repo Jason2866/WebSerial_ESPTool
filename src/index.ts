@@ -17,7 +17,10 @@ export {
   CHIP_FAMILY_ESP32C6,
   CHIP_FAMILY_ESP32C61,
   CHIP_FAMILY_ESP32H2,
+  CHIP_FAMILY_ESP32H4,
+  CHIP_FAMILY_ESP32H21,
   CHIP_FAMILY_ESP32P4,
+  CHIP_FAMILY_ESP32S31,
 } from "./const";
 
 export const connect = async (logger: Logger) => {
