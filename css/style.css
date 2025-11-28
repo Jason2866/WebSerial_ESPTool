@@ -442,11 +442,15 @@ div.clear {
   align-items: center;
 }
 
+#commands .read-flash .progress-bar {
+  width: 400px;
+  margin-bottom: 10px;
+}
+
 #commands .read-flash-inputs {
   display: flex;
   align-items: center;
   gap: 15px;
-  margin-bottom: 10px;
 }
 
 #commands .read-flash label {
@@ -467,11 +471,6 @@ div.clear {
   border-width: 2px;
   border-style: solid;
   padding: 5px 20px;
-}
-
-#commands .read-flash .progress-bar {
-  width: 400px;
-  margin-top: 10px;
 }
 
 #commands .partition-table {
