@@ -1402,44 +1402,43 @@ export class ESPLoader extends EventTarget {
     }
 
     let resp = new Uint8Array(0);
-    const startTime = Date.now();
 
     while (resp.length < size) {
-      // Check for timeout
-      if (Date.now() - startTime > FLASH_READ_TIMEOUT) {
-        throw new Error(`Flash read timeout after ${resp.length} bytes`);
+      // Read a SLIP packet (not raw bytes!)
+      let packet: number[];
+      try {
+        packet = await this.readPacket(FLASH_READ_TIMEOUT);
+      } catch (err) {
+        if (err instanceof SlipReadError) {
+          this.logger.debug(`SLIP read error at ${resp.length} bytes: ${err.message}`);
+          // If we've read all the data we need, break
+          if (resp.length >= size) {
+            break;
+          }
+        }
+        throw err;
       }
 
-      // Wait for data in input buffer
-      while (this._inputBuffer.length === 0) {
-        await sleep(10);
-        if (Date.now() - startTime > FLASH_READ_TIMEOUT) {
-          throw new Error(`Flash read timeout waiting for data`);
-        }
-      }
-
-      // Read available data from input buffer (raw bytes, not SLIP packets)
-      const availableBytes = Math.min(
-        this._inputBuffer.length,
-        size - resp.length,
-      );
-      if (availableBytes > 0) {
-        const packet = new Uint8Array(availableBytes);
-        for (let i = 0; i < availableBytes; i++) {
-          packet[i] = this._inputBuffer.shift()!;
-        }
-
+      if (packet && packet.length > 0) {
+        const packetData = new Uint8Array(packet);
+        
         // Append to response
-        const newResp = new Uint8Array(resp.length + packet.length);
+        const newResp = new Uint8Array(resp.length + packetData.length);
         newResp.set(resp);
-        newResp.set(packet, resp.length);
+        newResp.set(packetData, resp.length);
         resp = newResp;
 
-        // Send acknowledgment with current length
-        await this.writeToStream(Array.from(pack("<I", resp.length)));
+        // Send acknowledgment with current total length (with SLIP encoding)
+        const ackData = pack("<I", resp.length);
+        const slipEncodedAck = slipEncode(ackData);
+        await this.writeToStream(slipEncodedAck);
+        
+        this.logger.debug(
+          `Received ${packetData.length} bytes, total: ${resp.length}/${size}`,
+        );
 
         if (onPacketReceived) {
-          onPacketReceived(packet, resp.length, size);
+          onPacketReceived(packetData, resp.length, size);
         }
       }
     }
