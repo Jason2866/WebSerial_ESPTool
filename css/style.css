@@ -499,10 +499,6 @@ div.clear {
   background-color: #f0f0f0;
 }
 
-.partition-table-display tr:hover {
-  background-color: #f9f9f9;
-}
-
 .partition-download-btn {
   padding: 5px 15px;
   font-size: 14px;
@@ -510,6 +506,14 @@ div.clear {
   border-width: 2px;
   border-style: solid;
   cursor: pointer;
+  background-color: transparent;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.partition-download-btn:hover {
+  background-color: #00a7e9;
+  color: #fff;
+  border-color: #00a7e9;
 }
 
 .justify {
