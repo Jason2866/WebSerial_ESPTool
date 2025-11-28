@@ -422,7 +422,7 @@ div.clear {
 }
 
 #commands .read-flash {
-  width: 600px;
+  width: 800px;
   margin: 20px auto 10px auto;
   padding-top: 20px;
   border-top: 2px solid #ccc;
@@ -431,14 +431,18 @@ div.clear {
   align-items: center;
 }
 
-#commands .read-flash h3 {
-  margin: 0 0 10px 0;
-  font-size: 20px;
-  font-weight: 500;
+#commands .read-flash-inputs {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 10px;
 }
 
 #commands .read-flash label {
-  margin: 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
 }
 
 #commands .read-flash input {
@@ -449,9 +453,9 @@ div.clear {
 }
 
 #commands .read-flash button {
-  margin: 10px;
   border-width: 2px;
   border-style: solid;
+  padding: 5px 20px;
 }
 
 #commands .read-flash .progress-bar {
@@ -469,14 +473,8 @@ div.clear {
   align-items: center;
 }
 
-#commands .partition-table h3 {
-  margin: 0 0 10px 0;
-  font-size: 20px;
-  font-weight: 500;
-}
-
 #commands .partition-table button {
-  margin: 10px;
+  margin: 0 0 10px 0;
   border-width: 2px;
   border-style: solid;
 }

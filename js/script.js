@@ -440,10 +440,25 @@ async function checkFirmware(event) {
  */
 async function clickReadFlash() {
   const offset = parseInt(readOffset.value, 16);
-  const size = parseInt(readSize.value, 10);
+  const size = parseInt(readSize.value, 16);
 
   if (isNaN(offset) || isNaN(size) || size <= 0) {
     errorMsg("Invalid offset or size value");
+    return;
+  }
+
+  // Prompt user for filename
+  const defaultFilename = `flash_0x${offset.toString(16)}_0x${size.toString(16)}.bin`;
+  const filename = prompt(`Enter filename for flash data:`, defaultFilename);
+
+  // User cancelled
+  if (filename === null) {
+    return;
+  }
+
+  // User entered empty string
+  if (filename.trim() === "") {
+    errorMsg("Filename cannot be empty");
     return;
   }
 
@@ -456,31 +471,34 @@ async function clickReadFlash() {
   readProgress.classList.remove("hidden");
 
   try {
-    logMsg(`Reading ${size} bytes from flash at offset 0x${offset.toString(16)}...`);
+    logMsg(
+      `Reading ${size} bytes from flash at offset 0x${offset.toString(16)}...`
+    );
     const progressBar = readProgress.querySelector("div");
-    
+
     const data = await espStub.readFlash(
       offset,
       size,
       (packet, progress, totalSize) => {
-        progressBar.style.width = Math.floor((progress / totalSize) * 100) + "%";
+        progressBar.style.width =
+          Math.floor((progress / totalSize) * 100) + "%";
       }
     );
 
     logMsg(`Successfully read ${data.length} bytes from flash`);
 
-    // Create a download link for the data
+    // Create a download link with user-specified filename
     const blob = new Blob([data], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `flash_0x${offset.toString(16)}_${size}bytes.bin`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    logMsg("Flash data downloaded successfully");
+    logMsg(`Flash data downloaded as "${filename}"`);
   } catch (e) {
     errorMsg("Failed to read flash: " + e);
   } finally {
@@ -671,9 +689,29 @@ function displayPartitions(partitions) {
  * Download a partition
  */
 async function downloadPartition(partition) {
+  // Prompt user for filename
+  const defaultFilename = `${partition.name}_0x${partition.offset.toString(16)}.bin`;
+  const filename = prompt(
+    `Enter filename for partition "${partition.name}":`,
+    defaultFilename
+  );
+
+  // User cancelled
+  if (filename === null) {
+    return;
+  }
+
+  // User entered empty string
+  if (filename.trim() === "") {
+    errorMsg("Filename cannot be empty");
+    return;
+  }
+
   try {
-    logMsg(`Downloading partition "${partition.name}" (${formatSize(partition.size)})...`);
-    
+    logMsg(
+      `Downloading partition "${partition.name}" (${formatSize(partition.size)})...`
+    );
+
     const data = await espStub.readFlash(
       partition.offset,
       partition.size,
@@ -683,18 +721,18 @@ async function downloadPartition(partition) {
       }
     );
 
-    // Create download
+    // Create download with user-specified filename
     const blob = new Blob([data], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${partition.name}_0x${partition.offset.toString(16)}.bin`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    logMsg(`Partition "${partition.name}" downloaded successfully`);
+    logMsg(`Partition "${partition.name}" downloaded as "${filename}"`);
   } catch (e) {
     errorMsg(`Failed to download partition: ${e}`);
   }
