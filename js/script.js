@@ -624,6 +624,9 @@ function parsePartitionTable(data) {
 function displayPartitions(partitions) {
   partitionList.innerHTML = "";
   partitionList.classList.remove("hidden");
+  
+  // Hide the Read Partition Table button after successful read
+  butReadPartitions.classList.add("hidden");
 
   const table = document.createElement("table");
   table.className = "partition-table-display";
