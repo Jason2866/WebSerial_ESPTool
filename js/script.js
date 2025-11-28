@@ -707,7 +707,13 @@ async function downloadPartition(partition) {
     return;
   }
 
+  const partitionProgress = document.getElementById("partitionProgress");
+  const progressBar = partitionProgress.querySelector("div");
+
   try {
+    partitionProgress.classList.remove("hidden");
+    progressBar.style.width = "0%";
+
     logMsg(
       `Downloading partition "${partition.name}" (${formatSize(partition.size)})...`
     );
@@ -717,7 +723,7 @@ async function downloadPartition(partition) {
       partition.size,
       (packet, progress, totalSize) => {
         const percent = Math.floor((progress / totalSize) * 100);
-        logMsg(`Progress: ${percent}%`, false);
+        progressBar.style.width = percent + "%";
       }
     );
 
@@ -735,6 +741,9 @@ async function downloadPartition(partition) {
     logMsg(`Partition "${partition.name}" downloaded as "${filename}"`);
   } catch (e) {
     errorMsg(`Failed to download partition: ${e}`);
+  } finally {
+    partitionProgress.classList.add("hidden");
+    progressBar.style.width = "0%";
   }
 }
 

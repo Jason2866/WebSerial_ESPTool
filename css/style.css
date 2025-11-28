@@ -479,6 +479,11 @@ div.clear {
   border-style: solid;
 }
 
+#commands .partition-table .progress-bar {
+  width: 400px;
+  margin-bottom: 10px;
+}
+
 .partition-table-display {
   width: 100%;
   margin-top: 20px;
