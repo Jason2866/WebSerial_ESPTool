@@ -59,6 +59,37 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("error", function (event) {
     console.log("Got an uncaught error: ", event.error);
   });
+  
+  // Header auto-hide functionality
+  const header = document.querySelector(".header");
+  const main = document.querySelector(".main");
+  
+  // Show header on mouse enter at top of page
+  main.addEventListener("mousemove", (e) => {
+    if (e.clientY < 100 && header.classList.contains("header-hidden")) {
+      header.classList.remove("header-hidden");
+      main.classList.remove("no-header-padding");
+    }
+  });
+  
+  // Keep header visible when mouse is over it
+  header.addEventListener("mouseenter", () => {
+    header.classList.remove("header-hidden");
+    main.classList.remove("no-header-padding");
+  });
+  
+  // Hide header when mouse leaves (only if connected)
+  header.addEventListener("mouseleave", () => {
+    if (espStub && header.classList.contains("header-hidden") === false) {
+      setTimeout(() => {
+        if (!header.matches(":hover")) {
+          header.classList.add("header-hidden");
+          main.classList.add("no-header-padding");
+        }
+      }, 1000);
+    }
+  });
+  
   if ("serial" in navigator) {
     const notSupported = document.getElementById("notSupported");
     notSupported.classList.add("hidden");
@@ -799,10 +830,21 @@ function toggleUIToolbar(show) {
 
 function toggleUIConnected(connected) {
   let lbl = "Connect";
+  const header = document.querySelector(".header");
+  const main = document.querySelector(".main");
+  
   if (connected) {
     lbl = "Disconnect";
+    // Auto-hide header after connection
+    setTimeout(() => {
+      header.classList.add("header-hidden");
+      main.classList.add("no-header-padding");
+    }, 2000); // Hide after 2 seconds
   } else {
     toggleUIToolbar(false);
+    // Show header when disconnected
+    header.classList.remove("header-hidden");
+    main.classList.remove("no-header-padding");
   }
   butConnect.textContent = lbl;
 }

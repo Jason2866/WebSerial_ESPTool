@@ -15,6 +15,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  top: 0;
+  transition: transform 0.3s ease-in-out;
+}
+
+.header-hidden {
+  transform: translateY(-100%);
 }
 
 .header .left {
@@ -117,6 +123,11 @@ div.clear {
   overflow-x: hidden;
   overflow-y: auto;
   padding-top: 90px;
+  transition: padding-top 0.3s ease-in-out;
+}
+
+.main.no-header-padding {
+  padding-top: 0;
 }
 
 .hidden {
