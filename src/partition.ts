@@ -75,11 +75,9 @@ function parsePartitionEntry(data: Uint8Array): Partition | null {
 
   const type = data[2];
   const subtype = data[3];
-  const offset =
-    data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24);
-  const size =
-    data[8] | (data[9] << 8) | (data[10] << 16) | (data[11] << 24);
-  
+  const offset = data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24);
+  const size = data[8] | (data[9] << 8) | (data[10] << 16) | (data[11] << 24);
+
   // Name is at offset 12, max 16 bytes, null-terminated
   let name = "";
   for (let i = 12; i < 28; i++) {
@@ -87,16 +85,18 @@ function parsePartitionEntry(data: Uint8Array): Partition | null {
     name += String.fromCharCode(data[i]);
   }
 
-  const flags = data[28] | (data[29] << 8) | (data[30] << 16) | (data[31] << 24);
+  const flags =
+    data[28] | (data[29] << 8) | (data[30] << 16) | (data[31] << 24);
 
   // Get type and subtype names
   const typeName = PARTITION_TYPES[type] || `unknown(0x${type.toString(16)})`;
   let subtypeName = "";
-  
+
   if (type === 0x00) {
     subtypeName = APP_SUBTYPES[subtype] || `unknown(0x${subtype.toString(16)})`;
   } else if (type === 0x01) {
-    subtypeName = DATA_SUBTYPES[subtype] || `unknown(0x${subtype.toString(16)})`;
+    subtypeName =
+      DATA_SUBTYPES[subtype] || `unknown(0x${subtype.toString(16)})`;
   } else {
     subtypeName = `0x${subtype.toString(16)}`;
   }
@@ -118,19 +118,19 @@ function parsePartitionEntry(data: Uint8Array): Partition | null {
  */
 export function parsePartitionTable(data: Uint8Array): Partition[] {
   const partitions: Partition[] = [];
-  
+
   for (let i = 0; i < data.length; i += PARTITION_ENTRY_SIZE) {
     const entryData = data.slice(i, i + PARTITION_ENTRY_SIZE);
     const partition = parsePartitionEntry(entryData);
-    
+
     if (partition === null) {
       // End of partition table or invalid entry
       break;
     }
-    
+
     partitions.push(partition);
   }
-  
+
   return partitions;
 }
 

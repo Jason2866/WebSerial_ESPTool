@@ -47,7 +47,7 @@
   <body>
     <header class="header">
       <div class="left">
-        <div class="title">ESP Flasher</div>
+        <div class="title">WebSerial ESPTool</div>
       </div>
       <div class="right">
         <div class="controls-row">
@@ -215,6 +215,13 @@
               Program
             </button>
           </div>
+          <div class="partition-table">
+            <h3>Partition Table</h3>
+            <button id="butReadPartitions" type="button" disabled="disabled">
+              Read Partition Table
+            </button>
+            <div id="partitionList" class="hidden"></div>
+          </div>
           <div class="read-flash">
             <h3>Read Flash</h3>
             <label>
@@ -229,13 +236,6 @@
               Read Flash
             </button>
             <div class="progress-bar hidden" id="readProgress"><div></div></div>
-          </div>
-          <div class="partition-table">
-            <h3>Partition Table</h3>
-            <button id="butReadPartitions" type="button" disabled="disabled">
-              Read Partition Table
-            </button>
-            <div id="partitionList" class="hidden"></div>
           </div>
         </div>
         <div id="log"></div>

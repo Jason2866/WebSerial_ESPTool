@@ -1410,7 +1410,9 @@ export class ESPLoader extends EventTarget {
         packet = await this.readPacket(FLASH_READ_TIMEOUT);
       } catch (err) {
         if (err instanceof SlipReadError) {
-          this.logger.debug(`SLIP read error at ${resp.length} bytes: ${err.message}`);
+          this.logger.debug(
+            `SLIP read error at ${resp.length} bytes: ${err.message}`,
+          );
           // If we've read all the data we need, break
           if (resp.length >= size) {
             break;
@@ -1421,7 +1423,7 @@ export class ESPLoader extends EventTarget {
 
       if (packet && packet.length > 0) {
         const packetData = new Uint8Array(packet);
-        
+
         // Append to response
         const newResp = new Uint8Array(resp.length + packetData.length);
         newResp.set(resp);
@@ -1432,7 +1434,7 @@ export class ESPLoader extends EventTarget {
         const ackData = pack("<I", resp.length);
         const slipEncodedAck = slipEncode(ackData);
         await this.writeToStream(slipEncodedAck);
-        
+
         this.logger.debug(
           `Received ${packetData.length} bytes, total: ${resp.length}/${size}`,
         );
