@@ -6,32 +6,66 @@
   box-sizing: border-box;
   font-size: 16px;
   height: 85px;
-  line-height: 40px;
-  padding: 20px 70px 0px 70px; /* TRouBLe */
+  padding: 15px 70px;
   position: fixed;
   width: 100%;
   z-index: 1000;
   margin: 0;
   border-bottom: 5px solid #00a7e9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.header h1 {
-  flex: 1;
-  font-size: 20px;
-  font-weight: 400;
+.header .left {
+  display: flex;
+  align-items: center;
+}
+
+.header .title {
+  font-size: 24px;
+  font-weight: 500;
+  margin-right: 30px;
+}
+
+.header .right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.header .controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 20px;
+  padding-right: 20px;
+  border-right: 2px solid #ccc;
+}
+
+.header .controls-row label {
+  font-size: 13px;
+  margin-left: 12px;
+}
+
+.header .controls-row label:first-child {
+  margin-left: 0;
 }
 
 .header button {
   border: solid 2px #fff;
   background-color: #000;
   color: #fff;
-  margin-left: 20px;
   height: 30px;
 }
 
 .header button:hover {
   background-color: #fff;
   color: #000;
+}
+
+.header select {
+  height: 30px;
 }
 
 button,
@@ -82,7 +116,7 @@ div.clear {
 .main {
   overflow-x: hidden;
   overflow-y: auto;
-  padding-top: 80px;
+  padding-top: 90px;
 }
 
 .hidden {
@@ -95,32 +129,63 @@ div.clear {
   margin-bottom: 1em;
 }
 
-.subheader {
-  height: 100px;
-  line-height: 100px;
-  padding-left: 70px;
-  padding-right: 70px;
+.log-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid #ccc;
 }
 
-.subheader .title {
-  font-size: 36px;
-  font-weight: 500;
+.log-controls.hidden {
+  display: none;
+}
+
+.small-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+  border-radius: 12px;
+  border-width: 2px;
+  border-style: solid;
+  cursor: pointer;
+  height: 26px;
+  line-height: 14px;
 }
 
 #app.connected #commands {
-  height: 200px;
+  height: auto;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 #app.connected #log {
-  height: calc(100vh - 530px);
+  height: calc(100vh - 320px);
+  min-height: 200px;
+}
+
+#app.connected #log.hidden {
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
 }
 
 #app #commands {
   height: 0;
+  overflow: hidden;
 }
 
 #app #log {
-  height: calc(100vh - 330px);
+  height: calc(100vh - 220px);
+  min-height: 200px;
+}
+
+#app #log.hidden {
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
 }
 
 #commands,
@@ -157,21 +222,8 @@ div.clear {
 }
 
 .footer {
-  padding-left: 70px;
-  padding-right: 70px;
-}
-
-.footer a {
-  color: blue;
-}
-
-.footer .controls {
-  line-height: 45px;
-}
-
-.footer button {
-  font-size: 14px;
-  margin: 0 10px;
+  padding: 10px 70px;
+  height: 20px;
 }
 
 .remix {
@@ -195,11 +247,11 @@ div.clear {
   display: inline-block;
   position: relative;
   width: 50px;
-  margin-right: 25px;
+  margin-right: 5px;
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
-  margin-left: 10px;
+  margin-left: 5px;
 }
 
 .onoffswitch-checkbox {
@@ -280,14 +332,7 @@ div.clear {
   border-color: #67ac38;
 }
 
-.footer .onoffswitch {
-  margin-right: 20px;
-  top: 7px;
-}
 
-#butClear {
-  margin-top: 10px;
-}
 
 #commands {
   min-width: 600px;

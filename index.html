@@ -46,20 +46,45 @@
   </head>
   <body>
     <header class="header">
+      <div class="left">
+        <div class="title">ESP Flasher</div>
+      </div>
       <div class="right">
-        <select id="baudRate"></select>
-        <button id="butConnect" type="button">Connect</button>
-      </div>
-    </header>
-    <main class="main">
-      <div id="notSupported" class="notSupported">
-        Sorry, <b>Web Serial</b> is not supported on this device, make sure
-        you're running Chrome 89 or later.
-      </div>
-      <div class="subheader">
-        <div class="title left">WebSerial ESPTool</div>
-        <div class="right">
-          <label for="debugmode"> Debug Mode </label>
+        <div class="controls-row">
+          <label for="showlog">Show Log</label>
+          <div class="onoffswitch">
+            <input
+              type="checkbox"
+              name="showlog"
+              class="onoffswitch-checkbox"
+              id="showlog"
+            />
+            <label class="onoffswitch-label" for="showlog">
+              <span class="onoffswitch-inner"></span>
+              <span class="onoffswitch-switch"></span>
+            </label>
+          </div>
+
+          <span class="log-controls">
+            <label for="autoscroll">Autoscroll</label>
+            <div class="onoffswitch">
+              <input
+                type="checkbox"
+                name="autoscroll"
+                class="onoffswitch-checkbox"
+                id="autoscroll"
+              />
+              <label class="onoffswitch-label" for="autoscroll">
+                <span class="onoffswitch-inner"></span>
+                <span class="onoffswitch-switch"></span>
+              </label>
+            </div>
+            <button id="butClear" type="button" class="small-btn">
+              Clear
+            </button>
+          </span>
+
+          <label for="debugmode">Debug</label>
           <div class="onoffswitch">
             <input
               type="checkbox"
@@ -72,7 +97,8 @@
               <span class="onoffswitch-switch"></span>
             </label>
           </div>
-          <label for="darkmode"> Dark Mode </label>
+
+          <label for="darkmode">Dark</label>
           <div class="onoffswitch">
             <input
               type="checkbox"
@@ -86,6 +112,14 @@
             </label>
           </div>
         </div>
+        <select id="baudRate"></select>
+        <button id="butConnect" type="button">Connect</button>
+      </div>
+    </header>
+    <main class="main">
+      <div id="notSupported" class="notSupported">
+        Sorry, <b>Web Serial</b> is not supported on this device, make sure
+        you're running Chrome 89 or later.
       </div>
       <div id="app">
         <div id="commands">
@@ -207,25 +241,6 @@
         <div id="log"></div>
       </div>
     </main>
-    <footer class="footer">
-      <div class="justify controls">
-        <div>
-          <label for="autoscroll">Autoscroll </label>
-          <div class="onoffswitch">
-            <input
-              type="checkbox"
-              name="autoscroll"
-              class="onoffswitch-checkbox"
-              id="autoscroll"
-            />
-            <label class="onoffswitch-label" for="autoscroll">
-              <span class="onoffswitch-inner"></span>
-              <span class="onoffswitch-switch"></span>
-            </label>
-          </div>
-        </div>
-        <button id="butClear" type="button">Clear Text</button>
-      </div>
-    </footer>
+    <footer class="footer"></footer>
   </body>
 </html>

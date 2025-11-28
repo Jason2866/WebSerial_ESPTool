@@ -23,6 +23,7 @@ const lightSS = document.getElementById("light");
 const darkSS = document.getElementById("dark");
 const darkMode = document.getElementById("darkmode");
 const debugMode = document.getElementById("debugmode");
+const showLog = document.getElementById("showlog");
 const firmware = document.querySelectorAll(".upload .firmware input");
 const progress = document.querySelectorAll(".upload .progress-bar");
 const offsets = document.querySelectorAll(".upload .offset");
@@ -54,6 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
   baudRate.addEventListener("change", changeBaudRate);
   darkMode.addEventListener("click", clickDarkMode);
   debugMode.addEventListener("click", clickDebugMode);
+  showLog.addEventListener("click", clickShowLog);
   window.addEventListener("error", function (event) {
     console.log("Got an uncaught error: ", event.error);
   });
@@ -268,6 +270,35 @@ async function clickDarkMode() {
 async function clickDebugMode() {
   saveSetting("debugmode", debugMode.checked);
   logMsg("Debug mode " + (debugMode.checked ? "enabled" : "disabled"));
+}
+
+/**
+ * @name clickShowLog
+ * Change handler for the Show Log checkbox.
+ */
+async function clickShowLog() {
+  saveSetting("showlog", showLog.checked);
+  updateLogVisibility();
+}
+
+/**
+ * @name updateLogVisibility
+ * Update log and log controls visibility
+ */
+function updateLogVisibility() {
+  const logControls = document.querySelector(".log-controls");
+  
+  if (showLog.checked) {
+    log.classList.remove("hidden");
+    if (logControls) {
+      logControls.classList.remove("hidden");
+    }
+  } else {
+    log.classList.add("hidden");
+    if (logControls) {
+      logControls.classList.add("hidden");
+    }
+  }
 }
 
 /**
@@ -732,6 +763,10 @@ function loadAllSettings() {
   baudRate.value = loadSetting("baudrate", 1500000);
   darkMode.checked = loadSetting("darkmode", false);
   debugMode.checked = loadSetting("debugmode", true);
+  showLog.checked = loadSetting("showlog", false);
+  
+  // Apply show log setting
+  updateLogVisibility();
 }
 
 function loadSetting(setting, defaultValue) {
