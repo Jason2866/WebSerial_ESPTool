@@ -42,7 +42,9 @@ import {
   USB_RAM_BLOCK,
   ChipFamily,
   ESP_ERASE_FLASH,
+  ESP_READ_FLASH,
   CHIP_ERASE_TIMEOUT,
+  FLASH_READ_TIMEOUT,
   timeoutPerMb,
   ESP_ROM_BAUD,
   USB_JTAG_SERIAL_PID,
@@ -1362,6 +1364,88 @@ export class ESPLoader extends EventTarget {
       this._reader!.cancel();
     });
     this.connected = false;
+  }
+
+  /**
+   * @name readFlash
+   * Read flash memory from the chip (only works with stub loader)
+   * @param addr - Address to read from
+   * @param size - Number of bytes to read
+   * @param onPacketReceived - Optional callback function called when packet is received
+   * @returns Uint8Array containing the flash data
+   */
+  async readFlash(
+    addr: number,
+    size: number,
+    onPacketReceived?: (
+      packet: Uint8Array,
+      progress: number,
+      totalSize: number,
+    ) => void,
+  ): Promise<Uint8Array> {
+    if (!this.IS_STUB) {
+      throw new Error(
+        "Reading flash is only supported in stub mode. Please run runStub() first.",
+      );
+    }
+
+    this.logger.log(
+      `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
+    );
+
+    // Send read flash command with parameters
+    let pkt = pack("<IIII", addr, size, 0x1000, 1024);
+    const [res, _] = await this.checkCommand(ESP_READ_FLASH, pkt);
+
+    if (res != 0) {
+      throw new Error("Failed to read memory: " + res);
+    }
+
+    let resp = new Uint8Array(0);
+    const startTime = Date.now();
+
+    while (resp.length < size) {
+      // Check for timeout
+      if (Date.now() - startTime > FLASH_READ_TIMEOUT) {
+        throw new Error(`Flash read timeout after ${resp.length} bytes`);
+      }
+
+      // Wait for data in input buffer
+      while (this._inputBuffer.length === 0) {
+        await sleep(10);
+        if (Date.now() - startTime > FLASH_READ_TIMEOUT) {
+          throw new Error(`Flash read timeout waiting for data`);
+        }
+      }
+
+      // Read available data from input buffer (raw bytes, not SLIP packets)
+      const availableBytes = Math.min(
+        this._inputBuffer.length,
+        size - resp.length,
+      );
+      if (availableBytes > 0) {
+        const packet = new Uint8Array(availableBytes);
+        for (let i = 0; i < availableBytes; i++) {
+          packet[i] = this._inputBuffer.shift()!;
+        }
+
+        // Append to response
+        const newResp = new Uint8Array(resp.length + packet.length);
+        newResp.set(resp);
+        newResp.set(packet, resp.length);
+        resp = newResp;
+
+        // Send acknowledgment with current length
+        await this.writeToStream(Array.from(pack("<I", resp.length)));
+
+        if (onPacketReceived) {
+          onPacketReceived(packet, resp.length, size);
+        }
+      }
+    }
+
+    this.logger.log(`Successfully read ${resp.length} bytes from flash`);
+    return resp;
   }
 }
 

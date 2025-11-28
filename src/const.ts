@@ -358,6 +358,7 @@ export const ESP_READ_REG = 0x0a;
 
 export const ESP_ERASE_FLASH = 0xd0;
 export const ESP_ERASE_REGION = 0xd1;
+export const ESP_READ_FLASH = 0xd2;
 
 export const ESP_SPI_SET_PARAMS = 0x0b;
 export const ESP_SPI_ATTACH = 0x0d;
@@ -381,6 +382,7 @@ export const MAX_TIMEOUT = CHIP_ERASE_TIMEOUT * 2; // longest any command can ru
 export const SYNC_TIMEOUT = 100; // timeout for syncing with bootloader in ms
 export const ERASE_REGION_TIMEOUT_PER_MB = 30000; // timeout (per megabyte) for erasing a region in ms
 export const MEM_END_ROM_TIMEOUT = 500;
+export const FLASH_READ_TIMEOUT = 100000; // timeout for reading flash in ms
 
 /**
  * @name timeoutPerMb

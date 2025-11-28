@@ -12,6 +12,10 @@ const baudRate = document.getElementById("baudRate");
 const butClear = document.getElementById("butClear");
 const butErase = document.getElementById("butErase");
 const butProgram = document.getElementById("butProgram");
+const butReadFlash = document.getElementById("butReadFlash");
+const readOffset = document.getElementById("readOffset");
+const readSize = document.getElementById("readSize");
+const readProgress = document.getElementById("readProgress");
 const autoscroll = document.getElementById("autoscroll");
 const lightSS = document.getElementById("light");
 const darkSS = document.getElementById("dark");
@@ -36,6 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
   butClear.addEventListener("click", clickClear);
   butErase.addEventListener("click", clickErase);
   butProgram.addEventListener("click", clickProgram);
+  butReadFlash.addEventListener("click", clickReadFlash);
   for (let i = 0; i < firmware.length; i++) {
     firmware[i].addEventListener("change", checkFirmware);
   }
@@ -396,6 +401,67 @@ async function checkFirmware(event) {
 }
 
 /**
+ * @name clickReadFlash
+ * Click handler for the read flash button.
+ */
+async function clickReadFlash() {
+  const offset = parseInt(readOffset.value, 16);
+  const size = parseInt(readSize.value, 10);
+
+  if (isNaN(offset) || isNaN(size) || size <= 0) {
+    errorMsg("Invalid offset or size value");
+    return;
+  }
+
+  baudRate.disabled = true;
+  butErase.disabled = true;
+  butProgram.disabled = true;
+  butReadFlash.disabled = true;
+  readOffset.disabled = true;
+  readSize.disabled = true;
+  readProgress.classList.remove("hidden");
+
+  try {
+    logMsg(`Reading ${size} bytes from flash at offset 0x${offset.toString(16)}...`);
+    const progressBar = readProgress.querySelector("div");
+    
+    const data = await espStub.readFlash(
+      offset,
+      size,
+      (packet, progress, totalSize) => {
+        progressBar.style.width = Math.floor((progress / totalSize) * 100) + "%";
+      }
+    );
+
+    logMsg(`Successfully read ${data.length} bytes from flash`);
+
+    // Create a download link for the data
+    const blob = new Blob([data], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `flash_0x${offset.toString(16)}_${size}bytes.bin`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    logMsg("Flash data downloaded successfully");
+  } catch (e) {
+    errorMsg("Failed to read flash: " + e);
+  } finally {
+    readProgress.classList.add("hidden");
+    readProgress.querySelector("div").style.width = "0";
+    butErase.disabled = false;
+    baudRate.disabled = false;
+    butProgram.disabled = getValidFiles().length == 0;
+    butReadFlash.disabled = false;
+    readOffset.disabled = false;
+    readSize.disabled = false;
+  }
+}
+
+/**
  * @name clickClear
  * Click handler for the clear button.
  */
@@ -425,6 +491,7 @@ function toggleUIToolbar(show) {
     appDiv.classList.remove("connected");
   }
   butErase.disabled = !show;
+  butReadFlash.disabled = !show;
 }
 
 function toggleUIConnected(connected) {

@@ -181,6 +181,21 @@
               Program
             </button>
           </div>
+          <div class="read-flash">
+            <h3>Read Flash</h3>
+            <label>
+              Address: 0x
+              <input id="readOffset" type="text" value="0" />
+            </label>
+            <label>
+              Size (bytes):
+              <input id="readSize" type="text" value="4096" />
+            </label>
+            <button id="butReadFlash" type="button" disabled="disabled">
+              Read Flash
+            </button>
+            <div class="progress-bar hidden" id="readProgress"><div></div></div>
+          </div>
         </div>
         <div id="log"></div>
       </div>
