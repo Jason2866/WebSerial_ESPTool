@@ -43,12 +43,22 @@ Die Read Flash Partition Funktionalität wurde erfolgreich aus esptool.js in Web
 
 ### Über die Web-Oberfläche
 
+#### Flash direkt lesen
+
 1. Verbinden Sie sich mit einem ESP-Gerät über den "Connect" Button
 2. Scrollen Sie zur "Read Flash" Sektion
 3. Geben Sie die Startadresse ein (z.B. `0` für den Anfang des Flash-Speichers)
 4. Geben Sie die Größe in Bytes ein (z.B. `4096` für 4KB)
 5. Klicken Sie auf "Read Flash"
 6. Die Daten werden automatisch als `.bin` Datei heruntergeladen
+
+#### Partitionstabelle lesen
+
+1. Verbinden Sie sich mit einem ESP-Gerät über den "Connect" Button
+2. Scrollen Sie zur "Partition Table" Sektion
+3. Klicken Sie auf "Read Partition Table"
+4. Die Partitionstabelle wird gelesen und angezeigt
+5. Klicken Sie auf "Download" neben einer Partition, um diese herunterzuladen
 
 ### Programmatisch
 
@@ -100,6 +110,8 @@ Unterstützte Chips:
 2. **Partition lesen**: Spezifische Partitionen extrahieren (z.B. NVS, OTA)
 3. **Debugging**: Flash-Inhalt zur Fehleranalyse untersuchen
 4. **Firmware-Extraktion**: Installierte Firmware vom Gerät lesen
+5. **Partitionstabelle analysieren**: Übersicht über alle Partitionen erhalten
+6. **Einzelne Partitionen sichern**: Nur bestimmte Partitionen herunterladen
 
 ## Bekannte Einschränkungen
 

@@ -16,6 +16,8 @@ const butReadFlash = document.getElementById("butReadFlash");
 const readOffset = document.getElementById("readOffset");
 const readSize = document.getElementById("readSize");
 const readProgress = document.getElementById("readProgress");
+const butReadPartitions = document.getElementById("butReadPartitions");
+const partitionList = document.getElementById("partitionList");
 const autoscroll = document.getElementById("autoscroll");
 const lightSS = document.getElementById("light");
 const darkSS = document.getElementById("dark");
@@ -41,6 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
   butErase.addEventListener("click", clickErase);
   butProgram.addEventListener("click", clickProgram);
   butReadFlash.addEventListener("click", clickReadFlash);
+  butReadPartitions.addEventListener("click", clickReadPartitions);
   for (let i = 0; i < firmware.length; i++) {
     firmware[i].addEventListener("change", checkFirmware);
   }
@@ -462,6 +465,224 @@ async function clickReadFlash() {
 }
 
 /**
+ * @name clickReadPartitions
+ * Click handler for the read partitions button.
+ */
+async function clickReadPartitions() {
+  const PARTITION_TABLE_OFFSET = 0x8000;
+  const PARTITION_TABLE_SIZE = 0x1000; // Read 4KB to get all partitions
+
+  butReadPartitions.disabled = true;
+  butErase.disabled = true;
+  butProgram.disabled = true;
+  butReadFlash.disabled = true;
+
+  try {
+    logMsg("Reading partition table from 0x8000...");
+    
+    const data = await espStub.readFlash(PARTITION_TABLE_OFFSET, PARTITION_TABLE_SIZE);
+    
+    const partitions = parsePartitionTable(data);
+    
+    if (partitions.length === 0) {
+      errorMsg("No valid partition table found");
+      return;
+    }
+
+    logMsg(`Found ${partitions.length} partition(s)`);
+    
+    // Display partitions
+    displayPartitions(partitions);
+    
+  } catch (e) {
+    errorMsg("Failed to read partition table: " + e);
+  } finally {
+    butReadPartitions.disabled = false;
+    butErase.disabled = false;
+    butProgram.disabled = getValidFiles().length == 0;
+    butReadFlash.disabled = false;
+  }
+}
+
+/**
+ * Parse partition table from binary data
+ */
+function parsePartitionTable(data) {
+  const PARTITION_MAGIC = 0x50aa;
+  const PARTITION_ENTRY_SIZE = 32;
+  const partitions = [];
+
+  for (let i = 0; i < data.length; i += PARTITION_ENTRY_SIZE) {
+    const magic = data[i] | (data[i + 1] << 8);
+    
+    if (magic !== PARTITION_MAGIC) {
+      break; // End of partition table
+    }
+
+    const type = data[i + 2];
+    const subtype = data[i + 3];
+    const offset = data[i + 4] | (data[i + 5] << 8) | (data[i + 6] << 16) | (data[i + 7] << 24);
+    const size = data[i + 8] | (data[i + 9] << 8) | (data[i + 10] << 16) | (data[i + 11] << 24);
+    
+    // Read name (16 bytes, null-terminated)
+    let name = "";
+    for (let j = 12; j < 28; j++) {
+      if (data[i + j] === 0) break;
+      name += String.fromCharCode(data[i + j]);
+    }
+
+    const flags = data[i + 28] | (data[i + 29] << 8) | (data[i + 30] << 16) | (data[i + 31] << 24);
+
+    // Get type names
+    const typeNames = { 0x00: "app", 0x01: "data" };
+    const appSubtypes = {
+      0x00: "factory", 0x10: "ota_0", 0x11: "ota_1", 0x12: "ota_2",
+      0x13: "ota_3", 0x14: "ota_4", 0x15: "ota_5", 0x20: "test"
+    };
+    const dataSubtypes = {
+      0x00: "ota", 0x01: "phy", 0x02: "nvs", 0x03: "coredump",
+      0x04: "nvs_keys", 0x05: "efuse", 0x81: "fat", 0x82: "spiffs"
+    };
+
+    const typeName = typeNames[type] || `0x${type.toString(16)}`;
+    let subtypeName = "";
+    if (type === 0x00) {
+      subtypeName = appSubtypes[subtype] || `0x${subtype.toString(16)}`;
+    } else if (type === 0x01) {
+      subtypeName = dataSubtypes[subtype] || `0x${subtype.toString(16)}`;
+    } else {
+      subtypeName = `0x${subtype.toString(16)}`;
+    }
+
+    partitions.push({
+      name,
+      type,
+      subtype,
+      offset,
+      size,
+      flags,
+      typeName,
+      subtypeName
+    });
+  }
+
+  return partitions;
+}
+
+/**
+ * Display partitions in the UI
+ */
+function displayPartitions(partitions) {
+  partitionList.innerHTML = "";
+  partitionList.classList.remove("hidden");
+
+  const table = document.createElement("table");
+  table.className = "partition-table-display";
+  
+  // Header
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  ["Name", "Type", "SubType", "Offset", "Size", "Action"].forEach(text => {
+    const th = document.createElement("th");
+    th.textContent = text;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  // Body
+  const tbody = document.createElement("tbody");
+  partitions.forEach(partition => {
+    const row = document.createElement("tr");
+    
+    // Name
+    const nameCell = document.createElement("td");
+    nameCell.textContent = partition.name;
+    row.appendChild(nameCell);
+    
+    // Type
+    const typeCell = document.createElement("td");
+    typeCell.textContent = partition.typeName;
+    row.appendChild(typeCell);
+    
+    // SubType
+    const subtypeCell = document.createElement("td");
+    subtypeCell.textContent = partition.subtypeName;
+    row.appendChild(subtypeCell);
+    
+    // Offset
+    const offsetCell = document.createElement("td");
+    offsetCell.textContent = `0x${partition.offset.toString(16)}`;
+    row.appendChild(offsetCell);
+    
+    // Size
+    const sizeCell = document.createElement("td");
+    sizeCell.textContent = formatSize(partition.size);
+    row.appendChild(sizeCell);
+    
+    // Action
+    const actionCell = document.createElement("td");
+    const downloadBtn = document.createElement("button");
+    downloadBtn.textContent = "Download";
+    downloadBtn.className = "partition-download-btn";
+    downloadBtn.onclick = () => downloadPartition(partition);
+    actionCell.appendChild(downloadBtn);
+    row.appendChild(actionCell);
+    
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  
+  partitionList.appendChild(table);
+}
+
+/**
+ * Download a partition
+ */
+async function downloadPartition(partition) {
+  try {
+    logMsg(`Downloading partition "${partition.name}" (${formatSize(partition.size)})...`);
+    
+    const data = await espStub.readFlash(
+      partition.offset,
+      partition.size,
+      (packet, progress, totalSize) => {
+        const percent = Math.floor((progress / totalSize) * 100);
+        logMsg(`Progress: ${percent}%`, false);
+      }
+    );
+
+    // Create download
+    const blob = new Blob([data], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${partition.name}_0x${partition.offset.toString(16)}.bin`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    logMsg(`Partition "${partition.name}" downloaded successfully`);
+  } catch (e) {
+    errorMsg(`Failed to download partition: ${e}`);
+  }
+}
+
+/**
+ * Format size in human-readable format
+ */
+function formatSize(bytes) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  } else if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(2)} KB`;
+  } else {
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+}
+
+/**
  * @name clickClear
  * Click handler for the clear button.
  */
@@ -492,6 +713,7 @@ function toggleUIToolbar(show) {
   }
   butErase.disabled = !show;
   butReadFlash.disabled = !show;
+  butReadPartitions.disabled = !show;
 }
 
 function toggleUIConnected(connected) {
