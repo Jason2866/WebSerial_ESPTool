@@ -494,6 +494,8 @@ div.clear {
   margin: 0 0 10px 0;
   border-width: 2px;
   border-style: solid;
+  padding: 2px 30px;
+  cursor: pointer;
 }
 
 #commands .partition-table .progress-bar {
