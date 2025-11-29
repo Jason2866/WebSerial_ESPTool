@@ -353,11 +353,17 @@ div.clear {
 }
 
 #commands .upload {
-  width: 600px;
+  max-width: 600px;
   display: flex;
   align-items: center;
   margin: 5px auto;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-left: calc(50% - 300px);
+}
+
+/* Hide upload rows 2-8 by default, show dynamically via JavaScript */
+#commands .upload:nth-child(n+2):nth-child(-n+8) {
+  display: none;
 }
 
 #commands .upload .offset {

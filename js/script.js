@@ -51,6 +51,10 @@ document.addEventListener("DOMContentLoaded", () => {
   for (let i = 0; i < offsets.length; i++) {
     offsets[i].addEventListener("change", checkProgrammable);
   }
+  
+  // Initialize upload rows visibility - only show first row
+  updateUploadRowsVisibility();
+  
   autoscroll.addEventListener("click", clickAutoscroll);
   baudRate.addEventListener("change", changeBaudRate);
   darkMode.addEventListener("click", clickDarkMode);
@@ -463,6 +467,32 @@ async function checkFirmware(event) {
   }
 
   await checkProgrammable();
+  updateUploadRowsVisibility();
+}
+
+/**
+ * @name updateUploadRowsVisibility
+ * Show/hide upload rows dynamically - only for flash write section
+ */
+function updateUploadRowsVisibility() {
+  const uploadRows = document.querySelectorAll(".upload");
+  let lastFilledIndex = -1;
+  
+  // Find the last filled row
+  for (let i = 0; i < firmware.length; i++) {
+    if (firmware[i].files.length > 0) {
+      lastFilledIndex = i;
+    }
+  }
+  
+  // Show rows up to lastFilledIndex + 1 (next empty row), minimum 1 row
+  for (let i = 0; i < uploadRows.length; i++) {
+    if (i <= lastFilledIndex + 1) {
+      uploadRows[i].style.display = "flex";
+    } else {
+      uploadRows[i].style.display = "none";
+    }
+  }
 }
 
 /**
