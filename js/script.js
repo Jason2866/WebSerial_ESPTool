@@ -70,7 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
   
   // Show header on mouse enter at top of page
   main.addEventListener("mousemove", (e) => {
-    if (e.clientY < 100 && header.classList.contains("header-hidden")) {
+    if (e.clientY < 5 && header.classList.contains("header-hidden")) {
       header.classList.remove("header-hidden");
       main.classList.remove("no-header-padding");
     }
