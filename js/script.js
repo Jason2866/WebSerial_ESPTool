@@ -455,11 +455,7 @@ async function checkFirmware(event) {
   let label = event.target.parentNode.querySelector("span");
   let icon = event.target.parentNode.querySelector("svg");
   if (filename != "") {
-    if (filename.length > 17) {
-      label.innerHTML = filename.substring(0, 14) + "&hellip;";
-    } else {
-      label.innerHTML = filename;
-    }
+    label.innerHTML = filename;
     icon.classList.add("hidden");
   } else {
     label.innerHTML = "Choose a file&hellip;";
