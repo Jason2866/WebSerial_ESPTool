@@ -476,7 +476,8 @@ div.clear {
 #commands .read-flash button {
   border-width: 2px;
   border-style: solid;
-  padding: 5px 20px;
+  padding: 2px 30px;
+  cursor: pointer;
 }
 
 #commands .partition-table {
