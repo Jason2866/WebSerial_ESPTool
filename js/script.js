@@ -386,7 +386,7 @@ async function clickProgram() {
   baudRate.disabled = true;
   butErase.disabled = true;
   butProgram.disabled = true;
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < firmware.length; i++) {
     firmware[i].disabled = true;
     offsets[i].disabled = true;
   }
@@ -410,7 +410,7 @@ async function clickProgram() {
       errorMsg(e);
     }
   }
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < firmware.length; i++) {
     firmware[i].disabled = false;
     offsets[i].disabled = false;
     progress[i].classList.add("hidden");
@@ -428,7 +428,7 @@ function getValidFiles() {
   // and will also return a list of files to program
   let validFiles = [];
   let offsetVals = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < firmware.length; i++) {
     let offs = parseInt(offsets[i].value, 16);
     if (firmware[i].files.length > 0 && !offsetVals.includes(offs)) {
       validFiles.push(i);
@@ -840,7 +840,7 @@ function convertJSON(chunk) {
 
 function toggleUIToolbar(show) {
   isConnected = show;
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < progress.length; i++) {
     progress[i].classList.add("hidden");
     progress[i].querySelector("div").style.width = "0";
   }
