@@ -436,6 +436,11 @@ div.clear {
   margin-right: 10px;
   border-width: 2px;
   border-style: solid;
+  cursor: pointer;
+}
+
+#commands button {
+  cursor: pointer;
 }
 
 #commands .read-flash {
