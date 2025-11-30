@@ -101,6 +101,21 @@ export class ESPLoader extends EventTarget {
       // Don't await this promise so it doesn't block rest of method.
       this.readLoop();
     }
+
+    // Clear buffer again after starting read loop
+    await sleep(100);
+    if (!this._parent) {
+      this.__inputBuffer = [];
+      this.logger.debug("Input buffer cleared after read loop start");
+    }
+    
+    // Flush any pending data in the serial port buffers
+    // by waiting a bit longer for any stale data to arrive and be discarded
+    await sleep(200);
+    if (!this._parent) {
+      this.__inputBuffer = [];
+      this.logger.debug("Final buffer flush before sync");
+    }
     await this.sync();
 
     // Detect chip type
