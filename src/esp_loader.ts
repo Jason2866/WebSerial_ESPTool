@@ -103,17 +103,7 @@ export class ESPLoader extends EventTarget {
     }
 
     // Clear buffer again after starting read loop
-    await sleep(100);
-    if (!this._parent) {
-      this.__inputBuffer = [];
-    }
-    // Flush any pending data in the serial port buffers
-    // by waiting a bit longer for any stale data to arrive and be discarded
-    await sleep(200);
-    if (!this._parent) {
-      this.__inputBuffer = [];
-      this.logger.debug("Final buffer flush before sync");
-    }
+    await this.flushSerialBuffers();
     await this.sync();
 
     // Detect chip type
@@ -724,16 +714,7 @@ export class ESPLoader extends EventTarget {
       await this.port.open({ baudRate: baud });
 
       // Clear buffer again
-      await sleep(100);
-      if (!this._parent) {
-        this.__inputBuffer = [];
-      }
-      // Flush any pending data in the serial port buffers
-      // by waiting a bit longer for any stale data to arrive and be discarded
-      await sleep(200);
-      if (!this._parent) {
-        this.__inputBuffer = [];
-      }
+      await this.flushSerialBuffers();
 
       // Restart Readloop
       this.readLoop();
@@ -934,6 +915,9 @@ export class ESPLoader extends EventTarget {
    *   number of blocks requred.
    */
   async flashBegin(size = 0, offset = 0, encrypted = false) {
+    // Flush serial buffers before flash write operation
+    await this.flushSerialBuffers();
+
     let eraseSize;
     let buffer;
     let flashWriteSize = this.getFlashWriteSize();
@@ -1391,6 +1375,41 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
+   * @name flushSerialBuffers
+   * Flush any pending data in the TX and RX serial port buffers
+   * This clears both the application RX buffer and waits for hardware buffers to drain
+   */
+  private async flushSerialBuffers(): Promise<void> {
+    this.logger.debug("Flushing TX and RX serial buffers...");
+
+    // Clear application RX buffer first
+    if (!this._parent) {
+      this.__inputBuffer = [];
+    }
+
+    // Wait for any pending TX operations to complete and hardware TX buffer to drain
+    // Also allows any in-flight RX data to arrive from the serial port
+    // The readLoop continuously reads from port.readable and puts data into __inputBuffer
+    await sleep(100);
+
+    // Clear RX buffer again to discard any data that arrived
+    if (!this._parent) {
+      this.__inputBuffer = [];
+    }
+
+    // Wait longer to ensure all stale data has been received and discarded
+    // This accounts for both hardware TX buffer drain time and any delayed RX responses
+    await sleep(200);
+
+    // Final clear of any remaining stale data in RX buffer
+    if (!this._parent) {
+      this.__inputBuffer = [];
+    }
+
+    this.logger.debug("TX and RX serial buffers flushed");
+  }
+
+  /**
    * @name readFlash
    * Read flash memory from the chip (only works with stub loader)
    * @param addr - Address to read from
@@ -1413,11 +1432,15 @@ export class ESPLoader extends EventTarget {
       );
     }
 
+    // Flush serial buffers before flash read operation
+    await this.flushSerialBuffers();
+
     this.logger.log(
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
     // Send read flash command with parameters
+    // Block size 0x1000 (4KB), max in-flight packets: 1024
     let pkt = pack("<IIII", addr, size, 0x1000, 1024);
     const [res, _] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
@@ -1470,6 +1493,7 @@ export class ESPLoader extends EventTarget {
     }
 
     this.logger.log(`Successfully read ${resp.length} bytes from flash`);
+
     return resp;
   }
 }
