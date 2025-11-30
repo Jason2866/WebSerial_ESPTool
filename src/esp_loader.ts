@@ -106,9 +106,7 @@ export class ESPLoader extends EventTarget {
     await sleep(100);
     if (!this._parent) {
       this.__inputBuffer = [];
-      this.logger.debug("Input buffer cleared after read loop start");
     }
-    
     // Flush any pending data in the serial port buffers
     // by waiting a bit longer for any stale data to arrive and be discarded
     await sleep(200);
@@ -131,7 +129,6 @@ export class ESPLoader extends EventTarget {
     this.logger.debug(
       `Bootloader flash offset: 0x${FlAddr.flashOffs.toString(16)}`,
     );
-    //this.logger.log("FLASHID");
   }
 
   /**
@@ -725,6 +722,18 @@ export class ESPLoader extends EventTarget {
 
       // Reopen Port
       await this.port.open({ baudRate: baud });
+
+      // Clear buffer again
+      await sleep(100);
+      if (!this._parent) {
+        this.__inputBuffer = [];
+      }
+      // Flush any pending data in the serial port buffers
+      // by waiting a bit longer for any stale data to arrive and be discarded
+      await sleep(200);
+      if (!this._parent) {
+        this.__inputBuffer = [];
+      }
 
       // Restart Readloop
       this.readLoop();
