@@ -1492,24 +1492,33 @@ export class ESPLoader extends EventTarget {
     }
     this.logger.debug("Port streams verified");
 
-    // Reset all state variables
-    this.chipName = null;
-    this.chipRevision = null;
-    this.chipVariant = null;
-    this._efuses = new Array(4).fill(0);
-    this.flashSize = null;
+    // Save chip info and flash size before reinitializing
+    const savedChipFamily = this.chipFamily;
+    const savedChipName = this.chipName;
+    const savedChipRevision = this.chipRevision;
+    const savedChipVariant = this.chipVariant;
+    const savedFlashSize = this.flashSize;
 
     // Reinitialize
     await this.initialize();
+
+    // Restore chip info (skip detection)
+    this.chipFamily = savedChipFamily;
+    this.chipName = savedChipName;
+    this.chipRevision = savedChipRevision;
+    this.chipVariant = savedChipVariant;
+    this.flashSize = savedFlashSize;
+
+    this.logger.debug(`Reconnect complete (chip: ${this.chipName})`);
 
     // Verify port is ready
     if (!this.port.writable || !this.port.readable) {
       throw new Error("Port not ready after reconnect");
     }
 
-    // Load stub
+    // Load stub (skip flash detection)
     this.logger.log("Loading stub...");
-    const stubLoader = await this.runStub();
+    const stubLoader = await this.runStub(true);
     this.logger.debug("Stub loaded");
 
     // Restore baudrate if it was changed
