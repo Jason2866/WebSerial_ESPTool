@@ -1549,8 +1549,6 @@ export class ESPLoader extends EventTarget {
   }
 
   private async flushSerialBuffers(): Promise<void> {
-    this.logger.debug("Flushing serial buffers...");
-
     // Clear application RX buffer
     if (!this._parent) {
       this.__inputBuffer = [];
