@@ -81,6 +81,7 @@ export class ESPLoader extends EventTarget {
   __inputBuffer?: number[];
   __totalBytesRead?: number;
   private _currentBaudRate: number = ESP_ROM_BAUD;
+  private _maxUSBSerialBaudrate?: number;
   private _reader?: ReadableStreamDefaultReader<Uint8Array>;
 
   constructor(
@@ -109,12 +110,76 @@ export class ESPLoader extends EventTarget {
     }
   }
 
+  private detectUSBSerialChip(
+    vendorId: number,
+    productId: number,
+  ): { name: string; maxBaudrate?: number } {
+    // Common USB-Serial chip vendors and their products
+    const chips: Record<
+      number,
+      Record<number, { name: string; maxBaudrate?: number }>
+    > = {
+      0x1a86: {
+        // QinHeng Electronics
+        0x7523: { name: "CH340", maxBaudrate: 460800 },
+        0x55d4: { name: "CH9102", maxBaudrate: 6000000 },
+      },
+      0x10c4: {
+        // Silicon Labs
+        0xea60: { name: "CP2102(n)", maxBaudrate: 3000000 },
+        0xea70: { name: "CP2105", maxBaudrate: 2000000 },
+        0xea71: { name: "CP2108", maxBaudrate: 2000000 },
+      },
+      0x0403: {
+        // FTDI
+        0x6001: { name: "FT232R", maxBaudrate: 3000000 },
+        0x6010: { name: "FT2232", maxBaudrate: 3000000 },
+        0x6011: { name: "FT4232", maxBaudrate: 3000000 },
+        0x6014: { name: "FT232H", maxBaudrate: 12000000 },
+        0x6015: { name: "FT230X", maxBaudrate: 3000000 },
+      },
+      0x303a: {
+        // Espressif (native USB)
+        0x1001: { name: "ESP32-S2 Native USB", maxBaudrate: 2000000 },
+        0x1002: { name: "ESP32-S3 Native USB", maxBaudrate: 2000000 },
+        0x4002: { name: "ESP32-C3 Native USB", maxBaudrate: 2000000 },
+        0x1000: { name: "ESP32-C6 Native USB", maxBaudrate: 2000000 },
+      },
+    };
+
+    const vendor = chips[vendorId];
+    if (vendor && vendor[productId]) {
+      return vendor[productId];
+    }
+
+    return {
+      name: `Unknown (VID: 0x${vendorId.toString(16)}, PID: 0x${productId.toString(16)})`,
+    };
+  }
+
   async initialize() {
     await this.hardReset(true);
 
     if (!this._parent) {
       this.__inputBuffer = [];
       this.__totalBytesRead = 0;
+
+      // Detect and log USB-Serial chip info
+      const portInfo = this.port.getInfo();
+      if (portInfo.usbVendorId && portInfo.usbProductId) {
+        const chipInfo = this.detectUSBSerialChip(
+          portInfo.usbVendorId,
+          portInfo.usbProductId,
+        );
+        this.logger.log(
+          `USB-Serial: ${chipInfo.name} (VID: 0x${portInfo.usbVendorId.toString(16)}, PID: 0x${portInfo.usbProductId.toString(16)})`,
+        );
+        if (chipInfo.maxBaudrate) {
+          this._maxUSBSerialBaudrate = chipInfo.maxBaudrate;
+          this.logger.log(`Max baudrate: ${chipInfo.maxBaudrate}`);
+        }
+      }
+
       // Don't await this promise so it doesn't block rest of method.
       this.readLoop();
     }
@@ -743,11 +808,17 @@ export class ESPLoader extends EventTarget {
       this._currentBaudRate = baud;
     }
 
-    // Track current baudrate for reconnect
-    if (this._parent) {
-      this._parent._currentBaudRate = baud;
-    } else {
-      this._currentBaudRate = baud;
+    // Warn if baudrate exceeds USB-Serial chip capability
+    const maxBaud = this._parent
+      ? this._parent._maxUSBSerialBaudrate
+      : this._maxUSBSerialBaudrate;
+    if (maxBaud && baud > maxBaud) {
+      this.logger.log(
+        `⚠️  WARNING: Baudrate ${baud} exceeds USB-Serial chip limit (${maxBaud})!`,
+      );
+      this.logger.log(
+        `⚠️  This may cause data corruption or connection failures!`,
+      );
     }
 
     this.logger.log(`Changed baud rate to ${baud}`);
