@@ -251,6 +251,13 @@ async function clickConnect() {
     toggleUIConnected(true);
     toggleUIToolbar(true);
     
+    // Set detected flash size in the read size field
+    if (espStub.flashSize) {
+      const flashSizeBytes = parseInt(espStub.flashSize) * 1024 * 1024; // Convert MB to bytes
+      readSize.value = "0x" + flashSizeBytes.toString(16);
+      logMsg(`Flash size set to ${espStub.flashSize} (0x${flashSizeBytes.toString(16)} bytes)`);
+    }
+    
     // Set the selected baud rate
     let baud = parseInt(baudRate.value);
     if (baudRates.includes(baud)) {
