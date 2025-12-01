@@ -1451,7 +1451,6 @@ export class ESPLoader extends EventTarget {
         }
       }
     }
-    this.logger.log("Running stub...");
     await this.memFinish(stub["entry"]);
 
     let pChar: string;
