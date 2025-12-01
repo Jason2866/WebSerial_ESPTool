@@ -96,7 +96,9 @@ export class ESPLoader extends EventTarget {
   }
 
   private get _totalBytesRead(): number {
-    return this._parent ? this._parent._totalBytesRead : this.__totalBytesRead || 0;
+    return this._parent
+      ? this._parent._totalBytesRead
+      : this.__totalBytesRead || 0;
   }
 
   private set _totalBytesRead(value: number) {
@@ -325,7 +327,7 @@ export class ESPLoader extends EventTarget {
         // This is much faster than spread operator or for-loop for large transfers
         const chunk = Array.from(value);
         Array.prototype.push.apply(this._inputBuffer, chunk);
-        
+
         // Track total bytes read from serial port
         this._totalBytesRead += value.length;
       }
@@ -740,14 +742,14 @@ export class ESPLoader extends EventTarget {
     } else {
       this._currentBaudRate = baud;
     }
-    
+
     // Track current baudrate for reconnect
     if (this._parent) {
       this._parent._currentBaudRate = baud;
     } else {
       this._currentBaudRate = baud;
     }
-    
+
     this.logger.log(`Changed baud rate to ${baud}`);
   }
 
@@ -1395,8 +1397,6 @@ export class ESPLoader extends EventTarget {
     // Try to autodetect the flash size as soon as the stub is running.
     if (!skipFlashDetection) {
       await espStubLoader.detectFlashSize();
-    } else {
-      this.logger.debug("Skipping flash size detection");
     }
 
     return espStubLoader;
@@ -1622,18 +1622,18 @@ export class ESPLoader extends EventTarget {
     );
 
     const CHUNK_SIZE = 0x10000; // 64KB chunks
-    
+
     let allData = new Uint8Array(0);
     let currentAddr = addr;
     let remainingSize = size;
 
     while (remainingSize > 0) {
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
-      
+
       this.logger.debug(
         `Reading chunk at 0x${currentAddr.toString(16)}, size: 0x${chunkSize.toString(16)}`,
       );
-      
+
       // Send read flash command for this chunk
       let pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, 1024);
       const [res, _] = await this.checkCommand(ESP_READ_FLASH, pkt);
