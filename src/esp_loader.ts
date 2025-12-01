@@ -80,7 +80,7 @@ export class ESPLoader extends EventTarget {
 
   __inputBuffer?: number[];
   __totalBytesRead?: number;
-  __currentBaudRate?: number;
+  private _currentBaudRate: number = ESP_ROM_BAUD;
   private _reader?: ReadableStreamDefaultReader<Uint8Array>;
 
   constructor(
@@ -736,9 +736,16 @@ export class ESPLoader extends EventTarget {
 
     // Track current baudrate for reconnect
     if (this._parent) {
-      this._parent.__currentBaudRate = baud;
+      this._parent._currentBaudRate = baud;
     } else {
-      this.__currentBaudRate = baud;
+      this._currentBaudRate = baud;
+    }
+    
+    // Track current baudrate for reconnect
+    if (this._parent) {
+      this._parent._currentBaudRate = baud;
+    } else {
+      this._currentBaudRate = baud;
     }
     
     this.logger.log(`Changed baud rate to ${baud}`);
@@ -1336,7 +1343,7 @@ export class ESPLoader extends EventTarget {
     return await this.checkCommand(ESP_MEM_END, data, 0, timeout);
   }
 
-  async runStub(): Promise<EspStubLoader> {
+  async runStub(skipFlashDetection = false): Promise<EspStubLoader> {
     const stub: Record<string, any> | null = await getStubCode(
       this.chipFamily,
       this.chipRevision,
@@ -1386,7 +1393,11 @@ export class ESPLoader extends EventTarget {
     const espStubLoader = new EspStubLoader(this.port, this.logger, this);
 
     // Try to autodetect the flash size as soon as the stub is running.
-    await espStubLoader.detectFlashSize();
+    if (!skipFlashDetection) {
+      await espStubLoader.detectFlashSize();
+    } else {
+      this.logger.debug("Skipping flash size detection");
+    }
 
     return espStubLoader;
   }
@@ -1426,129 +1437,138 @@ export class ESPLoader extends EventTarget {
    * @name reconnectAndResume
    * Reconnect the serial port to flush browser buffers and reload stub
    */
-  private async reconnectAndResume(): Promise<void> {
+  async reconnect(): Promise<void> {
     if (this._parent) {
-      // Delegate to parent
-      await this._parent.reconnectAndResume();
+      await this._parent.reconnect();
       return;
     }
 
-    // Save current baudrate before closing
-    const savedBaudRate = this.__currentBaudRate || 115200;
+    this.logger.log("Reconnecting serial port...");
 
-    this.logger.log("Closing serial port...");
-
-    // Close reader and writer
-    if (this._reader) {
-      try {
-        await this._reader.cancel();
-      } catch (err) {
-        this.logger.debug(`Reader cancel error: ${err}`);
-      }
-      this._reader = undefined;
-    }
-
-    // Wait for readLoop to finish
-    await sleep(100);
-
-    // Close the port
-    try {
-      await this.port.close();
-      this.logger.log("Port closed");
-    } catch (err) {
-      this.logger.debug(`Port close error: ${err}`);
-    }
-
-    // Wait a bit
-    await sleep(200);
-
-    // Reopen the port at ROM baudrate first
-    this.logger.log(`Reopening port at 115200 baud...`);
-
-    try {
-      await this.port.open({ baudRate: 115200 });
-    } catch (err) {
-      throw new Error(`Failed to reopen port: ${err}`);
-    }
-
-    // Reset state
+    this.connected = false;
     this.__inputBuffer = [];
-    this.__totalBytesRead = 0;
 
-    // Restart readLoop
-    this.readLoop();
+    // Discard reader reference
+    this._reader = undefined;
+
+    this.logger.log("Attempting to use port.forget() to force release...");
+
+    // Save port info before forget
+    const savedPortInfo = this.port.getInfo();
+
+    try {
+      // Forget port to force release all locks
+      await this.port.forget();
+      this.logger.debug("Port forgotten");
+
+      // Wait a bit
+      await sleep(500);
+
+      // Always request port from user to ensure clean state
+      this.logger.log("Requesting port (user dialog will appear)...");
+
+      const filters: SerialPortFilter[] = [];
+      if (savedPortInfo.usbVendorId && savedPortInfo.usbProductId) {
+        filters.push({
+          usbVendorId: savedPortInfo.usbVendorId,
+          usbProductId: savedPortInfo.usbProductId,
+        });
+      }
+
+      const foundPort = await navigator.serial.requestPort({ filters });
+
+      const info = foundPort.getInfo();
+      this.logger.log(
+        `Got port from user: VID=${info.usbVendorId}, PID=${info.usbProductId}`,
+      );
+
+      // Replace port reference
+      (this as any).port = foundPort;
+    } catch (err) {
+      this.logger.log(`Port forget/reacquire failed: ${err}`);
+      throw new Error(`Cannot reconnect: ${err}`);
+    }
+
+    // Open the port
+    this.logger.debug("Opening port...");
+    try {
+      await this.port.open({ baudRate: ESP_ROM_BAUD });
+      this.connected = true;
+      this.logger.debug("Port opened successfully");
+    } catch (err) {
+      throw new Error(`Failed to open port: ${err}`);
+    }
+
+    // Wait for port to be fully ready
     await sleep(100);
 
-    // Hard reset the MCU
-    this.logger.log("Resetting MCU...");
-    await this.hardReset(true);
+    // Verify port streams are available
+    if (!this.port.readable || !this.port.writable) {
+      throw new Error(
+        `Port streams not available after open (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
+      );
+    }
+    this.logger.debug("Port streams verified");
 
-    // Sync with bootloader
-    await this.sync();
+    // Reset all state variables
+    this.chipName = null;
+    this.chipRevision = null;
+    this.chipVariant = null;
+    this._efuses = new Array(4).fill(0);
+    this.flashSize = null;
 
-    // Detect chip
-    await this.detectChip();
-    this.logger.log(`Reconnected to ${this.chipName}`);
+    // Reinitialize
+    await this.initialize();
 
-    // Reload stub
-    this.logger.log("Reloading stub...");
-    const stub = await this.runStub();
-
-    // Restore original baudrate if it was changed (use stub instance)
-    if (savedBaudRate !== 115200) {
-      this.logger.log(`Restoring baudrate to ${savedBaudRate}...`);
-      await stub.setBaudrate(savedBaudRate);
+    // Verify port is ready
+    if (!this.port.writable || !this.port.readable) {
+      throw new Error("Port not ready after reconnect");
     }
 
-    // Copy stub state back to this instance if we're a stub loader
+    // Load stub
+    this.logger.log("Loading stub...");
+    const stubLoader = await this.runStub();
+    this.logger.debug("Stub loaded");
+
+    // Restore baudrate if it was changed
+    if (this._currentBaudRate !== ESP_ROM_BAUD) {
+      this.logger.log(`Restoring baudrate to ${this._currentBaudRate}...`);
+      await stubLoader.setBaudrate(this._currentBaudRate);
+      this.logger.debug("Baudrate restored");
+
+      // Wait for port to be ready after baudrate change
+      await sleep(200);
+
+      // Verify port is still ready after baudrate change
+      if (!this.port.writable || !this.port.readable) {
+        throw new Error(
+          `Port not ready after baudrate change (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
+        );
+      }
+      this.logger.debug("Port verified after baudrate change");
+    }
+
+    // Copy stub state to this instance if we're a stub loader
     if (this.IS_STUB) {
-      Object.assign(this, stub);
+      Object.assign(this, stubLoader);
+      this.logger.debug("Stub state copied to current instance");
     }
 
-    // Flush buffers after reconnect
-    this.logger.log("Flushing buffers after reconnect...");
-    await this.flushSerialBuffers();
-
-    this.logger.log("Reconnect complete, ready to resume");
+    this.logger.log("Reconnection successful");
   }
 
   private async flushSerialBuffers(): Promise<void> {
-    // Clear application RX buffer first
+    this.logger.debug("Flushing serial buffers...");
+
+    // Clear application RX buffer
     if (!this._parent) {
       this.__inputBuffer = [];
     }
 
-    // Restart the readLoop to flush browser's serial port buffer
-    // This is critical to prevent browser buffer overflow during repeated operations
-    if (!this._parent && this._reader) {
-      try {
-        // Cancel the current reader to flush browser's internal buffer
-        await this._reader.cancel();
-        this._reader = undefined;
-
-        // Wait for readLoop to finish
-        await sleep(100);
-
-        // Clear any data that arrived during shutdown
-        this.__inputBuffer = [];
-
-        // Log total bytes read before restart
-        this.logger.debug(
-          `Total bytes read from port before restart: ${this.__totalBytesRead || 0}`,
-        );
-
-        // Restart readLoop
-        this.readLoop();
-
-        // Wait for readLoop to start
-        await sleep(100);
-      } catch (err) {}
-    }
-
-    // Wait for any pending TX operations to complete and hardware TX buffer to drain
+    // Wait for any pending TX operations and in-flight RX data
     await sleep(100);
 
-    // Clear RX buffer again to discard any data that arrived
+    // Clear RX buffer again
     if (!this._parent) {
       this.__inputBuffer = [];
     }
@@ -1556,7 +1576,7 @@ export class ESPLoader extends EventTarget {
     // Wait longer to ensure all stale data has been received and discarded
     await sleep(200);
 
-    // Final clear of any remaining stale data in RX buffer
+    // Final clear
     if (!this._parent) {
       this.__inputBuffer = [];
     }
@@ -1589,15 +1609,17 @@ export class ESPLoader extends EventTarget {
 
     // Check if we should reconnect BEFORE starting the read
     // Reconnect if total bytes read >= 4MB to ensure clean state
+    // This happens during the button click (user gesture), so requestPort() will work
     if (this._totalBytesRead >= 4 * 1024 * 1024) {
       this.logger.log(
         `Total bytes read: ${this._totalBytesRead}. Reconnecting before new read...`,
       );
 
       try {
-        await this.reconnectAndResume();
+        await this.reconnect();
       } catch (err) {
-        this.logger.log(`Warning: Pre-read reconnect failed: ${err}`);
+        // If reconnect fails, throw error - don't continue with potentially broken state
+        throw new Error(`Reconnect failed: ${err}`);
       }
     }
 
@@ -1608,85 +1630,84 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
-    // Send read flash command with parameters
-    // Block size 0x1000 (4KB), max in-flight packets: 1024
-    let pkt = pack("<IIII", addr, size, 0x1000, 1024);
-    const [res, _] = await this.checkCommand(ESP_READ_FLASH, pkt);
+    const CHUNK_SIZE = 0x10000; // 64KB chunks
+    
+    let allData = new Uint8Array(0);
+    let currentAddr = addr;
+    let remainingSize = size;
 
-    if (res != 0) {
-      throw new Error("Failed to read memory: " + res);
-    }
-
-    // Pre-allocate buffer for the entire flash read to avoid constant reallocation
-    // This prevents memory fragmentation and improves performance
-    const resp = new Uint8Array(size);
-    let bytesReceived = 0;
-
-    while (bytesReceived < size) {
-      // Read a SLIP packet (not raw bytes!)
-      let packet: number[];
-      try {
-        packet = await this.readPacket(FLASH_READ_TIMEOUT);
-      } catch (err) {
-        if (err instanceof SlipReadError) {
-          this.logger.debug(
-            `SLIP read error at ${bytesReceived} bytes: ${err.message}`,
-          );
-          // If we've read all the data we need, break
-          if (bytesReceived >= size) {
-            break;
-          }
-        }
-        throw err;
-      }
-
-      if (packet && packet.length > 0) {
-        const packetData = new Uint8Array(packet);
-
-        // Copy packet data directly into pre-allocated buffer
-        resp.set(packetData, bytesReceived);
-        bytesReceived += packetData.length;
-
-        // Send acknowledgment with current total length (with SLIP encoding)
-        const ackData = pack("<I", bytesReceived);
-        const slipEncodedAck = slipEncode(ackData);
-        await this.writeToStream(slipEncodedAck);
-
-        this.logger.debug(
-          `Received ${packetData.length} bytes, total: ${bytesReceived}/${size}`,
-        );
-
-        if (onPacketReceived) {
-          onPacketReceived(packetData, bytesReceived, size);
-        }
-
-        // No reconnect during read - will reconnect after completion if needed
-      }
-    }
-
-    this.logger.log(`Successfully read ${bytesReceived} bytes from flash`);
-
-    // Check if we need to reconnect AFTER completing the read
-    // Reconnect if:
-    // 1. Single read >= 4MB, OR
-    // 2. Total bytes read >= 6MB (for multiple small reads)
-    const shouldReconnect =
-      bytesReceived >= 4 * 1024 * 1024 || this._totalBytesRead >= 6 * 1024 * 1024;
-
-    if (shouldReconnect) {
-      this.logger.log(
-        `Read completed (current: ${bytesReceived} bytes, total: ${this._totalBytesRead} bytes). Reconnecting to clear browser buffers...`,
+    while (remainingSize > 0) {
+      const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
+      
+      this.logger.debug(
+        `Reading chunk at 0x${currentAddr.toString(16)}, size: ${chunkSize}`,
       );
+      
+      // Send read flash command for this chunk
+      let pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, 1024);
+      const [res, _] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
-      try {
-        await this.reconnectAndResume();
-      } catch (err) {
-        this.logger.log(`Warning: Reconnect after read failed: ${err}`);
-        // Don't throw - the read was successful
+      if (res != 0) {
+        throw new Error("Failed to read memory: " + res);
       }
+
+      let resp = new Uint8Array(0);
+
+      while (resp.length < chunkSize) {
+        // Read a SLIP packet
+        let packet: number[];
+        try {
+          packet = await this.readPacket(FLASH_READ_TIMEOUT);
+        } catch (err) {
+          if (err instanceof SlipReadError) {
+            this.logger.debug(
+              `SLIP read error at ${resp.length} bytes: ${err.message}`,
+            );
+            // If we've read all the data we need, break
+            if (resp.length >= chunkSize) {
+              break;
+            }
+          }
+          throw err;
+        }
+
+        if (packet && packet.length > 0) {
+          const packetData = new Uint8Array(packet);
+
+          // Append to response
+          const newResp = new Uint8Array(resp.length + packetData.length);
+          newResp.set(resp);
+          newResp.set(packetData, resp.length);
+          resp = newResp;
+
+          // Send acknowledgment
+          const ackData = pack("<I", resp.length);
+          const slipEncodedAck = slipEncode(ackData);
+          await this.writeToStream(slipEncodedAck);
+        }
+      }
+
+      // Append chunk to all data
+      const newAllData = new Uint8Array(allData.length + resp.length);
+      newAllData.set(allData);
+      newAllData.set(resp, allData.length);
+      allData = newAllData;
+
+      // Update progress
+      if (onPacketReceived) {
+        onPacketReceived(resp, allData.length, size);
+      }
+
+      currentAddr += chunkSize;
+      remainingSize -= chunkSize;
+
+      this.logger.debug(
+        `Chunk complete. Total progress: ${allData.length}/${size} bytes`,
+      );
     }
 
-    return resp;
+    this.logger.log(`Successfully read ${allData.length} bytes from flash`);
+    return allData;
   }
 }
 
