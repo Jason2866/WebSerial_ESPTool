@@ -140,10 +140,10 @@ export class ESPLoader extends EventTarget {
       },
       0x303a: {
         // Espressif (native USB)
-        0x1001: { name: "ESP32-S2 Native USB", maxBaudrate: 2000000 },
-        0x1002: { name: "ESP32-S3 Native USB", maxBaudrate: 2000000 },
-        0x4002: { name: "ESP32-C3 Native USB", maxBaudrate: 2000000 },
-        0x1000: { name: "ESP32-C6 Native USB", maxBaudrate: 2000000 },
+        0x1001: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
+        0x1002: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
+        0x4002: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
+        0x1000: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
       },
     };
 
@@ -425,7 +425,7 @@ export class ESPLoader extends EventTarget {
   }
 
   async hardReset(bootloader = false) {
-    this.logger.log("Try hard reset.");
+    // this.logger.log("Try hard reset.");
     if (bootloader) {
       // enter flash mode
       if (this.port.getInfo().usbProductId === USB_JTAG_SERIAL_PID) {
@@ -447,6 +447,7 @@ export class ESPLoader extends EventTarget {
         await this.sleep(100);
         await this.setDTR(false);
         await this.setRTS(false);
+        this.logger.log("USB MCU reset.");
       } else {
         // otherwise, esp chip should be connected to computer via usb-serial
         // bridge chip like ch340,CP2102 etc.
@@ -458,12 +459,14 @@ export class ESPLoader extends EventTarget {
         await this.setRTS(false);
         await this.sleep(50);
         await this.setDTR(false);
+        this.logger.log("DTR/RTS USB serial chip reset.");
       }
     } else {
       // just reset
       await this.setRTS(true); // EN->LOW
       await this.sleep(100);
       await this.setRTS(false);
+      this.logger.log("Hard reset.");
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
@@ -1672,7 +1675,8 @@ export class ESPLoader extends EventTarget {
     // This happens during the button click (user gesture), so requestPort() will work
     if (this._totalBytesRead >= 4 * 1024 * 1024) {
       this.logger.log(
-        `Total bytes read: ${this._totalBytesRead}. Reconnecting before new read...`,
+        // `Total bytes read: ${this._totalBytesRead}. Reconnecting before new read...`,
+        `Reconnecting before new read...`,
       );
 
       try {
@@ -1710,64 +1714,102 @@ export class ESPLoader extends EventTarget {
       }
 
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
+      let chunkSuccess = false;
+      let retryCount = 0;
+      const MAX_RETRIES = 3;
 
-      this.logger.debug(
-        `Reading chunk at 0x${currentAddr.toString(16)}, size: 0x${chunkSize.toString(16)}`,
-      );
-
-      // Send read flash command for this chunk
-      let pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, 1024);
-      const [res, _] = await this.checkCommand(ESP_READ_FLASH, pkt);
-
-      if (res != 0) {
-        throw new Error("Failed to read memory: " + res);
-      }
-
-      let resp = new Uint8Array(0);
-
-      while (resp.length < chunkSize) {
-        // Read a SLIP packet
-        let packet: number[];
+      // Retry loop for this chunk
+      while (!chunkSuccess && retryCount <= MAX_RETRIES) {
         try {
-          packet = await this.readPacket(FLASH_READ_TIMEOUT);
-        } catch (err) {
-          if (err instanceof SlipReadError) {
-            this.logger.debug(
-              `SLIP read error at ${resp.length} bytes: ${err.message}`,
-            );
-            // If we've read all the data we need, break
-            if (resp.length >= chunkSize) {
-              break;
+          this.logger.debug(
+            `Reading chunk at 0x${currentAddr.toString(16)}, size: 0x${chunkSize.toString(16)}`,
+          );
+
+          // Send read flash command for this chunk
+          let pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, 1024);
+          const [res, _] = await this.checkCommand(ESP_READ_FLASH, pkt);
+
+          if (res != 0) {
+            throw new Error("Failed to read memory: " + res);
+          }
+
+          let resp = new Uint8Array(0);
+
+          while (resp.length < chunkSize) {
+            // Read a SLIP packet
+            let packet: number[];
+            try {
+              packet = await this.readPacket(FLASH_READ_TIMEOUT);
+            } catch (err) {
+              if (err instanceof SlipReadError) {
+                this.logger.debug(
+                  `SLIP read error at ${resp.length} bytes: ${err.message}`,
+                );
+                // If we've read all the data we need, break
+                if (resp.length >= chunkSize) {
+                  break;
+                }
+              }
+              throw err;
+            }
+
+            if (packet && packet.length > 0) {
+              const packetData = new Uint8Array(packet);
+
+              // Append to response
+              const newResp = new Uint8Array(resp.length + packetData.length);
+              newResp.set(resp);
+              newResp.set(packetData, resp.length);
+              resp = newResp;
+
+              // Send acknowledgment
+              const ackData = pack("<I", resp.length);
+              const slipEncodedAck = slipEncode(ackData);
+              await this.writeToStream(slipEncodedAck);
             }
           }
-          throw err;
-        }
 
-        if (packet && packet.length > 0) {
-          const packetData = new Uint8Array(packet);
+          // Chunk read successfully - append to all data
+          const newAllData = new Uint8Array(allData.length + resp.length);
+          newAllData.set(allData);
+          newAllData.set(resp, allData.length);
+          allData = newAllData;
 
-          // Append to response
-          const newResp = new Uint8Array(resp.length + packetData.length);
-          newResp.set(resp);
-          newResp.set(packetData, resp.length);
-          resp = newResp;
+          chunkSuccess = true;
+        } catch (err) {
+          retryCount++;
 
-          // Send acknowledgment
-          const ackData = pack("<I", resp.length);
-          const slipEncodedAck = slipEncode(ackData);
-          await this.writeToStream(slipEncodedAck);
+          // Check if it's a timeout error
+          if (
+            err instanceof SlipReadError &&
+            err.message.includes("Timed out")
+          ) {
+            if (retryCount <= MAX_RETRIES) {
+              this.logger.log(
+                `⚠️  Timeout error at 0x${currentAddr.toString(16)}. Reconnecting and retrying (attempt ${retryCount}/${MAX_RETRIES})...`,
+              );
+
+              try {
+                await this.reconnect();
+                // Continue to retry the same chunk
+              } catch (reconnectErr) {
+                throw new Error(`Reconnect failed: ${reconnectErr}`);
+              }
+            } else {
+              throw new Error(
+                `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries: ${err}`,
+              );
+            }
+          } else {
+            // Non-timeout error, don't retry
+            throw err;
+          }
         }
       }
 
-      // Append chunk to all data
-      const newAllData = new Uint8Array(allData.length + resp.length);
-      newAllData.set(allData);
-      newAllData.set(resp, allData.length);
-      allData = newAllData;
-
-      // Update progress
+      // Update progress (use empty array since we already appended to allData)
       if (onPacketReceived) {
-        onPacketReceived(resp, allData.length, size);
+        onPacketReceived(new Uint8Array(chunkSize), allData.length, size);
       }
 
       currentAddr += chunkSize;

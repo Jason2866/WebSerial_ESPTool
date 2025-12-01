@@ -27,7 +27,6 @@ export const connect = async (logger: Logger) => {
   // - Request a port and open a connection.
   const port = await navigator.serial.requestPort();
 
-  logger.log("Connecting...");
   await port.open({ baudRate: ESP_ROM_BAUD });
 
   logger.log("Connected successfully.");

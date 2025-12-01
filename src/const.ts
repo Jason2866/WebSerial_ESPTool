@@ -377,12 +377,12 @@ export const ESP_RAM_BLOCK = 0x1800;
 
 // Timeouts
 export const DEFAULT_TIMEOUT = 3000;
-export const CHIP_ERASE_TIMEOUT = 600000; // timeout for full chip erase in ms
+export const CHIP_ERASE_TIMEOUT = 90000; // timeout for full chip erase in ms
 export const MAX_TIMEOUT = CHIP_ERASE_TIMEOUT * 2; // longest any command can run in ms
 export const SYNC_TIMEOUT = 100; // timeout for syncing with bootloader in ms
 export const ERASE_REGION_TIMEOUT_PER_MB = 30000; // timeout (per megabyte) for erasing a region in ms
 export const MEM_END_ROM_TIMEOUT = 500;
-export const FLASH_READ_TIMEOUT = 10000; // timeout for reading flash in ms
+export const FLASH_READ_TIMEOUT = 5000; // timeout for reading flash in ms
 
 /**
  * @name timeoutPerMb

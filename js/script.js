@@ -102,7 +102,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initBaudRate();
   loadAllSettings();
   updateTheme();
-  logMsg("ESP Web Flasher loaded.");
+  logMsg("WebSerial ESPTool loaded.");
 });
 
 function initBaudRate() {
