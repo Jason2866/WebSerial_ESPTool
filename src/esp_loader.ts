@@ -1631,7 +1631,7 @@ export class ESPLoader extends EventTarget {
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
       
       this.logger.debug(
-        `Reading chunk at 0x${currentAddr.toString(16)}, size: ${chunkSize}`,
+        `Reading chunk at 0x${currentAddr.toString(16)}, size: 0x${chunkSize.toString(16)}`,
       );
       
       // Send read flash command for this chunk
@@ -1693,11 +1693,11 @@ export class ESPLoader extends EventTarget {
       remainingSize -= chunkSize;
 
       this.logger.debug(
-        `Chunk complete. Total progress: ${allData.length}/${size} bytes`,
+        `Total progress: 0x${allData.length.toString(16)}/0x${size.toString(16)} bytes`,
       );
     }
 
-    this.logger.log(`Successfully read ${allData.length} bytes from flash`);
+    this.logger.debug(`Successfully read ${allData.length} bytes from flash`);
     return allData;
   }
 }
