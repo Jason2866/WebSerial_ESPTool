@@ -1448,46 +1448,28 @@ export class ESPLoader extends EventTarget {
     this.connected = false;
     this.__inputBuffer = [];
 
-    // Discard reader reference
-    this._reader = undefined;
-
-    this.logger.log("Attempting to use port.forget() to force release...");
-
-    // Save port info before forget
-    const savedPortInfo = this.port.getInfo();
-
-    try {
-      // Forget port to force release all locks
-      await this.port.forget();
-      this.logger.debug("Port forgotten");
-
-      // Wait a bit
-      await sleep(500);
-
-      // Always request port from user to ensure clean state
-      this.logger.log("Requesting port (user dialog will appear)...");
-
-      const filters: SerialPortFilter[] = [];
-      if (savedPortInfo.usbVendorId && savedPortInfo.usbProductId) {
-        filters.push({
-          usbVendorId: savedPortInfo.usbVendorId,
-          usbProductId: savedPortInfo.usbProductId,
-        });
+    // Cancel reader
+    if (this._reader) {
+      try {
+        await this._reader.cancel();
+      } catch (err) {
+        this.logger.debug(`Reader cancel error: ${err}`);
       }
-
-      const foundPort = await navigator.serial.requestPort({ filters });
-
-      const info = foundPort.getInfo();
-      this.logger.log(
-        `Got port from user: VID=${info.usbVendorId}, PID=${info.usbProductId}`,
-      );
-
-      // Replace port reference
-      (this as any).port = foundPort;
-    } catch (err) {
-      this.logger.log(`Port forget/reacquire failed: ${err}`);
-      throw new Error(`Cannot reconnect: ${err}`);
+      this._reader = undefined;
     }
+
+    await sleep(100);
+
+    // Close port
+    try {
+      await this.port.close();
+      this.logger.log("Port closed");
+    } catch (err) {
+      this.logger.debug(`Port close error: ${err}`);
+    }
+
+    // Wait for port to fully close
+    await sleep(500);
 
     // Open the port
     this.logger.debug("Opening port...");
