@@ -1469,14 +1469,13 @@ export class ESPLoader extends EventTarget {
     }
 
     // Wait for port to fully close
-    await sleep(500);
+    await sleep(100);
 
     // Open the port
     this.logger.debug("Opening port...");
     try {
       await this.port.open({ baudRate: ESP_ROM_BAUD });
       this.connected = true;
-      this.logger.debug("Port opened successfully");
     } catch (err) {
       throw new Error(`Failed to open port: ${err}`);
     }
@@ -1490,17 +1489,25 @@ export class ESPLoader extends EventTarget {
         `Port streams not available after open (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
       );
     }
-    this.logger.debug("Port streams verified");
 
-    // Save chip info and flash size before reinitializing
+    // Save chip info and flash size (no need to detect again)
     const savedChipFamily = this.chipFamily;
     const savedChipName = this.chipName;
     const savedChipRevision = this.chipRevision;
     const savedChipVariant = this.chipVariant;
     const savedFlashSize = this.flashSize;
 
-    // Reinitialize
-    await this.initialize();
+    // Reinitialize without chip detection
+    await this.hardReset(true);
+
+    if (!this._parent) {
+      this.__inputBuffer = [];
+      this.__totalBytesRead = 0;
+      this.readLoop();
+    }
+
+    await this.flushSerialBuffers();
+    await this.sync();
 
     // Restore chip info (skip detection)
     this.chipFamily = savedChipFamily;
@@ -1517,18 +1524,16 @@ export class ESPLoader extends EventTarget {
     }
 
     // Load stub (skip flash detection)
-    this.logger.log("Loading stub...");
     const stubLoader = await this.runStub(true);
     this.logger.debug("Stub loaded");
 
     // Restore baudrate if it was changed
     if (this._currentBaudRate !== ESP_ROM_BAUD) {
-      this.logger.log(`Restoring baudrate to ${this._currentBaudRate}...`);
       await stubLoader.setBaudrate(this._currentBaudRate);
-      this.logger.debug("Baudrate restored");
+      this.logger.debug(`Restoring baudrate to ${this._currentBaudRate}...`);
 
       // Wait for port to be ready after baudrate change
-      await sleep(200);
+      await sleep(100);
 
       // Verify port is still ready after baudrate change
       if (!this.port.writable || !this.port.readable) {
@@ -1536,16 +1541,13 @@ export class ESPLoader extends EventTarget {
           `Port not ready after baudrate change (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
         );
       }
-      this.logger.debug("Port verified after baudrate change");
     }
 
     // Copy stub state to this instance if we're a stub loader
     if (this.IS_STUB) {
       Object.assign(this, stubLoader);
-      this.logger.debug("Stub state copied to current instance");
     }
-
-    this.logger.log("Reconnection successful");
+    this.logger.debug("Reconnection successful");
   }
 
   private async flushSerialBuffers(): Promise<void> {
@@ -1626,6 +1628,18 @@ export class ESPLoader extends EventTarget {
     let remainingSize = size;
 
     while (remainingSize > 0) {
+      // Reconnect every 4MB to prevent browser buffer issues
+      if (allData.length > 0 && allData.length % (4 * 1024 * 1024) === 0) {
+        this.logger.debug(
+          `Read ${allData.length} bytes. Reconnecting to clear buffers...`,
+        );
+        try {
+          await this.reconnect();
+        } catch (err) {
+          throw new Error(`Reconnect failed during read: ${err}`);
+        }
+      }
+
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
 
       this.logger.debug(
