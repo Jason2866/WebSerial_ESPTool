@@ -303,7 +303,13 @@ export class ESPLoader extends EventTarget {
         if (!value || value.length === 0) {
           continue;
         }
-        this._inputBuffer.push(...Array.from(value));
+
+        // IMPORTANT: Always read from browser's serial buffer immediately
+        // to prevent browser buffer overflow. Don't apply back-pressure here.
+        // Optimized: Append entire chunk at once using Array.prototype.push.apply
+        // This is much faster than spread operator or for-loop for large transfers
+        const chunk = Array.from(value);
+        Array.prototype.push.apply(this._inputBuffer, chunk);
       }
     } catch (err) {
       console.error("Read loop got disconnected");
@@ -558,9 +564,23 @@ export class ESPLoader extends EventTarget {
       while (Date.now() - stamp < timeout) {
         if (this._inputBuffer.length > 0) {
           readBytes.push(this._inputBuffer.shift()!);
+
+          // Periodically trim the array to prevent memory fragmentation
+          // When buffer gets large, shift() becomes very slow
+          // This recreates the array every 10000 reads to keep it fast
+          if (
+            !this._parent &&
+            this.__inputBuffer &&
+            this.__inputBuffer.length > 10000 &&
+            this.__inputBuffer.length % 10000 === 0
+          ) {
+            this.__inputBuffer = this.__inputBuffer.slice(0);
+          }
+
           break;
         } else {
-          await sleep(10);
+          // Reduced sleep time for faster response during high-speed transfers
+          await sleep(1);
         }
       }
       if (readBytes.length == 0) {
@@ -678,8 +698,6 @@ export class ESPLoader extends EventTarget {
     if (this.chipFamily == CHIP_FAMILY_ESP8266) {
       throw new Error("Changing baud rate is not supported on the ESP8266");
     }
-
-    this.logger.log("Attempting to change baud rate to " + baud + "...");
 
     try {
       // Send ESP_ROM_BAUD(115200) as the old one if running STUB otherwise 0
@@ -1380,16 +1398,34 @@ export class ESPLoader extends EventTarget {
    * This clears both the application RX buffer and waits for hardware buffers to drain
    */
   private async flushSerialBuffers(): Promise<void> {
-    this.logger.debug("Flushing TX and RX serial buffers...");
-
     // Clear application RX buffer first
     if (!this._parent) {
       this.__inputBuffer = [];
     }
 
+    // Restart the readLoop to flush browser's serial port buffer
+    // This is critical to prevent browser buffer overflow during repeated operations
+    if (!this._parent && this._reader) {
+      try {
+        // Cancel the current reader to flush browser's internal buffer
+        await this._reader.cancel();
+        this._reader = undefined;
+
+        // Wait for readLoop to finish
+        await sleep(100);
+
+        // Clear any data that arrived during shutdown
+        this.__inputBuffer = [];
+
+        // Restart readLoop
+        this.readLoop();
+
+        // Wait for readLoop to start
+        await sleep(100);
+      } catch (err) {}
+    }
+
     // Wait for any pending TX operations to complete and hardware TX buffer to drain
-    // Also allows any in-flight RX data to arrive from the serial port
-    // The readLoop continuously reads from port.readable and puts data into __inputBuffer
     await sleep(100);
 
     // Clear RX buffer again to discard any data that arrived
@@ -1398,7 +1434,6 @@ export class ESPLoader extends EventTarget {
     }
 
     // Wait longer to ensure all stale data has been received and discarded
-    // This accounts for both hardware TX buffer drain time and any delayed RX responses
     await sleep(200);
 
     // Final clear of any remaining stale data in RX buffer
@@ -1406,7 +1441,7 @@ export class ESPLoader extends EventTarget {
       this.__inputBuffer = [];
     }
 
-    this.logger.debug("TX and RX serial buffers flushed");
+    this.logger.debug("Serial buffers flushed");
   }
 
   /**
@@ -1448,9 +1483,12 @@ export class ESPLoader extends EventTarget {
       throw new Error("Failed to read memory: " + res);
     }
 
-    let resp = new Uint8Array(0);
+    // Pre-allocate buffer for the entire flash read to avoid constant reallocation
+    // This prevents memory fragmentation and improves performance
+    const resp = new Uint8Array(size);
+    let bytesReceived = 0;
 
-    while (resp.length < size) {
+    while (bytesReceived < size) {
       // Read a SLIP packet (not raw bytes!)
       let packet: number[];
       try {
@@ -1458,10 +1496,10 @@ export class ESPLoader extends EventTarget {
       } catch (err) {
         if (err instanceof SlipReadError) {
           this.logger.debug(
-            `SLIP read error at ${resp.length} bytes: ${err.message}`,
+            `SLIP read error at ${bytesReceived} bytes: ${err.message}`,
           );
           // If we've read all the data we need, break
-          if (resp.length >= size) {
+          if (bytesReceived >= size) {
             break;
           }
         }
@@ -1471,28 +1509,26 @@ export class ESPLoader extends EventTarget {
       if (packet && packet.length > 0) {
         const packetData = new Uint8Array(packet);
 
-        // Append to response
-        const newResp = new Uint8Array(resp.length + packetData.length);
-        newResp.set(resp);
-        newResp.set(packetData, resp.length);
-        resp = newResp;
+        // Copy packet data directly into pre-allocated buffer
+        resp.set(packetData, bytesReceived);
+        bytesReceived += packetData.length;
 
         // Send acknowledgment with current total length (with SLIP encoding)
-        const ackData = pack("<I", resp.length);
+        const ackData = pack("<I", bytesReceived);
         const slipEncodedAck = slipEncode(ackData);
         await this.writeToStream(slipEncodedAck);
 
         this.logger.debug(
-          `Received ${packetData.length} bytes, total: ${resp.length}/${size}`,
+          `Received ${packetData.length} bytes, total: ${bytesReceived}/${size}`,
         );
 
         if (onPacketReceived) {
-          onPacketReceived(packetData, resp.length, size);
+          onPacketReceived(packetData, bytesReceived, size);
         }
       }
     }
 
-    this.logger.log(`Successfully read ${resp.length} bytes from flash`);
+    this.logger.log(`Successfully read ${bytesReceived} bytes from flash`);
 
     return resp;
   }
