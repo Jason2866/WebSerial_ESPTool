@@ -7,7 +7,7 @@ export interface Logger {
 }
 
 export const baudRates = [
-  115200, 128000, 153600, 230400, 460800, 921600, 1500000, 2000000,
+  115200, 128000, 153600, 230400, 460800, 500000, 921600, 1500000, 2000000,
 ];
 export const FLASH_SIZES = {
   "512KB": 0x00,
@@ -377,7 +377,7 @@ export const ESP_RAM_BLOCK = 0x1800;
 
 // Timeouts
 export const DEFAULT_TIMEOUT = 3000;
-export const CHIP_ERASE_TIMEOUT = 90000; // timeout for full chip erase in ms
+export const CHIP_ERASE_TIMEOUT = 150000; // timeout for full chip erase in ms
 export const MAX_TIMEOUT = CHIP_ERASE_TIMEOUT * 2; // longest any command can run in ms
 export const SYNC_TIMEOUT = 100; // timeout for syncing with bootloader in ms
 export const ERASE_REGION_TIMEOUT_PER_MB = 30000; // timeout (per megabyte) for erasing a region in ms
