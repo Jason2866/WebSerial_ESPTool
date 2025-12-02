@@ -382,7 +382,7 @@ export const MAX_TIMEOUT = CHIP_ERASE_TIMEOUT * 2; // longest any command can ru
 export const SYNC_TIMEOUT = 100; // timeout for syncing with bootloader in ms
 export const ERASE_REGION_TIMEOUT_PER_MB = 30000; // timeout (per megabyte) for erasing a region in ms
 export const MEM_END_ROM_TIMEOUT = 500;
-export const FLASH_READ_TIMEOUT = 5000; // timeout for reading flash in ms
+export const FLASH_READ_TIMEOUT = 100; // timeout for reading flash in ms
 
 /**
  * @name timeoutPerMb
