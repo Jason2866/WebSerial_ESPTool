@@ -1,8 +1,8 @@
-# Fork of Adafruit WebSerial ESPTool
+# WebSerial ESPTool
 
-JavaScript package to install firmware on ESP devices via the browser using WebSerial.
+JavaScript package to install and make backups of firmwares on ESP devices via the browser using WebSerial.
 
-This fork is **not** based on esptool.js
+The tool is **not** based on esptool.js
 
 
 ## Local development

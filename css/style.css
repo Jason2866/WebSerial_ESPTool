@@ -6,32 +6,72 @@
   box-sizing: border-box;
   font-size: 16px;
   height: 85px;
-  line-height: 40px;
-  padding: 20px 70px 0px 70px; /* TRouBLe */
+  padding: 15px 70px;
   position: fixed;
   width: 100%;
   z-index: 1000;
   margin: 0;
   border-bottom: 5px solid #00a7e9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  top: 0;
+  transition: transform 0.3s ease-in-out;
 }
 
-.header h1 {
-  flex: 1;
-  font-size: 20px;
-  font-weight: 400;
+.header-hidden {
+  transform: translateY(-100%);
+}
+
+.header .left {
+  display: flex;
+  align-items: center;
+}
+
+.header .title {
+  font-size: 24px;
+  font-weight: 500;
+  margin-right: 30px;
+}
+
+.header .right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.header .controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 20px;
+  padding-right: 20px;
+  border-right: 2px solid #ccc;
+}
+
+.header .controls-row label {
+  font-size: 13px;
+  margin-left: 12px;
+}
+
+.header .controls-row label:first-child {
+  margin-left: 0;
 }
 
 .header button {
   border: solid 2px #fff;
   background-color: #000;
   color: #fff;
-  margin-left: 20px;
   height: 30px;
 }
 
 .header button:hover {
   background-color: #fff;
   color: #000;
+}
+
+.header select {
+  height: 30px;
 }
 
 button,
@@ -82,7 +122,12 @@ div.clear {
 .main {
   overflow-x: hidden;
   overflow-y: auto;
-  padding-top: 80px;
+  padding-top: 90px;
+  transition: padding-top 0.3s ease-in-out;
+}
+
+.main.no-header-padding {
+  padding-top: 0;
 }
 
 .hidden {
@@ -95,32 +140,63 @@ div.clear {
   margin-bottom: 1em;
 }
 
-.subheader {
-  height: 100px;
-  line-height: 100px;
-  padding-left: 70px;
-  padding-right: 70px;
+.log-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid #ccc;
 }
 
-.subheader .title {
-  font-size: 36px;
-  font-weight: 500;
+.log-controls.hidden {
+  display: none;
+}
+
+.small-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+  border-radius: 12px;
+  border-width: 2px;
+  border-style: solid;
+  cursor: pointer;
+  height: 26px;
+  line-height: 14px;
 }
 
 #app.connected #commands {
-  height: 200px;
+  height: auto;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 #app.connected #log {
-  height: calc(100vh - 530px);
+  height: calc(100vh - 320px);
+  min-height: 200px;
+}
+
+#app.connected #log.hidden {
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
 }
 
 #app #commands {
   height: 0;
+  overflow: hidden;
 }
 
 #app #log {
-  height: calc(100vh - 330px);
+  height: calc(100vh - 220px);
+  min-height: 200px;
+}
+
+#app #log.hidden {
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
 }
 
 #commands,
@@ -157,21 +233,8 @@ div.clear {
 }
 
 .footer {
-  padding-left: 70px;
-  padding-right: 70px;
-}
-
-.footer a {
-  color: blue;
-}
-
-.footer .controls {
-  line-height: 45px;
-}
-
-.footer button {
-  font-size: 14px;
-  margin: 0 10px;
+  padding: 10px 70px;
+  height: 20px;
 }
 
 .remix {
@@ -195,11 +258,11 @@ div.clear {
   display: inline-block;
   position: relative;
   width: 50px;
-  margin-right: 25px;
+  margin-right: 5px;
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
-  margin-left: 10px;
+  margin-left: 5px;
 }
 
 .onoffswitch-checkbox {
@@ -280,14 +343,7 @@ div.clear {
   border-color: #67ac38;
 }
 
-.footer .onoffswitch {
-  margin-right: 20px;
-  top: 7px;
-}
 
-#butClear {
-  margin-top: 10px;
-}
 
 #commands {
   min-width: 600px;
@@ -297,11 +353,17 @@ div.clear {
 }
 
 #commands .upload {
-  width: 600px;
+  max-width: 600px;
   display: flex;
   align-items: center;
   margin: 5px auto;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-left: calc(50% - 300px);
+}
+
+/* Hide upload rows 2-8 by default, show dynamically via JavaScript */
+#commands .upload:nth-child(n+2):nth-child(-n+8) {
+  display: none;
 }
 
 #commands .upload .offset {
@@ -374,7 +436,113 @@ div.clear {
   margin-right: 10px;
   border-width: 2px;
   border-style: solid;
+  cursor: pointer;
 }
+
+#commands button {
+  cursor: pointer;
+}
+
+#commands .read-flash {
+  width: 800px;
+  margin: 20px auto 10px auto;
+  padding-top: 20px;
+  border-top: 2px solid #ccc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#commands .read-flash .progress-bar {
+  width: 400px;
+  margin-bottom: 10px;
+}
+
+#commands .read-flash-inputs {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+#commands .read-flash label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+#commands .read-flash input {
+  width: 100px;
+  padding: 5px;
+  border-radius: 5px;
+  border: 2px solid #ccc;
+}
+
+#commands .read-flash button {
+  border-width: 2px;
+  border-style: solid;
+  padding: 2px 30px;
+  cursor: pointer;
+}
+
+#commands .partition-table {
+  width: 800px;
+  margin: 20px auto 10px auto;
+  padding-top: 20px;
+  border-top: 2px solid #ccc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#commands .partition-table button {
+  margin: 0 0 10px 0;
+  border-width: 2px;
+  border-style: solid;
+  padding: 2px 30px;
+  cursor: pointer;
+}
+
+#commands .partition-table .progress-bar {
+  width: 400px;
+  margin-bottom: 10px;
+}
+
+.partition-table-display {
+  width: 100%;
+  margin-top: 20px;
+  border-collapse: collapse;
+}
+
+.partition-table-display th,
+.partition-table-display td {
+  padding: 8px 12px;
+  text-align: left;
+  border: 1px solid #ccc;
+}
+
+.partition-table-display th {
+  font-weight: 600;
+  background-color: #f0f0f0;
+}
+
+.partition-download-btn {
+  padding: 5px 15px;
+  font-size: 14px;
+  border-radius: 10px;
+  border-width: 2px;
+  border-style: solid;
+  cursor: pointer;
+  background-color: transparent;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.partition-download-btn:hover {
+  background-color: #00a7e9;
+  color: #fff;
+  border-color: #00a7e9;
+}
+
 .justify {
   display: flex;
   justify-content: space-between;

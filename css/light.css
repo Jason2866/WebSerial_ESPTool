@@ -61,6 +61,17 @@ button {
   background-color: #ddd;
 }
 
+#commands button {
+  border-color: #333;
+  background-color: #fff;
+  color: #333;
+}
+
+#commands button:hover {
+  background-color: #333;
+  color: #fff;
+}
+
 #commands .buttons button {
   border-color: #333;
 }

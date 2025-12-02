@@ -10,7 +10,10 @@ import {
   CHIP_FAMILY_ESP32C6,
   CHIP_FAMILY_ESP32C61,
   CHIP_FAMILY_ESP32H2,
-  CHIP_FAMILY_ESP32P4
+  CHIP_FAMILY_ESP32H4,
+  CHIP_FAMILY_ESP32H21,
+  CHIP_FAMILY_ESP32P4,
+  CHIP_FAMILY_ESP32S31
 } from "../const";
 import { toByteArray } from "../util";
 
@@ -33,8 +36,17 @@ interface Stub {
 export const getStubCode = async (
   chipFamily: ChipFamily,
   chipRevision?: number | null,
-): Promise<Stub> => {
+): Promise<Stub | null> => {
   let stubcode!: LoadedStub;
+
+  // Chips without stub support yet
+  if (
+    chipFamily == CHIP_FAMILY_ESP32H4 ||
+    chipFamily == CHIP_FAMILY_ESP32H21 ||
+    chipFamily == CHIP_FAMILY_ESP32S31
+  ) {
+    return null;
+  }
 
   if (chipFamily == CHIP_FAMILY_ESP32) {
     stubcode = await import("./esp32.json");

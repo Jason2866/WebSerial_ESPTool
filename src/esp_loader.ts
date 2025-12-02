@@ -10,7 +10,10 @@ import {
   CHIP_FAMILY_ESP32C6,
   CHIP_FAMILY_ESP32C61,
   CHIP_FAMILY_ESP32H2,
+  CHIP_FAMILY_ESP32H4,
+  CHIP_FAMILY_ESP32H21,
   CHIP_FAMILY_ESP32P4,
+  CHIP_FAMILY_ESP32S31,
   CHIP_FAMILY_ESP8266,
   MAX_TIMEOUT,
   Logger,
@@ -39,7 +42,9 @@ import {
   USB_RAM_BLOCK,
   ChipFamily,
   ESP_ERASE_FLASH,
+  ESP_READ_FLASH,
   CHIP_ERASE_TIMEOUT,
+  FLASH_READ_TIMEOUT,
   timeoutPerMb,
   ESP_ROM_BAUD,
   USB_JTAG_SERIAL_PID,
@@ -74,6 +79,9 @@ export class ESPLoader extends EventTarget {
   flashSize: string | null = null;
 
   __inputBuffer?: number[];
+  __totalBytesRead?: number;
+  private _currentBaudRate: number = ESP_ROM_BAUD;
+  private _maxUSBSerialBaudrate?: number;
   private _reader?: ReadableStreamDefaultReader<Uint8Array>;
 
   constructor(
@@ -88,14 +96,96 @@ export class ESPLoader extends EventTarget {
     return this._parent ? this._parent._inputBuffer : this.__inputBuffer!;
   }
 
+  private get _totalBytesRead(): number {
+    return this._parent
+      ? this._parent._totalBytesRead
+      : this.__totalBytesRead || 0;
+  }
+
+  private set _totalBytesRead(value: number) {
+    if (this._parent) {
+      this._parent._totalBytesRead = value;
+    } else {
+      this.__totalBytesRead = value;
+    }
+  }
+
+  private detectUSBSerialChip(
+    vendorId: number,
+    productId: number,
+  ): { name: string; maxBaudrate?: number } {
+    // Common USB-Serial chip vendors and their products
+    const chips: Record<
+      number,
+      Record<number, { name: string; maxBaudrate?: number }>
+    > = {
+      0x1a86: {
+        // QinHeng Electronics
+        0x7523: { name: "CH340", maxBaudrate: 460800 },
+        0x55d4: { name: "CH9102", maxBaudrate: 6000000 },
+      },
+      0x10c4: {
+        // Silicon Labs
+        0xea60: { name: "CP2102(n)", maxBaudrate: 3000000 },
+        0xea70: { name: "CP2105", maxBaudrate: 2000000 },
+        0xea71: { name: "CP2108", maxBaudrate: 2000000 },
+      },
+      0x0403: {
+        // FTDI
+        0x6001: { name: "FT232R", maxBaudrate: 3000000 },
+        0x6010: { name: "FT2232", maxBaudrate: 3000000 },
+        0x6011: { name: "FT4232", maxBaudrate: 3000000 },
+        0x6014: { name: "FT232H", maxBaudrate: 12000000 },
+        0x6015: { name: "FT230X", maxBaudrate: 3000000 },
+      },
+      0x303a: {
+        // Espressif (native USB)
+        0x1001: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
+        0x1002: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
+        0x4002: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
+        0x1000: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
+      },
+    };
+
+    const vendor = chips[vendorId];
+    if (vendor && vendor[productId]) {
+      return vendor[productId];
+    }
+
+    return {
+      name: `Unknown (VID: 0x${vendorId.toString(16)}, PID: 0x${productId.toString(16)})`,
+    };
+  }
+
   async initialize() {
     await this.hardReset(true);
 
     if (!this._parent) {
       this.__inputBuffer = [];
+      this.__totalBytesRead = 0;
+
+      // Detect and log USB-Serial chip info
+      const portInfo = this.port.getInfo();
+      if (portInfo.usbVendorId && portInfo.usbProductId) {
+        const chipInfo = this.detectUSBSerialChip(
+          portInfo.usbVendorId,
+          portInfo.usbProductId,
+        );
+        this.logger.log(
+          `USB-Serial: ${chipInfo.name} (VID: 0x${portInfo.usbVendorId.toString(16)}, PID: 0x${portInfo.usbProductId.toString(16)})`,
+        );
+        if (chipInfo.maxBaudrate) {
+          this._maxUSBSerialBaudrate = chipInfo.maxBaudrate;
+          this.logger.log(`Max baudrate: ${chipInfo.maxBaudrate}`);
+        }
+      }
+
       // Don't await this promise so it doesn't block rest of method.
       this.readLoop();
     }
+
+    // Clear buffer again after starting read loop
+    await this.flushSerialBuffers();
     await this.sync();
 
     // Detect chip type
@@ -108,7 +198,9 @@ export class ESPLoader extends EventTarget {
       this._efuses[i] = await this.readRegister(AddrMAC + 4 * i);
     }
     this.logger.log(`Chip type ${this.chipName}`);
-    //this.logger.log("FLASHID");
+    this.logger.debug(
+      `Bootloader flash offset: 0x${FlAddr.flashOffs.toString(16)}`,
+    );
   }
 
   /**
@@ -156,7 +248,7 @@ export class ESPLoader extends EventTarget {
 
       // Clear input buffer and re-sync to recover from failed command
       this._inputBuffer.length = 0;
-      await sleep(100);
+      await sleep(SYNC_TIMEOUT);
 
       // Re-sync with the chip to ensure clean communication
       try {
@@ -293,7 +385,14 @@ export class ESPLoader extends EventTarget {
         if (!value || value.length === 0) {
           continue;
         }
-        this._inputBuffer.push(...Array.from(value));
+
+        // Always read from browser's serial buffer immediately
+        // to prevent browser buffer overflow. Don't apply back-pressure here.
+        const chunk = Array.from(value);
+        Array.prototype.push.apply(this._inputBuffer, chunk);
+
+        // Track total bytes read from serial port
+        this._totalBytesRead += value.length;
       }
     } catch (err) {
       console.error("Read loop got disconnected");
@@ -324,7 +423,6 @@ export class ESPLoader extends EventTarget {
   }
 
   async hardReset(bootloader = false) {
-    this.logger.log("Try hard reset.");
     if (bootloader) {
       // enter flash mode
       if (this.port.getInfo().usbProductId === USB_JTAG_SERIAL_PID) {
@@ -346,6 +444,7 @@ export class ESPLoader extends EventTarget {
         await this.sleep(100);
         await this.setDTR(false);
         await this.setRTS(false);
+        this.logger.log("USB MCU reset.");
       } else {
         // otherwise, esp chip should be connected to computer via usb-serial
         // bridge chip like ch340,CP2102 etc.
@@ -357,12 +456,14 @@ export class ESPLoader extends EventTarget {
         await this.setRTS(false);
         await this.sleep(50);
         await this.setDTR(false);
+        this.logger.log("DTR/RTS USB serial chip reset.");
       }
     } else {
       // just reset
       await this.setRTS(true); // EN->LOW
       await this.sleep(100);
       await this.setRTS(false);
+      this.logger.log("Hard reset.");
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
@@ -411,7 +512,10 @@ export class ESPLoader extends EventTarget {
       this.chipFamily == CHIP_FAMILY_ESP32C6 ||
       this.chipFamily == CHIP_FAMILY_ESP32C61 ||
       this.chipFamily == CHIP_FAMILY_ESP32H2 ||
-      this.chipFamily == CHIP_FAMILY_ESP32P4
+      this.chipFamily == CHIP_FAMILY_ESP32H4 ||
+      this.chipFamily == CHIP_FAMILY_ESP32H21 ||
+      this.chipFamily == CHIP_FAMILY_ESP32P4 ||
+      this.chipFamily == CHIP_FAMILY_ESP32S31
     ) {
       macAddr[0] = (mac1 >> 8) & 0xff;
       macAddr[1] = mac1 & 0xff;
@@ -470,7 +574,10 @@ export class ESPLoader extends EventTarget {
         CHIP_FAMILY_ESP32C6,
         CHIP_FAMILY_ESP32C61,
         CHIP_FAMILY_ESP32H2,
+        CHIP_FAMILY_ESP32H4,
+        CHIP_FAMILY_ESP32H21,
         CHIP_FAMILY_ESP32P4,
+        CHIP_FAMILY_ESP32S31,
       ].includes(this.chipFamily)
     ) {
       statusLen = 4;
@@ -528,8 +635,6 @@ export class ESPLoader extends EventTarget {
    * @name readPacket
    * Generator to read SLIP packets from a serial port.
    * Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
-   * Designed to avoid too many calls to serial.read(1), which can bog
-   * down on slow systems.
    */
 
   async readPacket(timeout: number): Promise<number[]> {
@@ -544,7 +649,8 @@ export class ESPLoader extends EventTarget {
           readBytes.push(this._inputBuffer.shift()!);
           break;
         } else {
-          await sleep(10);
+          // Reduced sleep time for faster response during high-speed transfers
+          await sleep(1);
         }
       }
       if (readBytes.length == 0) {
@@ -663,8 +769,6 @@ export class ESPLoader extends EventTarget {
       throw new Error("Changing baud rate is not supported on the ESP8266");
     }
 
-    this.logger.log("Attempting to change baud rate to " + baud + "...");
-
     try {
       // Send ESP_ROM_BAUD(115200) as the old one if running STUB otherwise 0
       let buffer = pack("<II", baud, this.IS_STUB ? ESP_ROM_BAUD : 0);
@@ -682,6 +786,26 @@ export class ESPLoader extends EventTarget {
       await this.reconfigurePort(baud);
     }
 
+    // Track current baudrate for reconnect
+    if (this._parent) {
+      this._parent._currentBaudRate = baud;
+    } else {
+      this._currentBaudRate = baud;
+    }
+
+    // Warn if baudrate exceeds USB-Serial chip capability
+    const maxBaud = this._parent
+      ? this._parent._maxUSBSerialBaudrate
+      : this._maxUSBSerialBaudrate;
+    if (maxBaud && baud > maxBaud) {
+      this.logger.log(
+        `⚠️  WARNING: Baudrate ${baud} exceeds USB-Serial chip limit (${maxBaud})!`,
+      );
+      this.logger.log(
+        `⚠️  This may cause data corruption or connection failures!`,
+      );
+    }
+
     this.logger.log(`Changed baud rate to ${baud}`);
   }
 
@@ -696,6 +820,9 @@ export class ESPLoader extends EventTarget {
 
       // Reopen Port
       await this.port.open({ baudRate: baud });
+
+      // Clear buffer again
+      await this.flushSerialBuffers();
 
       // Restart Readloop
       this.readLoop();
@@ -715,10 +842,10 @@ export class ESPLoader extends EventTarget {
       this._inputBuffer.length = 0;
       let response = await this._sync();
       if (response) {
-        await sleep(100);
+        await sleep(SYNC_TIMEOUT);
         return true;
       }
-      await sleep(100);
+      await sleep(SYNC_TIMEOUT);
     }
 
     throw new Error("Couldn't sync to ESP. Try resetting.");
@@ -896,6 +1023,9 @@ export class ESPLoader extends EventTarget {
    *   number of blocks requred.
    */
   async flashBegin(size = 0, offset = 0, encrypted = false) {
+    // Flush serial buffers before flash write operation
+    await this.flushSerialBuffers();
+
     let eraseSize;
     let buffer;
     let flashWriteSize = this.getFlashWriteSize();
@@ -911,7 +1041,10 @@ export class ESPLoader extends EventTarget {
         CHIP_FAMILY_ESP32C6,
         CHIP_FAMILY_ESP32C61,
         CHIP_FAMILY_ESP32H2,
+        CHIP_FAMILY_ESP32H4,
+        CHIP_FAMILY_ESP32H21,
         CHIP_FAMILY_ESP32P4,
+        CHIP_FAMILY_ESP32S31,
       ].includes(this.chipFamily)
     ) {
       await this.checkCommand(ESP_SPI_ATTACH, new Array(8).fill(0));
@@ -942,7 +1075,10 @@ export class ESPLoader extends EventTarget {
       this.chipFamily == CHIP_FAMILY_ESP32C6 ||
       this.chipFamily == CHIP_FAMILY_ESP32C61 ||
       this.chipFamily == CHIP_FAMILY_ESP32H2 ||
-      this.chipFamily == CHIP_FAMILY_ESP32P4
+      this.chipFamily == CHIP_FAMILY_ESP32H4 ||
+      this.chipFamily == CHIP_FAMILY_ESP32H21 ||
+      this.chipFamily == CHIP_FAMILY_ESP32P4 ||
+      this.chipFamily == CHIP_FAMILY_ESP32S31
     ) {
       buffer = buffer.concat(pack("<I", encrypted ? 1 : 0));
     }
@@ -1265,11 +1401,19 @@ export class ESPLoader extends EventTarget {
     return await this.checkCommand(ESP_MEM_END, data, 0, timeout);
   }
 
-  async runStub(): Promise<EspStubLoader> {
-    const stub: Record<string, any> = await getStubCode(
+  async runStub(skipFlashDetection = false): Promise<EspStubLoader> {
+    const stub: Record<string, any> | null = await getStubCode(
       this.chipFamily,
       this.chipRevision,
     );
+
+    // No stub available for this chip, return ROM loader
+    if (stub === null) {
+      this.logger.log(
+        `Stub flasher is not yet supported on ${this.chipName}, using ROM loader`,
+      );
+      return this as unknown as EspStubLoader;
+    }
 
     // We're transferring over USB, right?
     let ramBlock = USB_RAM_BLOCK;
@@ -1292,7 +1436,6 @@ export class ESPLoader extends EventTarget {
         }
       }
     }
-    this.logger.log("Running stub...");
     await this.memFinish(stub["entry"]);
 
     let pChar: string;
@@ -1306,8 +1449,10 @@ export class ESPLoader extends EventTarget {
     this.logger.log("Stub is now running...");
     const espStubLoader = new EspStubLoader(this.port, this.logger, this);
 
-    // Try to autodetect the flash size as soon as the stub is running.
-    await espStubLoader.detectFlashSize();
+    // Try to autodetect the flash size.
+    if (!skipFlashDetection) {
+      await espStubLoader.detectFlashSize();
+    }
 
     return espStubLoader;
   }
@@ -1337,6 +1482,328 @@ export class ESPLoader extends EventTarget {
     });
     this.connected = false;
   }
+
+  /**
+   * @name reconnectAndResume
+   * Reconnect the serial port to flush browser buffers and reload stub
+   */
+  async reconnect(): Promise<void> {
+    if (this._parent) {
+      await this._parent.reconnect();
+      return;
+    }
+
+    this.logger.log("Reconnecting serial port...");
+
+    this.connected = false;
+    this.__inputBuffer = [];
+
+    // Cancel reader
+    if (this._reader) {
+      try {
+        await this._reader.cancel();
+      } catch (err) {
+        this.logger.debug(`Reader cancel error: ${err}`);
+      }
+      this._reader = undefined;
+    }
+
+    await sleep(SYNC_TIMEOUT);
+
+    // Close port
+    try {
+      await this.port.close();
+      this.logger.log("Port closed");
+    } catch (err) {
+      this.logger.debug(`Port close error: ${err}`);
+    }
+
+    // Wait for port to fully close
+    await sleep(SYNC_TIMEOUT);
+
+    // Open the port
+    this.logger.debug("Opening port...");
+    try {
+      await this.port.open({ baudRate: ESP_ROM_BAUD });
+      this.connected = true;
+    } catch (err) {
+      throw new Error(`Failed to open port: ${err}`);
+    }
+
+    // Wait for port to be fully ready
+    await sleep(SYNC_TIMEOUT);
+
+    // Verify port streams are available
+    if (!this.port.readable || !this.port.writable) {
+      throw new Error(
+        `Port streams not available after open (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
+      );
+    }
+
+    // Save chip info and flash size (no need to detect again)
+    const savedChipFamily = this.chipFamily;
+    const savedChipName = this.chipName;
+    const savedChipRevision = this.chipRevision;
+    const savedChipVariant = this.chipVariant;
+    const savedFlashSize = this.flashSize;
+
+    // Reinitialize without chip detection
+    await this.hardReset(true);
+
+    if (!this._parent) {
+      this.__inputBuffer = [];
+      this.__totalBytesRead = 0;
+      this.readLoop();
+    }
+
+    await this.flushSerialBuffers();
+    await this.sync();
+
+    // Restore chip info (skip detection)
+    this.chipFamily = savedChipFamily;
+    this.chipName = savedChipName;
+    this.chipRevision = savedChipRevision;
+    this.chipVariant = savedChipVariant;
+    this.flashSize = savedFlashSize;
+
+    this.logger.debug(`Reconnect complete (chip: ${this.chipName})`);
+
+    // Verify port is ready
+    if (!this.port.writable || !this.port.readable) {
+      throw new Error("Port not ready after reconnect");
+    }
+
+    // Load stub (skip flash detection)
+    const stubLoader = await this.runStub(true);
+    this.logger.debug("Stub loaded");
+
+    // Restore baudrate if it was changed
+    if (this._currentBaudRate !== ESP_ROM_BAUD) {
+      await stubLoader.setBaudrate(this._currentBaudRate);
+
+      // Wait for port to be ready after baudrate change
+      await sleep(SYNC_TIMEOUT);
+
+      // Verify port is still ready after baudrate change
+      if (!this.port.writable || !this.port.readable) {
+        throw new Error(
+          `Port not ready after baudrate change (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
+        );
+      }
+    }
+
+    // Copy stub state to this instance if we're a stub loader
+    if (this.IS_STUB) {
+      Object.assign(this, stubLoader);
+    }
+    this.logger.debug("Reconnection successful");
+  }
+
+  /**
+   * @name flushSerialBuffers
+   * Flush any pending data in the TX and RX serial port buffers
+   * This clears both the application RX buffer and waits for hardware buffers to drain
+   */
+  private async flushSerialBuffers(): Promise<void> {
+    // Clear application RX buffer
+    if (!this._parent) {
+      this.__inputBuffer = [];
+    }
+
+    // Wait for any pending TX operations and in-flight RX data
+    await sleep(SYNC_TIMEOUT);
+
+    // Clear RX buffer again
+    if (!this._parent) {
+      this.__inputBuffer = [];
+    }
+
+    // Wait longer to ensure all stale data has been received and discarded
+    await sleep(SYNC_TIMEOUT * 2);
+
+    // Final clear
+    if (!this._parent) {
+      this.__inputBuffer = [];
+    }
+
+    this.logger.debug("Serial buffers flushed");
+  }
+
+  /**
+   * @name readFlash
+   * Read flash memory from the chip (only works with stub loader)
+   * @param addr - Address to read from
+   * @param size - Number of bytes to read
+   * @param onPacketReceived - Optional callback function called when packet is received
+   * @returns Uint8Array containing the flash data
+   */
+  async readFlash(
+    addr: number,
+    size: number,
+    onPacketReceived?: (
+      packet: Uint8Array,
+      progress: number,
+      totalSize: number,
+    ) => void,
+  ): Promise<Uint8Array> {
+    if (!this.IS_STUB) {
+      throw new Error(
+        "Reading flash is only supported in stub mode. Please run runStub() first.",
+      );
+    }
+
+    // Check if we should reconnect BEFORE starting the read
+    // Reconnect if total bytes read >= 4MB to ensure clean state
+    if (this._totalBytesRead >= 4 * 1024 * 1024) {
+      this.logger.log(
+        // `Total bytes read: ${this._totalBytesRead}. Reconnecting before new read...`,
+        `Reconnecting before new read...`,
+      );
+
+      try {
+        await this.reconnect();
+      } catch (err) {
+        // If reconnect fails, throw error - don't continue with potentially broken state
+        throw new Error(`Reconnect failed: ${err}`);
+      }
+    }
+
+    // Flush serial buffers before flash read operation
+    await this.flushSerialBuffers();
+
+    this.logger.log(
+      `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
+    );
+
+    const CHUNK_SIZE = 0x10000; // 64KB chunks
+
+    let allData = new Uint8Array(0);
+    let currentAddr = addr;
+    let remainingSize = size;
+
+    while (remainingSize > 0) {
+      // Reconnect every 4MB to prevent browser buffer issues
+      if (allData.length > 0 && allData.length % (4 * 1024 * 1024) === 0) {
+        this.logger.debug(
+          `Read ${allData.length} bytes. Reconnecting to clear buffers...`,
+        );
+        try {
+          await this.reconnect();
+        } catch (err) {
+          throw new Error(`Reconnect failed during read: ${err}`);
+        }
+      }
+
+      const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
+      let chunkSuccess = false;
+      let retryCount = 0;
+      const MAX_RETRIES = 3;
+
+      // Retry loop for this chunk
+      while (!chunkSuccess && retryCount <= MAX_RETRIES) {
+        try {
+          this.logger.debug(
+            `Reading chunk at 0x${currentAddr.toString(16)}, size: 0x${chunkSize.toString(16)}`,
+          );
+
+          // Send read flash command for this chunk
+          let pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, 1024);
+          const [res, _] = await this.checkCommand(ESP_READ_FLASH, pkt);
+
+          if (res != 0) {
+            throw new Error("Failed to read memory: " + res);
+          }
+
+          let resp = new Uint8Array(0);
+
+          while (resp.length < chunkSize) {
+            // Read a SLIP packet
+            let packet: number[];
+            try {
+              packet = await this.readPacket(FLASH_READ_TIMEOUT);
+            } catch (err) {
+              if (err instanceof SlipReadError) {
+                this.logger.debug(
+                  `SLIP read error at ${resp.length} bytes: ${err.message}`,
+                );
+                // If we've read all the data we need, break
+                if (resp.length >= chunkSize) {
+                  break;
+                }
+              }
+              throw err;
+            }
+
+            if (packet && packet.length > 0) {
+              const packetData = new Uint8Array(packet);
+
+              // Append to response
+              const newResp = new Uint8Array(resp.length + packetData.length);
+              newResp.set(resp);
+              newResp.set(packetData, resp.length);
+              resp = newResp;
+
+              // Send acknowledgment
+              const ackData = pack("<I", resp.length);
+              const slipEncodedAck = slipEncode(ackData);
+              await this.writeToStream(slipEncodedAck);
+            }
+          }
+
+          // Chunk read successfully - append to all data
+          const newAllData = new Uint8Array(allData.length + resp.length);
+          newAllData.set(allData);
+          newAllData.set(resp, allData.length);
+          allData = newAllData;
+
+          chunkSuccess = true;
+        } catch (err) {
+          retryCount++;
+
+          // Check if it's a timeout error
+          if (
+            err instanceof SlipReadError &&
+            err.message.includes("Timed out")
+          ) {
+            if (retryCount <= MAX_RETRIES) {
+              this.logger.log(
+                `⚠️  Timeout error at 0x${currentAddr.toString(16)}. Reconnecting and retrying (attempt ${retryCount}/${MAX_RETRIES})...`,
+              );
+
+              try {
+                await this.reconnect();
+                // Continue to retry the same chunk
+              } catch (reconnectErr) {
+                throw new Error(`Reconnect failed: ${reconnectErr}`);
+              }
+            } else {
+              throw new Error(
+                `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries: ${err}`,
+              );
+            }
+          } else {
+            // Non-timeout error, don't retry
+            throw err;
+          }
+        }
+      }
+
+      // Update progress (use empty array since we already appended to allData)
+      if (onPacketReceived) {
+        onPacketReceived(new Uint8Array(chunkSize), allData.length, size);
+      }
+
+      currentAddr += chunkSize;
+      remainingSize -= chunkSize;
+
+      this.logger.debug(
+        `Total progress: 0x${allData.length.toString(16)}/0x${size.toString(16)} bytes`,
+      );
+    }
+
+    this.logger.debug(`Successfully read ${allData.length} bytes from flash`);
+    return allData;
+  }
 }
 
 class EspStubLoader extends ESPLoader {
@@ -1357,6 +1824,12 @@ class EspStubLoader extends ESPLoader {
     offset: number,
   ): Promise<any> {
     let stub = await getStubCode(this.chipFamily, this.chipRevision);
+
+    // Stub may be null for chips without stub support
+    if (stub === null) {
+      return;
+    }
+
     let load_start = offset;
     let load_end = offset + size;
     console.log(load_start, load_end);

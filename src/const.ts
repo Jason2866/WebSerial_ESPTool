@@ -7,7 +7,7 @@ export interface Logger {
 }
 
 export const baudRates = [
-  115200, 128000, 153600, 230400, 460800, 921600, 1500000, 2000000,
+  115200, 128000, 153600, 230400, 460800, 500000, 921600, 1500000, 2000000,
 ];
 export const FLASH_SIZES = {
   "512KB": 0x00,
@@ -46,6 +46,20 @@ export const DETECTED_FLASH_SIZES: FlashSize = {
   0x18: "16MB",
   0x19: "32MB",
   0x1a: "64MB",
+  0x1b: "128MB",
+  0x1c: "256MB",
+  0x20: "64MB",
+  0x21: "128MB",
+  0x22: "256MB",
+  0x32: "256KB",
+  0x33: "512KB",
+  0x34: "1MB",
+  0x35: "2MB",
+  0x36: "4MB",
+  0x37: "8MB",
+  0x38: "16MB",
+  0x39: "32MB",
+  0x3a: "64MB",
 };
 
 export const FLASH_WRITE_SIZE = 0x400;
@@ -174,6 +188,30 @@ export const ESP32H2_SPI_W0_OFFS = 0x58;
 export const ESP32H2_UART_DATE_REG_ADDR = 0x6000007c;
 export const ESP32H2_BOOTLOADER_FLASH_OFFSET = 0x0;
 
+export const ESP32H4_SPI_REG_BASE = 0x60099000;
+export const ESP32H4_BASEFUSEADDR = 0x600b1800;
+export const ESP32H4_MACFUSEADDR = 0x600b1800 + 0x044;
+export const ESP32H4_SPI_USR_OFFS = 0x18;
+export const ESP32H4_SPI_USR1_OFFS = 0x1c;
+export const ESP32H4_SPI_USR2_OFFS = 0x20;
+export const ESP32H4_SPI_MOSI_DLEN_OFFS = 0x24;
+export const ESP32H4_SPI_MISO_DLEN_OFFS = 0x28;
+export const ESP32H4_SPI_W0_OFFS = 0x58;
+export const ESP32H4_UART_DATE_REG_ADDR = 0x60012000 + 0x7c;
+export const ESP32H4_BOOTLOADER_FLASH_OFFSET = 0x2000;
+
+export const ESP32H21_SPI_REG_BASE = 0x60003000;
+export const ESP32H21_BASEFUSEADDR = 0x600b4000;
+export const ESP32H21_MACFUSEADDR = 0x600b4000 + 0x044;
+export const ESP32H21_SPI_USR_OFFS = 0x18;
+export const ESP32H21_SPI_USR1_OFFS = 0x1c;
+export const ESP32H21_SPI_USR2_OFFS = 0x20;
+export const ESP32H21_SPI_MOSI_DLEN_OFFS = 0x24;
+export const ESP32H21_SPI_MISO_DLEN_OFFS = 0x28;
+export const ESP32H21_SPI_W0_OFFS = 0x58;
+export const ESP32H21_UART_DATE_REG_ADDR = 0x6000007c;
+export const ESP32H21_BOOTLOADER_FLASH_OFFSET = 0x0;
+
 export const ESP32P4_SPI_REG_BASE = 0x5008d000;
 export const ESP32P4_BASEFUSEADDR = 0x5012d000;
 export const ESP32P4_EFUSE_BLOCK1_ADDR = ESP32P4_BASEFUSEADDR + 0x044;
@@ -186,6 +224,19 @@ export const ESP32P4_SPI_MISO_DLEN_OFFS = 0x28;
 export const ESP32P4_SPI_W0_OFFS = 0x58;
 export const ESP32P4_UART_DATE_REG_ADDR = 0x500ca000 + 0x8c;
 export const ESP32P4_BOOTLOADER_FLASH_OFFSET = 0x2000;
+
+export const ESP32S31_SPI_REG_BASE = 0x20500000;
+export const ESP32S31_BASEFUSEADDR = 0x20715000;
+export const ESP32S31_EFUSE_BLOCK1_ADDR = ESP32S31_BASEFUSEADDR + 0x044;
+export const ESP32S31_MACFUSEADDR = 0x20715000 + 0x044;
+export const ESP32S31_SPI_USR_OFFS = 0x18;
+export const ESP32S31_SPI_USR1_OFFS = 0x1c;
+export const ESP32S31_SPI_USR2_OFFS = 0x20;
+export const ESP32S31_SPI_MOSI_DLEN_OFFS = 0x24;
+export const ESP32S31_SPI_MISO_DLEN_OFFS = 0x28;
+export const ESP32S31_SPI_W0_OFFS = 0x58;
+export const ESP32S31_UART_DATE_REG_ADDR = 0x2038a000 + 0x8c;
+export const ESP32S31_BOOTLOADER_FLASH_OFFSET = 0x2000;
 
 export interface SpiFlashAddresses {
   regBase: number;
@@ -218,7 +269,10 @@ export const CHIP_FAMILY_ESP32C5 = 0x32c5;
 export const CHIP_FAMILY_ESP32C6 = 0x32c6;
 export const CHIP_FAMILY_ESP32C61 = 0x32c61;
 export const CHIP_FAMILY_ESP32H2 = 0x3272;
+export const CHIP_FAMILY_ESP32H4 = 0x3274;
+export const CHIP_FAMILY_ESP32H21 = 0x3275;
 export const CHIP_FAMILY_ESP32P4 = 0x3280;
+export const CHIP_FAMILY_ESP32S31 = 0x3231;
 export type ChipFamily =
   | typeof CHIP_FAMILY_ESP8266
   | typeof CHIP_FAMILY_ESP32
@@ -230,7 +284,10 @@ export type ChipFamily =
   | typeof CHIP_FAMILY_ESP32C6
   | typeof CHIP_FAMILY_ESP32C61
   | typeof CHIP_FAMILY_ESP32H2
-  | typeof CHIP_FAMILY_ESP32P4;
+  | typeof CHIP_FAMILY_ESP32H4
+  | typeof CHIP_FAMILY_ESP32H21
+  | typeof CHIP_FAMILY_ESP32P4
+  | typeof CHIP_FAMILY_ESP32S31;
 
 interface ChipIdInfo {
   name: string;
@@ -246,6 +303,9 @@ export const CHIP_ID_TO_INFO: { [chipId: number]: ChipIdInfo } = {
   18: { name: "ESP32-P4", family: CHIP_FAMILY_ESP32P4 },
   20: { name: "ESP32-C61", family: CHIP_FAMILY_ESP32C61 },
   23: { name: "ESP32-C5", family: CHIP_FAMILY_ESP32C5 },
+  25: { name: "ESP32-H21", family: CHIP_FAMILY_ESP32H21 },
+  28: { name: "ESP32-H4", family: CHIP_FAMILY_ESP32H4 },
+  32: { name: "ESP32-S31", family: CHIP_FAMILY_ESP32S31 },
 };
 
 interface ChipInfo {
@@ -298,6 +358,7 @@ export const ESP_READ_REG = 0x0a;
 
 export const ESP_ERASE_FLASH = 0xd0;
 export const ESP_ERASE_REGION = 0xd1;
+export const ESP_READ_FLASH = 0xd2;
 
 export const ESP_SPI_SET_PARAMS = 0x0b;
 export const ESP_SPI_ATTACH = 0x0d;
@@ -316,11 +377,12 @@ export const ESP_RAM_BLOCK = 0x1800;
 
 // Timeouts
 export const DEFAULT_TIMEOUT = 3000;
-export const CHIP_ERASE_TIMEOUT = 600000; // timeout for full chip erase in ms
+export const CHIP_ERASE_TIMEOUT = 150000; // timeout for full chip erase in ms
 export const MAX_TIMEOUT = CHIP_ERASE_TIMEOUT * 2; // longest any command can run in ms
 export const SYNC_TIMEOUT = 100; // timeout for syncing with bootloader in ms
 export const ERASE_REGION_TIMEOUT_PER_MB = 30000; // timeout (per megabyte) for erasing a region in ms
 export const MEM_END_ROM_TIMEOUT = 500;
+export const FLASH_READ_TIMEOUT = 100; // timeout for reading flash in ms
 
 /**
  * @name timeoutPerMb
@@ -478,6 +540,34 @@ export const getSpiFlashAddresses = (
         uartDateReg: ESP32H2_UART_DATE_REG_ADDR,
         flashOffs: ESP32H2_BOOTLOADER_FLASH_OFFSET,
       };
+    case CHIP_FAMILY_ESP32H4:
+      return {
+        regBase: ESP32H4_SPI_REG_BASE,
+        baseFuse: ESP32H4_BASEFUSEADDR,
+        macFuse: ESP32H4_MACFUSEADDR,
+        usrOffs: ESP32H4_SPI_USR_OFFS,
+        usr1Offs: ESP32H4_SPI_USR1_OFFS,
+        usr2Offs: ESP32H4_SPI_USR2_OFFS,
+        mosiDlenOffs: ESP32H4_SPI_MOSI_DLEN_OFFS,
+        misoDlenOffs: ESP32H4_SPI_MISO_DLEN_OFFS,
+        w0Offs: ESP32H4_SPI_W0_OFFS,
+        uartDateReg: ESP32H4_UART_DATE_REG_ADDR,
+        flashOffs: ESP32H4_BOOTLOADER_FLASH_OFFSET,
+      };
+    case CHIP_FAMILY_ESP32H21:
+      return {
+        regBase: ESP32H21_SPI_REG_BASE,
+        baseFuse: ESP32H21_BASEFUSEADDR,
+        macFuse: ESP32H21_MACFUSEADDR,
+        usrOffs: ESP32H21_SPI_USR_OFFS,
+        usr1Offs: ESP32H21_SPI_USR1_OFFS,
+        usr2Offs: ESP32H21_SPI_USR2_OFFS,
+        mosiDlenOffs: ESP32H21_SPI_MOSI_DLEN_OFFS,
+        misoDlenOffs: ESP32H21_SPI_MISO_DLEN_OFFS,
+        w0Offs: ESP32H21_SPI_W0_OFFS,
+        uartDateReg: ESP32H21_UART_DATE_REG_ADDR,
+        flashOffs: ESP32H21_BOOTLOADER_FLASH_OFFSET,
+      };
     case CHIP_FAMILY_ESP32P4:
       return {
         regBase: ESP32P4_SPI_REG_BASE,
@@ -491,6 +581,20 @@ export const getSpiFlashAddresses = (
         w0Offs: ESP32P4_SPI_W0_OFFS,
         uartDateReg: ESP32P4_UART_DATE_REG_ADDR,
         flashOffs: ESP32P4_BOOTLOADER_FLASH_OFFSET,
+      };
+    case CHIP_FAMILY_ESP32S31:
+      return {
+        regBase: ESP32S31_SPI_REG_BASE,
+        baseFuse: ESP32S31_BASEFUSEADDR,
+        macFuse: ESP32S31_MACFUSEADDR,
+        usrOffs: ESP32S31_SPI_USR_OFFS,
+        usr1Offs: ESP32S31_SPI_USR1_OFFS,
+        usr2Offs: ESP32S31_SPI_USR2_OFFS,
+        mosiDlenOffs: ESP32S31_SPI_MOSI_DLEN_OFFS,
+        misoDlenOffs: ESP32S31_SPI_MISO_DLEN_OFFS,
+        w0Offs: ESP32S31_SPI_W0_OFFS,
+        uartDateReg: ESP32S31_UART_DATE_REG_ADDR,
+        flashOffs: ESP32S31_BOOTLOADER_FLASH_OFFSET,
       };
     default:
       return {
