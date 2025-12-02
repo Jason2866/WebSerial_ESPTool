@@ -10,7 +10,7 @@ Die Read Flash Partition Funktionalität wurde erfolgreich aus esptool.js in Web
 
 #### `src/const.ts`
 - Hinzugefügt: `ESP_READ_FLASH = 0xd2` Konstante
-- Hinzugefügt: `FLASH_READ_TIMEOUT = 10000` Konstante
+- Hinzugefügt: `FLASH_READ_TIMEOUT = 100` Konstante
 
 #### `src/esp_loader.ts`
 - Neue Methode `readFlash()` in der `EspStubLoader` Klasse implementiert
