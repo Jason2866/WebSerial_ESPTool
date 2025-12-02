@@ -386,10 +386,8 @@ export class ESPLoader extends EventTarget {
           continue;
         }
 
-        // IMPORTANT: Always read from browser's serial buffer immediately
+        // Always read from browser's serial buffer immediately
         // to prevent browser buffer overflow. Don't apply back-pressure here.
-        // Optimized: Append entire chunk at once using Array.prototype.push.apply
-        // This is much faster than spread operator or for-loop for large transfers
         const chunk = Array.from(value);
         Array.prototype.push.apply(this._inputBuffer, chunk);
 
@@ -425,7 +423,6 @@ export class ESPLoader extends EventTarget {
   }
 
   async hardReset(bootloader = false) {
-    // this.logger.log("Try hard reset.");
     if (bootloader) {
       // enter flash mode
       if (this.port.getInfo().usbProductId === USB_JTAG_SERIAL_PID) {
@@ -638,8 +635,6 @@ export class ESPLoader extends EventTarget {
    * @name readPacket
    * Generator to read SLIP packets from a serial port.
    * Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
-   * Designed to avoid too many calls to serial.read(1), which can bog
-   * down on slow systems.
    */
 
   async readPacket(timeout: number): Promise<number[]> {
@@ -652,19 +647,6 @@ export class ESPLoader extends EventTarget {
       while (Date.now() - stamp < timeout) {
         if (this._inputBuffer.length > 0) {
           readBytes.push(this._inputBuffer.shift()!);
-
-          // Periodically trim the array to prevent memory fragmentation
-          // When buffer gets large, shift() becomes very slow
-          // This recreates the array every 10000 reads to keep it fast
-          if (
-            !this._parent &&
-            this.__inputBuffer &&
-            this.__inputBuffer.length > 10000 &&
-            this.__inputBuffer.length % 10000 === 0
-          ) {
-            this.__inputBuffer = this.__inputBuffer.slice(0);
-          }
-
           break;
         } else {
           // Reduced sleep time for faster response during high-speed transfers
@@ -1467,7 +1449,7 @@ export class ESPLoader extends EventTarget {
     this.logger.log("Stub is now running...");
     const espStubLoader = new EspStubLoader(this.port, this.logger, this);
 
-    // Try to autodetect the flash size as soon as the stub is running.
+    // Try to autodetect the flash size.
     if (!skipFlashDetection) {
       await espStubLoader.detectFlashSize();
     }
@@ -1501,11 +1483,6 @@ export class ESPLoader extends EventTarget {
     this.connected = false;
   }
 
-  /**
-   * @name flushSerialBuffers
-   * Flush any pending data in the TX and RX serial port buffers
-   * This clears both the application RX buffer and waits for hardware buffers to drain
-   */
   /**
    * @name reconnectAndResume
    * Reconnect the serial port to flush browser buffers and reload stub
@@ -1622,6 +1599,11 @@ export class ESPLoader extends EventTarget {
     this.logger.debug("Reconnection successful");
   }
 
+  /**
+   * @name flushSerialBuffers
+   * Flush any pending data in the TX and RX serial port buffers
+   * This clears both the application RX buffer and waits for hardware buffers to drain
+   */
   private async flushSerialBuffers(): Promise<void> {
     // Clear application RX buffer
     if (!this._parent) {
@@ -1672,7 +1654,6 @@ export class ESPLoader extends EventTarget {
 
     // Check if we should reconnect BEFORE starting the read
     // Reconnect if total bytes read >= 4MB to ensure clean state
-    // This happens during the button click (user gesture), so requestPort() will work
     if (this._totalBytesRead >= 4 * 1024 * 1024) {
       this.logger.log(
         // `Total bytes read: ${this._totalBytesRead}. Reconnecting before new read...`,
