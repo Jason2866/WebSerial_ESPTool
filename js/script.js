@@ -881,7 +881,7 @@ function toggleUIConnected(connected) {
 function loadAllSettings() {
   // Load all saved settings or defaults
   autoscroll.checked = loadSetting("autoscroll", true);
-  baudRate.value = loadSetting("baudrate", 1500000);
+  baudRate.value = loadSetting("baudrate", 2000000);
   darkMode.checked = loadSetting("darkmode", false);
   debugMode.checked = loadSetting("debugmode", true);
   showLog.checked = loadSetting("showlog", false);
