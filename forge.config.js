@@ -6,7 +6,6 @@ module.exports = {
     name: 'WebSerial ESPTool',
     executableName: 'webserial-esptool',
     asar: true,
-    icon: './electron/icons/icon',
     appBundleId: 'com.tasmota.webserial-esptool',
     appCategoryType: 'public.app-category.developer-tools',
     // Files to include in the app
@@ -30,8 +29,6 @@ module.exports = {
         name: 'WebSerialESPTool',
         authors: 'Johann Obermeier',
         description: 'Flash & Read ESP devices using WebSerial',
-        iconUrl: 'https://raw.githubusercontent.com/Jason2866/WebSerial_ESPTool/main/electron/icons/icon.ico',
-        setupIcon: './electron/icons/icon.ico',
       },
     },
     {
@@ -44,7 +41,6 @@ module.exports = {
         options: {
           maintainer: 'Johann Obermeier',
           homepage: 'https://github.com/Jason2866/WebSerial_ESPTool',
-          icon: './electron/icons/icon.png',
           categories: ['Development', 'Utility'],
         },
       },
@@ -54,7 +50,6 @@ module.exports = {
       config: {
         options: {
           homepage: 'https://github.com/Jason2866/WebSerial_ESPTool',
-          icon: './electron/icons/icon.png',
           categories: ['Development', 'Utility'],
         },
       },
@@ -63,7 +58,6 @@ module.exports = {
       name: '@electron-forge/maker-dmg',
       config: {
         format: 'ULFO',
-        icon: './electron/icons/icon.icns',
       },
     },
   ],
