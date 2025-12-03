@@ -1168,10 +1168,10 @@ export class ESPLoader extends EventTarget {
     delayUs = 0,
     delayAfterUs = 0,
   ) {
-    const buffer = pack("<IIII", address, value, mask, delayUs);
+    let buffer = pack("<IIII", address, value, mask, delayUs);
     if (delayAfterUs > 0) {
       // add a dummy write to a date register as an excuse to have a delay
-      buffer.concat(
+      buffer = buffer.concat(
         pack(
           "<IIII",
           getSpiFlashAddresses(this.getChipFamily()).uartDateReg,
