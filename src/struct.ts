@@ -39,20 +39,6 @@ const lut: DataType = {
     p: DataView.prototype.setUint32,
     bytes: 4,
   },
-  q: {
-    // @ts-expect-error BigInt64 methods exist but types may not be defined
-    u: DataView.prototype.getInt64,
-    // @ts-expect-error BigInt64 methods exist but types may not be defined
-    p: DataView.prototype.setInt64,
-    bytes: 8,
-  },
-  Q: {
-    // @ts-expect-error BigUint64 methods exist but types may not be defined
-    u: DataView.prototype.getUint64,
-    // @ts-expect-error BigUint64 methods exist but types may not be defined
-    p: DataView.prototype.setUint64,
-    bytes: 8,
-  },
 };
 
 export const pack = (format: string, ...data: number[]) => {
