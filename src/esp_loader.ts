@@ -1798,7 +1798,7 @@ export class ESPLoader extends EventTarget {
       remainingSize -= chunkSize;
 
       this.logger.debug(
-        `Total progress: 0x${allData.length.toString(16)}/0x${size.toString(16)} bytes`,
+        `Total progress: 0x${allData.length.toString(16)} from 0x${size.toString(16)} bytes`,
       );
     }
 
