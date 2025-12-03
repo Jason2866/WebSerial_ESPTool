@@ -873,14 +873,14 @@
   dependencies:
     undici-types "~7.16.0"
 
-"@types/node@^20.9.0":
-  version "20.19.25"
-  resolved "https://registry.npmjs.org/@types/node/-/node-20.19.25.tgz"
-  integrity sha512-ZsJzA5thDQMSQO788d7IocwwQbI8B5OPzmqNvpf3NY/+MHDAS759Wo0gd2WQeXYt5AAAQjzcrTVC6SKCuYgoCQ==
+"@types/node@^22.5.5":
+  version "22.19.1"
+  resolved "https://registry.npmjs.org/@types/node/-/node-22.19.1.tgz"
+  integrity sha512-LCCV0HdSZZZb34qifBsyWlUmok6W7ouER+oQIGBScS8EsZsQbrtFTUrDX4hOl+CS6p7cnNC4td+qrSVGSCTUfQ==
   dependencies:
     undici-types "~6.21.0"
 
-"@types/node@^22.5.5":
+"@types/node@^22.7.7":
   version "22.19.1"
   resolved "https://registry.npmjs.org/@types/node/-/node-22.19.1.tgz"
   integrity sha512-LCCV0HdSZZZb34qifBsyWlUmok6W7ouER+oQIGBScS8EsZsQbrtFTUrDX4hOl+CS6p7cnNC4td+qrSVGSCTUfQ==
@@ -1948,13 +1948,13 @@ electron-winstaller@^5.3.0:
   optionalDependencies:
     "@electron/windows-sign" "^1.1.2"
 
-electron@^33.2.1:
-  version "33.4.11"
-  resolved "https://registry.npmjs.org/electron/-/electron-33.4.11.tgz"
-  integrity sha512-xmdAs5QWRkInC7TpXGNvzo/7exojubk+72jn1oJL7keNeIlw7xNglf8TGtJtkR4rWC5FJq0oXiIXPS9BcK2Irg==
+electron@^39.2.5:
+  version "39.2.5"
+  resolved "https://registry.npmjs.org/electron/-/electron-39.2.5.tgz"
+  integrity sha512-LXlOcH3CNopcVTQWjp680fMygdNrWKdIe3hyMtlyceO+Jd0b2hdMw1iWz36I+UUXHXPH87i937gXYi0jze2fCw==
   dependencies:
     "@electron/get" "^2.0.0"
-    "@types/node" "^20.9.0"
+    "@types/node" "^22.7.7"
     extract-zip "^2.0.1"
 
 emoji-regex@^8.0.0:
