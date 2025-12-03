@@ -5,7 +5,7 @@
  */
 export const slipEncode = (buffer: number[]): number[] => {
   let encoded = [0xc0];
-  for (let byte of buffer) {
+  for (const byte of buffer) {
     if (byte == 0xdb) {
       encoded = encoded.concat([0xdb, 0xdd]);
     } else if (byte == 0xc0) {
@@ -23,9 +23,9 @@ export const slipEncode = (buffer: number[]): number[] => {
  * Convert a string to a byte array
  */
 export const toByteArray = (str: string): number[] => {
-  let byteArray: number[] = [];
+  const byteArray: number[] = [];
   for (let i = 0; i < str.length; i++) {
-    let charcode = str.charCodeAt(i);
+    const charcode = str.charCodeAt(i);
     if (charcode <= 0xff) {
       byteArray.push(charcode);
     }
@@ -37,7 +37,7 @@ export const hexFormatter = (bytes: number[]) =>
   "[" + bytes.map((value) => toHex(value)).join(", ") + "]";
 
 export const toHex = (value: number, size = 2) => {
-  let hex = value.toString(16).toUpperCase();
+  const hex = value.toString(16).toUpperCase();
   if (hex.startsWith("-")) {
     return "-0x" + hex.substring(1).padStart(size, "0");
   } else {
