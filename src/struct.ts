@@ -1,7 +1,14 @@
+type DataViewGetter = (byteOffset: number, littleEndian?: boolean) => number;
+type DataViewSetter = (
+  byteOffset: number,
+  value: number,
+  littleEndian?: boolean,
+) => void;
+
 interface DataType {
   [key: string]: {
-    u: Function;
-    p: Function;
+    u: DataViewGetter;
+    p: DataViewSetter;
     bytes: number;
   };
 }
@@ -32,20 +39,6 @@ const lut: DataType = {
     p: DataView.prototype.setUint32,
     bytes: 4,
   },
-  q: {
-    // @ts-ignore
-    u: DataView.prototype.getInt64,
-    // @ts-ignore
-    p: DataView.prototype.setInt64,
-    bytes: 8,
-  },
-  Q: {
-    // @ts-ignore
-    u: DataView.prototype.getUint64,
-    // @ts-ignore
-    p: DataView.prototype.setUint64,
-    bytes: 8,
-  },
 };
 
 export const pack = (format: string, ...data: number[]) => {
@@ -53,7 +46,7 @@ export const pack = (format: string, ...data: number[]) => {
   if (format.replace(/[<>]/, "").length != data.length) {
     throw "Pack format to Argument count mismatch";
   }
-  let bytes: number[] = [];
+  const bytes: number[] = [];
   let littleEndian = true;
   for (let i = 0; i < format.length; i++) {
     if (format[i] == "<") {
@@ -70,9 +63,9 @@ export const pack = (format: string, ...data: number[]) => {
     if (!(formatChar in lut)) {
       throw "Unhandled character '" + formatChar + "' in pack format";
     }
-    let dataSize = lut[formatChar].bytes;
-    let view = new DataView(new ArrayBuffer(dataSize));
-    let dataViewFn = lut[formatChar].p.bind(view);
+    const dataSize = lut[formatChar].bytes;
+    const view = new DataView(new ArrayBuffer(dataSize));
+    const dataViewFn = lut[formatChar].p.bind(view);
     dataViewFn(0, value, littleEndian);
     for (let i = 0; i < dataSize; i++) {
       bytes.push(view.getUint8(i));
@@ -84,10 +77,10 @@ export const pack = (format: string, ...data: number[]) => {
 
 export const unpack = (format: string, bytes: number[]) => {
   let pointer = 0;
-  let data: number[] = [];
+  const data: number[] = [];
   let littleEndian = true;
 
-  for (let c of format) {
+  for (const c of format) {
     if (c == "<") {
       littleEndian = true;
     } else if (c == ">") {
@@ -101,12 +94,12 @@ export const unpack = (format: string, bytes: number[]) => {
     if (!(formatChar in lut)) {
       throw "Unhandled character '" + formatChar + "' in unpack format";
     }
-    let dataSize = lut[formatChar].bytes;
-    let view = new DataView(new ArrayBuffer(dataSize));
+    const dataSize = lut[formatChar].bytes;
+    const view = new DataView(new ArrayBuffer(dataSize));
     for (let i = 0; i < dataSize; i++) {
       view.setUint8(i, bytes[pointer + i] & 0xff);
     }
-    let dataViewFn = lut[formatChar].u.bind(view);
+    const dataViewFn = lut[formatChar].u.bind(view);
     data.push(dataViewFn(0, littleEndian));
     pointer += dataSize;
   }

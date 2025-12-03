@@ -1,9 +1,11 @@
 import { toByteArray } from "./util";
 
 export interface Logger {
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   log(msg: string, ...args: any[]): void;
   error(msg: string, ...args: any[]): void;
   debug(msg: string, ...args: any[]): void;
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 export const baudRates = [
@@ -389,7 +391,7 @@ export const FLASH_READ_TIMEOUT = 100; // timeout for reading flash in ms
  * Scales timeouts which are size-specific
  */
 export const timeoutPerMb = (secondsPerMb: number, sizeBytes: number) => {
-  let result = Math.floor(secondsPerMb * (sizeBytes / 0x1e6));
+  const result = Math.floor(secondsPerMb * (sizeBytes / 0x1e6));
   if (result < DEFAULT_TIMEOUT) {
     return DEFAULT_TIMEOUT;
   }

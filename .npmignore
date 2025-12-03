@@ -1,0 +1,8 @@
+# Exclude all markdown files except README.md
+*.md
+!README.md
+
+# Exclude Docker, VSC and CI folders
+.devcontainer/
+.vscode/
+.github/
