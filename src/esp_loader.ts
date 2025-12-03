@@ -645,7 +645,6 @@ export class ESPLoader extends EventTarget {
     let partialPacket: number[] | null = null;
     let inEscape = false;
     let readBytes: number[] = [];
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const stamp = Date.now();
       readBytes = [];
