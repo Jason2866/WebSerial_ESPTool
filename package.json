@@ -13,7 +13,9 @@
   "author": "Johann Obermeier",
   "license": "MIT",
   "scripts": {
-    "prepublishOnly": "script/build",
+    "prebuild": "node -e \"const fs=require('fs'); fs.rmSync('dist',{recursive:true,force:true}); fs.rmSync('js/modules',{recursive:true,force:true}); fs.mkdirSync('js/modules',{recursive:true});\"",
+    "build": "npm run prebuild && tsc && rollup -c && node -e \"const fs=require('fs'); fs.readdirSync('dist/web').filter(f=>f.endsWith('.js')).forEach(f=>fs.copyFileSync('dist/web/'+f,'js/modules/'+f)); fs.renameSync('js/modules/index.js','js/modules/esptool.js');\"",
+    "prepublishOnly": "npm run build",
     "format": "npm exec -- prettier --write src",
     "develop": "script/develop",
     "lint": "eslint src/",
