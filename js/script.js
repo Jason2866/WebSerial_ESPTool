@@ -5,6 +5,9 @@ const bufferSize = 512;
 const colors = ["#00a7e9", "#f89521", "#be1e2d"];
 const measurementPeriodId = "0001";
 
+// Check if running in Electron
+const isElectron = window.electronAPI && window.electronAPI.isElectron;
+
 const maxLogLength = 100;
 const log = document.getElementById("log");
 const butConnect = document.getElementById("butConnect");
@@ -347,9 +350,15 @@ function updateLogVisibility() {
  * Click handler for the erase button.
  */
 async function clickErase() {
-  if (
-    window.confirm("This will erase the entire flash. Click OK to continue.")
-  ) {
+  let confirmed = false;
+  
+  if (isElectron) {
+    confirmed = await window.electronAPI.showConfirm("This will erase the entire flash. Click OK to continue.");
+  } else {
+    confirmed = window.confirm("This will erase the entire flash. Click OK to continue.");
+  }
+  
+  if (confirmed) {
     baudRate.disabled = true;
     butErase.disabled = true;
     butProgram.disabled = true;
@@ -510,20 +519,7 @@ async function clickReadFlash() {
     return;
   }
 
-  // Prompt user for filename
   const defaultFilename = `flash_0x${offset.toString(16)}_0x${size.toString(16)}.bin`;
-  const filename = prompt(`Enter filename for flash data:`, defaultFilename);
-
-  // User cancelled
-  if (filename === null) {
-    return;
-  }
-
-  // User entered empty string
-  if (filename.trim() === "") {
-    errorMsg("Filename cannot be empty");
-    return;
-  }
 
   baudRate.disabled = true;
   butErase.disabled = true;
@@ -547,18 +543,9 @@ async function clickReadFlash() {
 
     logMsg(`Successfully read ${data.length} bytes from flash`);
 
-    // Create a download link with user-specified filename
-    const blob = new Blob([data], { type: "application/octet-stream" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Save file using Electron API or browser download
+    await saveDataToFile(data, defaultFilename);
 
-    logMsg(`Flash data downloaded as "${filename}"`);
   } catch (e) {
     errorMsg("Failed to read flash: " + e);
   } finally {
@@ -752,23 +739,7 @@ function displayPartitions(partitions) {
  * Download a partition
  */
 async function downloadPartition(partition) {
-  // Prompt user for filename
   const defaultFilename = `${partition.name}_0x${partition.offset.toString(16)}.bin`;
-  const filename = prompt(
-    `Enter filename for partition "${partition.name}":`,
-    defaultFilename
-  );
-
-  // User cancelled
-  if (filename === null) {
-    return;
-  }
-
-  // User entered empty string
-  if (filename.trim() === "") {
-    errorMsg("Filename cannot be empty");
-    return;
-  }
 
   const partitionProgress = document.getElementById("partitionProgress");
   const progressBar = partitionProgress.querySelector("div");
@@ -790,18 +761,10 @@ async function downloadPartition(partition) {
       }
     );
 
-    // Create download with user-specified filename
-    const blob = new Blob([data], { type: "application/octet-stream" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Save file using Electron API or browser download
+    await saveDataToFile(data, defaultFilename);
 
-    logMsg(`Partition "${partition.name}" downloaded as "${filename}"`);
+    logMsg(`Partition "${partition.name}" downloaded successfully`);
   } catch (e) {
     errorMsg(`Failed to download partition: ${e}`);
   } finally {
@@ -912,4 +875,59 @@ function ucWords(text) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Save data to file - uses Electron API in desktop app, browser download otherwise
+ */
+async function saveDataToFile(data, defaultFilename) {
+  if (isElectron) {
+    // Use Electron's native save dialog
+    const result = await window.electronAPI.saveFile(
+      Array.from(data), // Convert Uint8Array to regular array for IPC
+      defaultFilename
+    );
+    
+    if (result.success) {
+      logMsg(`File saved: ${result.filePath}`);
+    } else if (result.canceled) {
+      logMsg("Save cancelled by user");
+    } else {
+      errorMsg(`Failed to save file: ${result.error}`);
+    }
+  } else {
+    // Browser fallback - use download link
+    const blob = new Blob([data], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = defaultFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    logMsg(`Flash data downloaded as "${defaultFilename}"`);
+  }
+}
+
+/**
+ * Read file from disk - uses Electron API in desktop app
+ */
+async function readFileFromDisk() {
+  if (isElectron) {
+    const result = await window.electronAPI.openFile();
+    
+    if (result.success) {
+      return {
+        data: new Uint8Array(result.data),
+        filename: result.filename,
+        filePath: result.filePath
+      };
+    } else if (result.canceled) {
+      return null;
+    } else {
+      throw new Error(result.error);
+    }
+  }
+  return null;
 }
