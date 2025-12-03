@@ -1290,7 +1290,8 @@ export class ESPLoader extends EventTarget {
     if (dataBits == 0) {
       await this.writeRegister(SPI_W0_REG, 0); // clear data register before we read it
     } else {
-      data.concat(new Array(data.length % 4).fill(0x00)); // pad to 32-bit multiple
+      const padLen = (4 - (data.length % 4)) % 4;
+      data = data.concat(new Array(padLen).fill(0x00)); // pad to 32-bit multiple
 
       const words = unpack("I".repeat(Math.floor(data.length / 4)), data);
       let nextReg = SPI_W0_REG;
