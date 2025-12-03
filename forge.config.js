@@ -8,16 +8,17 @@ module.exports = {
     asar: true,
     appBundleId: 'com.tasmota.webserial-esptool',
     appCategoryType: 'public.app-category.developer-tools',
-    // Files to include in the app
+    // Files to exclude from the app
     ignore: [
       /^\/src/,
       /^\/script/,
+      /^\/\.github/,
       /^\/node_modules\/(?!electron)/,
       /\.git/,
       /\.eslint/,
       /\.prettier/,
       /tsconfig\.json/,
-      /rollup\.config\.js/,
+      /rollup\.config\.(js|mjs)$/,
       /\.md$/,
     ],
   },

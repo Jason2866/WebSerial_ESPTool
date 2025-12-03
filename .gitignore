@@ -1,5 +1,4 @@
 *.DS_Store
 node_modules
 dist
-out/WebSerial ESPTool-darwin-arm64/
-out/make/zip/
+out
