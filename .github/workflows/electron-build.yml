@@ -120,14 +120,16 @@ jobs:
             
             | Platform | Architecture | File |
             |----------|--------------|------|
-            | macOS | Apple Silicon (M1/M2/M3) | `*.arm64.dmg` |
+            | macOS | Apple Silicon | `*.arm64.dmg` |
             | macOS | Intel | `*.x64.dmg` |
             | Windows | x64 | `*.exe` / `*.zip` |
             | Linux | x64 | `*.deb` / `*.rpm` / `*.zip` |
             
             ### Installation
             
-            **macOS:** Download with `curl -L -o WebSerial.ESPTool-${{ github.ref_name }}-arm64.dmg https://github.com/Jason2866/WebSerial_ESPTool/releases/download/${{ github.ref_name }}/WebSerial.ESPTool-${{ github.ref_name }}-arm64.dmg` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
+            **macOS Apple Silicon:** Download with `curl -L -o WebSerial.ESPTool-${{ github.ref_name }}-arm64.dmg https://github.com/Jason2866/WebSerial_ESPTool/releases/download/${{ github.ref_name }}/WebSerial.ESPTool-${{ github.ref_name }}-arm64.dmg` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
+            
+            **macOS Intel:** Download with `curl -L -o WebSerial.ESPTool-${{ github.ref_name }}-x64.dmg https://github.com/Jason2866/WebSerial_ESPTool/releases/download/${{ github.ref_name }}/WebSerial.ESPTool-${{ github.ref_name }}-x64.dmg` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
             
             **Windows:** Run the `.exe` installer or extract the `.zip` archive.
             
