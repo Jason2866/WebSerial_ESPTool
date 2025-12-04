@@ -6,18 +6,24 @@ module.exports = {
     name: 'WebSerial ESPTool',
     executableName: 'webserial-esptool',
     asar: true,
+    // Ensure consistent executable name across platforms
+    win32metadata: {
+      FileDescription: 'WebSerial ESPTool',
+      ProductName: 'WebSerial ESPTool',
+    },
     appBundleId: 'com.tasmota.webserial-esptool',
     appCategoryType: 'public.app-category.developer-tools',
-    // Files to include in the app
+    // Files to exclude from the app
     ignore: [
       /^\/src/,
       /^\/script/,
+      /^\/\.github/,
       /^\/node_modules\/(?!electron)/,
       /\.git/,
       /\.eslint/,
       /\.prettier/,
       /tsconfig\.json/,
-      /rollup\.config\.js/,
+      /rollup\.config\.(js|mjs)$/,
       /\.md$/,
     ],
   },
@@ -39,6 +45,8 @@ module.exports = {
       name: '@electron-forge/maker-deb',
       config: {
         options: {
+          name: 'webserial-esptool',
+          bin: 'webserial-esptool',
           maintainer: 'Johann Obermeier',
           homepage: 'https://github.com/Jason2866/WebSerial_ESPTool',
           categories: ['Development', 'Utility'],
@@ -49,6 +57,8 @@ module.exports = {
       name: '@electron-forge/maker-rpm',
       config: {
         options: {
+          name: 'webserial-esptool',
+          bin: 'webserial-esptool',
           homepage: 'https://github.com/Jason2866/WebSerial_ESPTool',
           categories: ['Development', 'Utility'],
         },

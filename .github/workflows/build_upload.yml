@@ -27,10 +27,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 20
-      - name: Install Yarn with NPM
-        run: npm install -g yarn
-      - name: yarn install
-        run: yarn install
+      - name: Install NPM
+        run: npm install
       - name: Compile TypeScript
         run: |
           set -e

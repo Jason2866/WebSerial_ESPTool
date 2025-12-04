@@ -1,6 +1,6 @@
 {
   "name": "tasmota-webserial-esptool",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Flash & Read ESP devices using WebSerial",
   "main": "electron/main.js",
   "repository": {
@@ -13,7 +13,9 @@
   "author": "Johann Obermeier",
   "license": "MIT",
   "scripts": {
-    "prepublishOnly": "script/build",
+    "prebuild": "node -e \"const fs=require('fs'); fs.rmSync('dist',{recursive:true,force:true}); fs.rmSync('js/modules',{recursive:true,force:true}); fs.mkdirSync('js/modules',{recursive:true});\"",
+    "build": "npm run prebuild && tsc && rollup -c && node -e \"const fs=require('fs'); fs.readdirSync('dist/web').filter(f=>f.endsWith('.js')).forEach(f=>fs.copyFileSync('dist/web/'+f,'js/modules/'+f)); fs.renameSync('js/modules/index.js','js/modules/esptool.js');\"",
+    "prepublishOnly": "npm run build",
     "format": "npm exec -- prettier --write src",
     "develop": "script/develop",
     "lint": "eslint src/",
@@ -40,10 +42,10 @@
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/pako": "^2.0.4",
     "@types/w3c-web-serial": "^1.0.7",
-    "electron": "^33.2.1",
+    "electron": "^39.2.5",
     "electron-squirrel-startup": "^1.0.1",
     "eslint": "^9.39.1",
-    "eslint-config-prettier": "^9.1.2",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "prettier": "^3.7.3",
     "rollup": "^4.53.3",

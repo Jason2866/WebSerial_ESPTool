@@ -121,8 +121,13 @@ export class ESPLoader extends EventTarget {
     > = {
       0x1a86: {
         // QinHeng Electronics
+        0x7522: { name: "CH340", maxBaudrate: 460800 },
         0x7523: { name: "CH340", maxBaudrate: 460800 },
+        0x7584: { name: "CH340", maxBaudrate: 460800 },
+        0x5523: { name: "CH341", maxBaudrate: 2000000 },
+        0x55d3: { name: "CH343", maxBaudrate: 6000000 },
         0x55d4: { name: "CH9102", maxBaudrate: 6000000 },
+        0x55d8: { name: "CH9101", maxBaudrate: 3000000 },
       },
       0x10c4: {
         // Silicon Labs
