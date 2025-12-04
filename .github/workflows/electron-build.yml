@@ -20,12 +20,12 @@ jobs:
       matrix:
         include:
           # macOS Intel
-          - os: macos-13
+          - os: macos-15-intel
             platform: darwin
             arch: x64
             artifact_name: macos-intel
           # macOS ARM (Apple Silicon)
-          - os: macos-14
+          - os: macos-latest
             platform: darwin
             arch: arm64
             artifact_name: macos-arm64
@@ -127,7 +127,7 @@ jobs:
             
             ### Installation
             
-            **macOS:** Open the DMG and drag the app to Applications. On first launch, right-click and select "Open" to bypass Gatekeeper.
+            **macOS:** Download with `curl -L -o WebSerial.ESPTool-${{ github.ref_name }}-arm64.dmg https://github.com/Jason2866/WebSerial_ESPTool/releases/download/${{ github.ref_name }}/WebSerial.ESPTool-${{ github.ref_name }}-arm64.dmg` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
             
             **Windows:** Run the `.exe` installer or extract the `.zip` archive.
             
