@@ -69,6 +69,7 @@ function setupSerialPortHandlers(ses) {
         return name.includes('cp210') || 
                name.includes('ch340') || 
                name.includes('ch341') ||
+               name.includes('ch343') ||
                name.includes('ftdi') ||
                name.includes('usb') ||
                name.includes('uart') ||
