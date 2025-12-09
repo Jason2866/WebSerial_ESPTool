@@ -1649,21 +1649,6 @@ export class ESPLoader extends EventTarget {
       );
     }
 
-    // Check if we should reconnect BEFORE starting the read
-    // Reconnect if total bytes read >= 4MB to ensure clean state
-    if (this._totalBytesRead >= 4 * 1024 * 1024) {
-      this.logger.log(
-        `Reconnecting before new read...`,
-      );
-
-      try {
-        await this.reconnect();
-      } catch (err) {
-        // If reconnect fails, throw error - don't continue with potentially broken state
-        throw new Error(`Reconnect failed: ${err}`);
-      }
-    }
-
     // Flush serial buffers before flash read operation
     await this.flushSerialBuffers();
 
@@ -1678,18 +1663,6 @@ export class ESPLoader extends EventTarget {
     let remainingSize = size;
 
     while (remainingSize > 0) {
-      // Reconnect every 4MB to prevent buffer issues
-      if (allData.length > 0 && allData.length % (4 * 1024 * 1024) === 0) {
-        this.logger.debug(
-          `Read ${allData.length} bytes. Reconnecting to clear buffers...`,
-        );
-        try {
-          await this.reconnect();
-        } catch (err) {
-          throw new Error(`Reconnect failed during read: ${err}`);
-        }
-      }
-
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
       let chunkSuccess = false;
       let retryCount = 0;
