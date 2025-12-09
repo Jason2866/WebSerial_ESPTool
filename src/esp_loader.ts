@@ -1594,13 +1594,8 @@ export class ESPLoader extends EventTarget {
       this.__inputBuffer = [];
     }
 
-    // Wait for any pending TX operations and in-flight RX data
+    // Wait for any pending data
     await sleep(SYNC_TIMEOUT);
-
-    // Clear buffer again
-    if (!this._parent) {
-      this.__inputBuffer = [];
-    }
 
     // Final clear
     if (!this._parent) {
