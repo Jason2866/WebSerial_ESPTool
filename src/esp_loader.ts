@@ -850,10 +850,8 @@ export class ESPLoader extends EventTarget {
       this._inputBuffer.length = 0;
       const response = await this._sync();
       if (response) {
-        await sleep(SYNC_TIMEOUT);
         return true;
       }
-      await sleep(SYNC_TIMEOUT);
     }
 
     throw new Error("Couldn't sync to ESP. Try resetting.");
@@ -1505,8 +1503,6 @@ export class ESPLoader extends EventTarget {
       this._reader = undefined;
     }
 
-    await sleep(SYNC_TIMEOUT);
-
     // Close port
     try {
       await this.port.close();
@@ -1514,9 +1510,6 @@ export class ESPLoader extends EventTarget {
     } catch (err) {
       this.logger.debug(`Port close error: ${err}`);
     }
-
-    // Wait for port to fully close
-    await sleep(SYNC_TIMEOUT);
 
     // Open the port
     this.logger.debug("Opening port...");
@@ -1526,9 +1519,6 @@ export class ESPLoader extends EventTarget {
     } catch (err) {
       throw new Error(`Failed to open port: ${err}`);
     }
-
-    // Wait for port to be fully ready
-    await sleep(SYNC_TIMEOUT);
 
     // Verify port streams are available
     if (!this.port.readable || !this.port.writable) {
@@ -1578,9 +1568,6 @@ export class ESPLoader extends EventTarget {
     if (this._currentBaudRate !== ESP_ROM_BAUD) {
       await stubLoader.setBaudrate(this._currentBaudRate);
 
-      // Wait for port to be ready after baudrate change
-      await sleep(SYNC_TIMEOUT);
-
       // Verify port is still ready after baudrate change
       if (!this.port.writable || !this.port.readable) {
         throw new Error(
@@ -1614,9 +1601,6 @@ export class ESPLoader extends EventTarget {
     if (!this._parent) {
       this.__inputBuffer = [];
     }
-
-    // Wait longer to ensure all stale data has been received and discarded
-    await sleep(SYNC_TIMEOUT * 2);
 
     // Final clear
     if (!this._parent) {
