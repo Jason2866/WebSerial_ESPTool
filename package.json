@@ -26,6 +26,8 @@
     "publish": "electron-forge publish"
   },
   "devDependencies": {
+    "@types/node": "^25.0.2",
+    "@eslint/js": "^9.39.2",
     "@electron-forge/cli": "^7.6.0",
     "@electron-forge/maker-deb": "^7.6.0",
     "@electron-forge/maker-dmg": "^7.6.0",
@@ -42,6 +44,7 @@
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/pako": "^2.0.4",
     "@types/w3c-web-serial": "^1.0.7",
+    "eslint": "^9.39.2",
     "electron": "^39.2.5",
     "electron-squirrel-startup": "^1.0.1",
     "eslint": "^9.39.1",
@@ -54,7 +57,6 @@
     "typescript-eslint": "^8.48.1"
   },
   "dependencies": {
-    "@types/node": "^24.10.1",
     "pako": "^2.1.0",
     "tslib": "^2.8.1"
   }

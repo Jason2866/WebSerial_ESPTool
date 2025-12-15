@@ -8,7 +8,7 @@ WebSerial ESPTool is **not** based on esptool.js
 ## Local development
 
 - Clone this repository.
-- Install dependencies with `yarn`
+- Install dependencies with `npm install`
 - Run `script/develop`
 - Open http://localhost:5004/
 

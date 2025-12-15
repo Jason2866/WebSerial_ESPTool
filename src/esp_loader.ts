@@ -266,7 +266,7 @@ export class ESPLoader extends EventTarget {
       }
     }
 
-    // Fallback: Use magic value detection for ESP8266, ESP32, ESP32-S2, and ESP32-P4 RC versions
+    // Fallback: Use magic value detection for ESP8266, ESP32, ESP32-S2
     const chipMagicValue = await this.readRegister(CHIP_DETECT_MAGIC_REG_ADDR);
     const chip = CHIP_DETECT_MAGIC_VALUES[chipMagicValue >>> 0];
     if (chip === undefined) {
@@ -280,7 +280,6 @@ export class ESPLoader extends EventTarget {
     this.chipName = chip.name;
     this.chipFamily = chip.family;
 
-    // For ESP32-P4 detected via magic value (old revisions), set variant
     if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
       this.chipRevision = await this.getChipRevision();
       this.logger.debug(`ESP32-P4 revision: ${this.chipRevision}`);
@@ -851,10 +850,8 @@ export class ESPLoader extends EventTarget {
       this._inputBuffer.length = 0;
       const response = await this._sync();
       if (response) {
-        await sleep(SYNC_TIMEOUT);
         return true;
       }
-      await sleep(SYNC_TIMEOUT);
     }
 
     throw new Error("Couldn't sync to ESP. Try resetting.");
@@ -1195,7 +1192,7 @@ export class ESPLoader extends EventTarget {
     misoBits: number,
   ) {
     if (spiAddresses.mosiDlenOffs != -1) {
-      // ESP32/32S2/32S3/32C3 has a more sophisticated way to set up "user" commands
+      // Actual MCUs have a more sophisticated way to set up "user" commands
       const SPI_MOSI_DLEN_REG =
         spiAddresses.regBase + spiAddresses.mosiDlenOffs;
       const SPI_MISO_DLEN_REG =
@@ -1247,7 +1244,7 @@ export class ESPLoader extends EventTarget {
     const SPI_USR_MISO = 1 << 28;
     const SPI_USR_MOSI = 1 << 27;
 
-    // SPI registers, base address differs ESP32* vs 8266
+    // SPI registers, base address differs
     const spiAddresses = getSpiFlashAddresses(this.getChipFamily());
     const base = spiAddresses.regBase;
     const SPI_CMD_REG = base;
@@ -1506,8 +1503,6 @@ export class ESPLoader extends EventTarget {
       this._reader = undefined;
     }
 
-    await sleep(SYNC_TIMEOUT);
-
     // Close port
     try {
       await this.port.close();
@@ -1515,9 +1510,6 @@ export class ESPLoader extends EventTarget {
     } catch (err) {
       this.logger.debug(`Port close error: ${err}`);
     }
-
-    // Wait for port to fully close
-    await sleep(SYNC_TIMEOUT);
 
     // Open the port
     this.logger.debug("Opening port...");
@@ -1527,9 +1519,6 @@ export class ESPLoader extends EventTarget {
     } catch (err) {
       throw new Error(`Failed to open port: ${err}`);
     }
-
-    // Wait for port to be fully ready
-    await sleep(SYNC_TIMEOUT);
 
     // Verify port streams are available
     if (!this.port.readable || !this.port.writable) {
@@ -1545,7 +1534,7 @@ export class ESPLoader extends EventTarget {
     const savedChipVariant = this.chipVariant;
     const savedFlashSize = this.flashSize;
 
-    // Reinitialize without chip detection
+    // Reinitialize
     await this.hardReset(true);
 
     if (!this._parent) {
@@ -1557,7 +1546,7 @@ export class ESPLoader extends EventTarget {
     await this.flushSerialBuffers();
     await this.sync();
 
-    // Restore chip info (skip detection)
+    // Restore chip info
     this.chipFamily = savedChipFamily;
     this.chipName = savedChipName;
     this.chipRevision = savedChipRevision;
@@ -1571,16 +1560,13 @@ export class ESPLoader extends EventTarget {
       throw new Error("Port not ready after reconnect");
     }
 
-    // Load stub (skip flash detection)
+    // Load stub
     const stubLoader = await this.runStub(true);
     this.logger.debug("Stub loaded");
 
     // Restore baudrate if it was changed
     if (this._currentBaudRate !== ESP_ROM_BAUD) {
       await stubLoader.setBaudrate(this._currentBaudRate);
-
-      // Wait for port to be ready after baudrate change
-      await sleep(SYNC_TIMEOUT);
 
       // Verify port is still ready after baudrate change
       if (!this.port.writable || !this.port.readable) {
@@ -1603,21 +1589,13 @@ export class ESPLoader extends EventTarget {
    * This clears both the application RX buffer and waits for hardware buffers to drain
    */
   private async flushSerialBuffers(): Promise<void> {
-    // Clear application RX buffer
+    // Clear application buffer
     if (!this._parent) {
       this.__inputBuffer = [];
     }
 
-    // Wait for any pending TX operations and in-flight RX data
+    // Wait for any pending data
     await sleep(SYNC_TIMEOUT);
-
-    // Clear RX buffer again
-    if (!this._parent) {
-      this.__inputBuffer = [];
-    }
-
-    // Wait longer to ensure all stale data has been received and discarded
-    await sleep(SYNC_TIMEOUT * 2);
 
     // Final clear
     if (!this._parent) {
@@ -1650,22 +1628,6 @@ export class ESPLoader extends EventTarget {
       );
     }
 
-    // Check if we should reconnect BEFORE starting the read
-    // Reconnect if total bytes read >= 4MB to ensure clean state
-    if (this._totalBytesRead >= 4 * 1024 * 1024) {
-      this.logger.log(
-        // `Total bytes read: ${this._totalBytesRead}. Reconnecting before new read...`,
-        `Reconnecting before new read...`,
-      );
-
-      try {
-        await this.reconnect();
-      } catch (err) {
-        // If reconnect fails, throw error - don't continue with potentially broken state
-        throw new Error(`Reconnect failed: ${err}`);
-      }
-    }
-
     // Flush serial buffers before flash read operation
     await this.flushSerialBuffers();
 
@@ -1680,18 +1642,6 @@ export class ESPLoader extends EventTarget {
     let remainingSize = size;
 
     while (remainingSize > 0) {
-      // Reconnect every 4MB to prevent browser buffer issues
-      if (allData.length > 0 && allData.length % (4 * 1024 * 1024) === 0) {
-        this.logger.debug(
-          `Read ${allData.length} bytes. Reconnecting to clear buffers...`,
-        );
-        try {
-          await this.reconnect();
-        } catch (err) {
-          throw new Error(`Reconnect failed during read: ${err}`);
-        }
-      }
-
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
       let chunkSuccess = false;
       let retryCount = 0;

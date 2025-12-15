@@ -6,3 +6,14 @@
 .devcontainer/
 .vscode/
 .github/
+
+#Exclude config files
+rollup.config.mjs
+tsconfig.json
+.eslint.config.js
+.prettierignore
+.package.json
+.packagelock.json
+
+# Exclude electron folders
+electron

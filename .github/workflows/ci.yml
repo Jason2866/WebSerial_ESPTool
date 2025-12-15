@@ -24,7 +24,3 @@ jobs:
       - run: npm ci
       - run: script/build
       - run: npm exec -- prettier --check src
-      - name: Commit changed files
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "Github Action: Updated files"
