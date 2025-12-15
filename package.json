@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.2",
-    "eslint": "^9.39.2"
+    "eslint": "^9.39.2",
     "@eslint/js": "^9.39.2",
     "electron": "^39.2.5",
     "electron-squirrel-startup": "^1.0.1",
