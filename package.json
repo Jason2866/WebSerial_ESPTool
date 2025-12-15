@@ -27,7 +27,10 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.2",
+    "eslint": "^9.39.2"
     "@eslint/js": "^9.39.2",
+    "electron": "^39.2.5",
+    "electron-squirrel-startup": "^1.0.1",
     "@electron-forge/cli": "^7.6.0",
     "@electron-forge/maker-deb": "^7.6.0",
     "@electron-forge/maker-dmg": "^7.6.0",
@@ -37,16 +40,12 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.6.0",
     "@electron-forge/plugin-fuses": "^7.6.0",
     "@electron/fuses": "^1.8.0",
-    "@eslint/js": "^9.39.2",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.0",
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/pako": "^2.0.4",
     "@types/w3c-web-serial": "^1.0.7",
-    "electron": "^39.2.5",
-    "electron-squirrel-startup": "^1.0.1",
-    "eslint": "^9.39.2"
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "prettier": "^3.7.3",
