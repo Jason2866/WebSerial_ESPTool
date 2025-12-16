@@ -70,6 +70,24 @@
   color: #000;
 }
 
+.header button.highlight {
+  background-color: #ff6b00;
+  border-color: #ff6b00;
+  color: #fff;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 107, 0, 0.7);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 10px rgba(255, 107, 0, 0);
+  }
+}
+
 .header select {
   height: 30px;
 }
@@ -549,4 +567,76 @@ div.clear {
 }
 .center {
   text-align: center;
+}
+
+/* ESP32-S2 Reconnect Modal */
+.modal {
+  display: flex;
+  position: fixed;
+  z-index: 9999;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  align-items: center;
+  justify-content: center;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  background-color: #fff;
+  padding: 40px;
+  border-radius: 15px;
+  box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  max-width: 500px;
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-content h2 {
+  color: #ff6b00;
+  margin-top: 0;
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+
+.modal-content p {
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 15px 0;
+  color: #333;
+}
+
+.modal-button {
+  background-color: #ff6b00;
+  color: white;
+  border: none;
+  padding: 15px 40px;
+  font-size: 18px;
+  font-weight: 600;
+  border-radius: 25px;
+  cursor: pointer;
+  margin-top: 20px;
+  transition: all 0.3s ease;
+  animation: pulse 1.5s infinite;
+}
+
+.modal-button:hover {
+  background-color: #ff8c00;
+  transform: scale(1.05);
 }

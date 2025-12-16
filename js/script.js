@@ -1,4 +1,5 @@
 let espStub;
+let esp32s2ReconnectInProgress = false;
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 const bufferSize = 512;
@@ -241,6 +242,58 @@ async function clickConnect() {
     debug: (...args) => debugMsg(...args),
     error: (...args) => errorMsg(...args),
   });
+  
+  // Handle ESP32-S2 Native USB reconnection requirement - must be set on esploader, not espStub
+  // Only add listener if not already in reconnect mode
+  if (!esp32s2ReconnectInProgress) {
+    esploader.addEventListener("esp32s2-usb-reconnect", async () => {
+      // Prevent recursive calls
+      if (esp32s2ReconnectInProgress) {
+        return;
+      }
+      
+      esp32s2ReconnectInProgress = true;
+      logMsg("⚠️  ESP32-S2 Native USB detected!");
+      toggleUIConnected(false);
+      espStub = undefined;
+      
+      try {
+        await esploader.port.close();
+        
+        if (esploader.port.forget) {
+          await esploader.port.forget();
+        }
+      } catch (disconnectErr) {
+        // Ignore disconnect errors
+      }
+      
+      // Show modal dialog
+      const modal = document.getElementById("esp32s2Modal");
+      const reconnectBtn = document.getElementById("butReconnectS2");
+      
+      modal.classList.remove("hidden");
+      
+      // Handle reconnect button click
+      const handleReconnect = async () => {
+        modal.classList.add("hidden");
+        reconnectBtn.removeEventListener("click", handleReconnect);
+        
+        // Trigger port selection
+        try {
+          await clickConnect();
+          // Reset flag on successful connection
+          esp32s2ReconnectInProgress = false;
+        } catch (err) {
+          errorMsg("Failed to reconnect: " + err);
+          // Reset flag on error so user can try again
+          esp32s2ReconnectInProgress = false;
+        }
+      };
+      
+      reconnectBtn.addEventListener("click", handleReconnect);
+    });
+  }
+  
   try {
     await esploader.initialize();
 
@@ -268,7 +321,17 @@ async function clickConnect() {
       espStub = false;
     });
   } catch (err) {
-    await esploader.disconnect();
+    // If ESP32-S2 reconnect is in progress, suppress the error
+    if (esp32s2ReconnectInProgress) {
+      logMsg("Initialization interrupted for ESP32-S2 reconnection.");
+      return;
+    }
+    
+    try {
+      await esploader.disconnect();
+    } catch (disconnectErr) {
+      // Ignore disconnect errors
+    }
     throw err;
   }
 }
