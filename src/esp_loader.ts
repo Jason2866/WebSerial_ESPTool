@@ -850,8 +850,10 @@ export class ESPLoader extends EventTarget {
       this._inputBuffer.length = 0;
       const response = await this._sync();
       if (response) {
+        await sleep(SYNC_TIMEOUT);
         return true;
       }
+      await sleep(SYNC_TIMEOUT);
     }
 
     throw new Error("Couldn't sync to ESP. Try resetting.");
