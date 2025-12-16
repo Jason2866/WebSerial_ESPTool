@@ -626,7 +626,7 @@ div.clear {
   background-color: #ff6b00;
   color: white;
   border: none;
-  padding: 15px 40px;
+  padding: 12px 40px;
   font-size: 18px;
   font-weight: 600;
   border-radius: 25px;
@@ -634,6 +634,11 @@ div.clear {
   margin-top: 20px;
   transition: all 0.3s ease;
   animation: pulse 1.5s infinite;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: normal;
+  text-align: center;
 }
 
 .modal-button:hover {
