@@ -84,6 +84,7 @@ export class ESPLoader extends EventTarget {
   private _maxUSBSerialBaudrate?: number;
   private _reader?: ReadableStreamDefaultReader<Uint8Array>;
   private _isESP32S2NativeUSB: boolean = false;
+  private _initializationSucceeded: boolean = false;
 
   constructor(
     public port: SerialPort,
@@ -212,6 +213,9 @@ export class ESPLoader extends EventTarget {
     this.logger.debug(
       `Bootloader flash offset: 0x${FlAddr.flashOffs.toString(16)}`,
     );
+
+    // Mark initialization as successful
+    this._initializationSucceeded = true;
   }
 
   /**
@@ -413,7 +417,8 @@ export class ESPLoader extends EventTarget {
     this.connected = false;
 
     // Check if this is ESP32-S2 Native USB that needs port reselection
-    if (this._isESP32S2NativeUSB) {
+    // Only trigger reconnect if initialization did NOT succeed (wrong port)
+    if (this._isESP32S2NativeUSB && !this._initializationSucceeded) {
       this.logger.log(
         "ESP32-S2 Native USB detected - requesting port reselection",
       );
