@@ -253,7 +253,7 @@ async function clickConnect() {
       }
       
       esp32s2ReconnectInProgress = true;
-      logMsg("⚠️  ESP32-S2 Native USB detected!");
+      logMsg("ESP32-S2 Native USB detected!");
       toggleUIConnected(false);
       espStub = undefined;
       
