@@ -37,7 +37,7 @@ Key capabilities:
 ## Installation
 
 ```bash
-npm install esptool-js
+npm install tasmota-webserial-esptool
 ```
 
 ---
@@ -45,7 +45,7 @@ npm install esptool-js
 ## Quick Start
 
 ```javascript
-import { ESPLoader } from 'esptool-js';
+import { ESPLoader } from 'tasmota-webserial-esptool';
 
 // Request serial port from user
 const port = await navigator.serial.requestPort();
@@ -972,7 +972,7 @@ async function robustFlashWrite(stub, data, address) {
 ### Complete Flash Programming
 
 ```javascript
-import { ESPLoader } from 'esptool-js';
+import { ESPLoader } from 'tasmota-webserial-esptool';
 
 async function flashFirmware() {
   // Get serial port

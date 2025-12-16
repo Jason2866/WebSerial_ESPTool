@@ -60,7 +60,7 @@ The event is dispatched when **all** of the following conditions are met:
 ### Usage Example
 
 ```javascript
-import { ESPLoader } from 'esptool-js';
+import { ESPLoader } from 'tasmota-webserial-esptool';
 
 async function connectToESP32() {
   const port = await navigator.serial.requestPort();
