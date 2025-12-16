@@ -609,7 +609,7 @@ div.clear {
 }
 
 .modal-content h2 {
-  color: #ff6b00;
+  color: #4a4a4a;
   margin-top: 0;
   font-size: 24px;
   margin-bottom: 20px;
@@ -623,17 +623,16 @@ div.clear {
 }
 
 .modal-button {
-  background-color: #ff6b00;
-  color: white;
-  border: none;
+  background-color: #fff;
+  color: #6b6b6b;
+  border: 2px solid #6b6b6b;
   padding: 12px 40px;
   font-size: 18px;
   font-weight: 600;
   border-radius: 25px;
   cursor: pointer;
   margin-top: 20px;
-  transition: all 0.3s ease;
-  animation: pulse 1.5s infinite;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -642,6 +641,7 @@ div.clear {
 }
 
 .modal-button:hover {
-  background-color: #ff8c00;
-  transform: scale(1.05);
+  background-color: #71ae1e;
+  color: #fff;
+  border-color: #71ae1e;
 }
