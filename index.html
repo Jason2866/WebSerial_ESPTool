@@ -324,10 +324,71 @@
             </div>
           </div>
         </div>
+        <div id="littlefsManager" class="littlefs-manager hidden">
+          <h3>LittleFS Filesystem Manager</h3>
+          <div class="littlefs-info">
+            <div class="littlefs-partition-info">
+              <strong>Partition:</strong> <span id="littlefsPartitionName">-</span>
+              <span class="littlefs-size">(<span id="littlefsPartitionSize">-</span>)</span>
+            </div>
+            <div class="littlefs-usage">
+              <div class="usage-bar">
+                <div id="littlefsUsageBar" class="usage-fill" style="width: 0%"></div>
+              </div>
+              <div class="usage-text">
+                <span id="littlefsUsageText">Used: 0 B / 0 B (0%)</span>
+                <span id="littlefsDiskVersion" class="disk-version"></span>
+              </div>
+            </div>
+          </div>
+          <div class="littlefs-controls">
+            <button id="butLittlefsRefresh" type="button">
+              Refresh
+            </button>
+            <button id="butLittlefsBackup" type="button">
+              Backup Image
+            </button>
+            <button id="butLittlefsClose" type="button">
+              Close
+            </button>
+          </div>
+          <div class="littlefs-breadcrumb">
+            <button id="butLittlefsUp" type="button" disabled="disabled">
+              ↑ Up
+            </button>
+            <span id="littlefsBreadcrumb">/</span>
+          </div>
+          <div class="littlefs-file-upload">
+            <input type="file" id="littlefsFileInput" />
+            <button id="butLittlefsUpload" type="button" disabled="disabled">
+              Upload File
+            </button>
+            <button id="butLittlefsMkdir" type="button">
+              New Folder
+            </button>
+          </div>
+          <div class="littlefs-files">
+            <table id="littlefsFileTable" class="file-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Size</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="littlefsFileList">
+                <tr>
+                  <td colspan="4" class="empty-state">No files loaded</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
         <div id="log"></div>
       </div>
     </main>
-    
+
     <!-- ESP32-S2 Reconnect Modal -->
     <div id="esp32s2Modal" class="modal hidden">
       <div class="modal-content">
@@ -338,7 +399,7 @@
         </button>
       </div>
     </div>
-    
+
     <footer class="footer"></footer>
   </body>
 </html>

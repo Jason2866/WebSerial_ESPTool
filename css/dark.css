@@ -91,3 +91,87 @@ input {
 .progress-bar {
   border-color: #fff;
 }
+
+/* LittleFS Manager Dark Mode */
+.littlefs-manager {
+  background-color: rgba(0, 167, 233, 0.1);
+  border-color: #00a7e9;
+}
+
+.littlefs-info {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.littlefs-breadcrumb {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.littlefs-breadcrumb span {
+  color: #fff;
+}
+
+.file-table {
+  background-color: #333;
+  color: #fff;
+}
+
+.file-table thead {
+  background-color: #222;
+}
+
+.file-table th {
+  border-bottom-color: #555;
+}
+
+.file-table td {
+  border-bottom-color: #444;
+}
+
+.file-table tbody tr:hover {
+  background-color: rgba(0, 167, 233, 0.2);
+}
+
+.littlefs-controls button,
+.littlefs-file-upload button {
+  background-color: #333;
+  color: #00a7e9;
+  border-color: #00a7e9;
+}
+
+.littlefs-controls button:hover:not(:disabled),
+.littlefs-file-upload button:hover:not(:disabled) {
+  background-color: #00a7e9;
+  color: #fff;
+}
+
+.littlefs-breadcrumb button {
+  background-color: #333;
+  color: #fff;
+  border-color: #fff;
+}
+
+.file-actions button {
+  background-color: #333;
+  color: #fff;
+  border-color: #666;
+}
+
+.file-actions button:hover {
+  background-color: #00a7e9;
+  border-color: #00a7e9;
+}
+
+.littlefs-file-upload input[type="file"] {
+  background-color: #444;
+  color: #fff;
+  border-color: #666;
+}
+
+.partition-table-display th {
+  background-color: #222;
+  color: #fff;
+}
+
+.partition-table-display td {
+  border-color: #555;
+}

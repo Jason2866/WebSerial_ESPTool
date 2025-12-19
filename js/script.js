@@ -1,10 +1,16 @@
 let espStub;
 let esp32s2ReconnectInProgress = false;
+let currentLittleFS = null;
+let currentLittleFSPartition = null;
+let currentLittleFSPath = '/';
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 const bufferSize = 512;
 const colors = ["#00a7e9", "#f89521", "#be1e2d"];
 const measurementPeriodId = "0001";
+
+// Check if running in Electron
+const isElectron = window.electronAPI && window.electronAPI.isElectron;
 
 const maxLogLength = 100;
 const log = document.getElementById("log");
@@ -19,6 +25,21 @@ const readSize = document.getElementById("readSize");
 const readProgress = document.getElementById("readProgress");
 const butReadPartitions = document.getElementById("butReadPartitions");
 const partitionList = document.getElementById("partitionList");
+const littlefsManager = document.getElementById("littlefsManager");
+const littlefsPartitionName = document.getElementById("littlefsPartitionName");
+const littlefsPartitionSize = document.getElementById("littlefsPartitionSize");
+const littlefsUsageBar = document.getElementById("littlefsUsageBar");
+const littlefsUsageText = document.getElementById("littlefsUsageText");
+const littlefsDiskVersion = document.getElementById("littlefsDiskVersion");
+const littlefsFileList = document.getElementById("littlefsFileList");
+const littlefsBreadcrumb = document.getElementById("littlefsBreadcrumb");
+const butLittlefsUp = document.getElementById("butLittlefsUp");
+const butLittlefsRefresh = document.getElementById("butLittlefsRefresh");
+const butLittlefsBackup = document.getElementById("butLittlefsBackup");
+const butLittlefsClose = document.getElementById("butLittlefsClose");
+const littlefsFileInput = document.getElementById("littlefsFileInput");
+const butLittlefsUpload = document.getElementById("butLittlefsUpload");
+const butLittlefsMkdir = document.getElementById("butLittlefsMkdir");
 const autoscroll = document.getElementById("autoscroll");
 const lightSS = document.getElementById("light");
 const darkSS = document.getElementById("dark");
@@ -46,6 +67,15 @@ document.addEventListener("DOMContentLoaded", () => {
   butProgram.addEventListener("click", clickProgram);
   butReadFlash.addEventListener("click", clickReadFlash);
   butReadPartitions.addEventListener("click", clickReadPartitions);
+  butLittlefsRefresh.addEventListener("click", clickLittlefsRefresh);
+  butLittlefsBackup.addEventListener("click", clickLittlefsBackup);
+  butLittlefsClose.addEventListener("click", clickLittlefsClose);
+  butLittlefsUp.addEventListener("click", clickLittlefsUp);
+  butLittlefsUpload.addEventListener("click", clickLittlefsUpload);
+  butLittlefsMkdir.addEventListener("click", clickLittlefsMkdir);
+  littlefsFileInput.addEventListener("change", () => {
+    butLittlefsUpload.disabled = !littlefsFileInput.files.length;
+  });
   for (let i = 0; i < firmware.length; i++) {
     firmware[i].addEventListener("change", checkFirmware);
   }
@@ -336,6 +366,57 @@ async function clickConnect() {
   }
 }
 
+  // Handle ESP32-S2 Native USB reconnection requirement - must be set on esploader, not espStub
+  // Only add listener if not already in reconnect mode
+  if (!esp32s2ReconnectInProgress) {
+    esploader.addEventListener("esp32s2-usb-reconnect", async () => {
+      // Prevent recursive calls
+      if (esp32s2ReconnectInProgress) {
+        return;
+      }
+      
+      esp32s2ReconnectInProgress = true;
+      logMsg("ESP32-S2 Native USB detected!");
+      toggleUIConnected(false);
+      espStub = undefined;
+      
+      try {
+        await esploader.port.close();
+        
+        if (esploader.port.forget) {
+          await esploader.port.forget();
+        }
+      } catch (disconnectErr) {
+        // Ignore disconnect errors
+      }
+      
+      // Show modal dialog
+      const modal = document.getElementById("esp32s2Modal");
+      const reconnectBtn = document.getElementById("butReconnectS2");
+      
+      modal.classList.remove("hidden");
+      
+      // Handle reconnect button click
+      const handleReconnect = async () => {
+        modal.classList.add("hidden");
+        reconnectBtn.removeEventListener("click", handleReconnect);
+        
+        // Trigger port selection
+        try {
+          await clickConnect();
+          // Reset flag on successful connection
+          esp32s2ReconnectInProgress = false;
+        } catch (err) {
+          errorMsg("Failed to reconnect: " + err);
+          // Reset flag on error so user can try again
+          esp32s2ReconnectInProgress = false;
+        }
+      };
+      
+      reconnectBtn.addEventListener("click", handleReconnect);
+    });
+  }
+
 /**
  * @name changeBaudRate
  * Change handler for the Baud Rate selector.
@@ -410,9 +491,15 @@ function updateLogVisibility() {
  * Click handler for the erase button.
  */
 async function clickErase() {
-  if (
-    window.confirm("This will erase the entire flash. Click OK to continue.")
-  ) {
+  let confirmed = false;
+  
+  if (isElectron) {
+    confirmed = await window.electronAPI.showConfirm("This will erase the entire flash. Click OK to continue.");
+  } else {
+    confirmed = window.confirm("This will erase the entire flash. Click OK to continue.");
+  }
+  
+  if (confirmed) {
     baudRate.disabled = true;
     butErase.disabled = true;
     butProgram.disabled = true;
@@ -573,20 +660,7 @@ async function clickReadFlash() {
     return;
   }
 
-  // Prompt user for filename
   const defaultFilename = `flash_0x${offset.toString(16)}_0x${size.toString(16)}.bin`;
-  const filename = prompt(`Enter filename for flash data:`, defaultFilename);
-
-  // User cancelled
-  if (filename === null) {
-    return;
-  }
-
-  // User entered empty string
-  if (filename.trim() === "") {
-    errorMsg("Filename cannot be empty");
-    return;
-  }
 
   baudRate.disabled = true;
   butErase.disabled = true;
@@ -610,18 +684,9 @@ async function clickReadFlash() {
 
     logMsg(`Successfully read ${data.length} bytes from flash`);
 
-    // Create a download link with user-specified filename
-    const blob = new Blob([data], { type: "application/octet-stream" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Save file using Electron API or browser download
+    await saveDataToFile(data, defaultFilename);
 
-    logMsg(`Flash data downloaded as "${filename}"`);
   } catch (e) {
     errorMsg("Failed to read flash: " + e);
   } finally {
@@ -802,6 +867,16 @@ function displayPartitions(partitions) {
     downloadBtn.className = "partition-download-btn";
     downloadBtn.onclick = () => downloadPartition(partition);
     actionCell.appendChild(downloadBtn);
+    
+    // Add "Open FS" button for data partitions (type 0x01, subtype 0x82)
+    if (partition.type === 0x01 && partition.subtype === 0x82) {
+      const fsBtn = document.createElement("button");
+      fsBtn.textContent = "Open FS";
+      fsBtn.className = "littlefs-fs-button";
+      fsBtn.onclick = () => openFilesystem(partition);
+      actionCell.appendChild(fsBtn);
+    }
+    
     row.appendChild(actionCell);
     
     tbody.appendChild(row);
@@ -815,23 +890,7 @@ function displayPartitions(partitions) {
  * Download a partition
  */
 async function downloadPartition(partition) {
-  // Prompt user for filename
   const defaultFilename = `${partition.name}_0x${partition.offset.toString(16)}.bin`;
-  const filename = prompt(
-    `Enter filename for partition "${partition.name}":`,
-    defaultFilename
-  );
-
-  // User cancelled
-  if (filename === null) {
-    return;
-  }
-
-  // User entered empty string
-  if (filename.trim() === "") {
-    errorMsg("Filename cannot be empty");
-    return;
-  }
 
   const partitionProgress = document.getElementById("partitionProgress");
   const progressBar = partitionProgress.querySelector("div");
@@ -853,18 +912,10 @@ async function downloadPartition(partition) {
       }
     );
 
-    // Create download with user-specified filename
-    const blob = new Blob([data], { type: "application/octet-stream" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Save file using Electron API or browser download
+    await saveDataToFile(data, defaultFilename);
 
-    logMsg(`Partition "${partition.name}" downloaded as "${filename}"`);
+    logMsg(`Partition "${partition.name}" downloaded successfully`);
   } catch (e) {
     errorMsg(`Failed to download partition: ${e}`);
   } finally {
@@ -975,4 +1026,550 @@ function ucWords(text) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Save data to file - uses Electron API in desktop app, browser download otherwise
+ */
+async function saveDataToFile(data, defaultFilename) {
+  if (isElectron) {
+    // Use Electron's native save dialog
+    const result = await window.electronAPI.saveFile(
+      Array.from(data), // Convert Uint8Array to regular array for IPC
+      defaultFilename
+    );
+    
+    if (result.success) {
+      logMsg(`File saved: ${result.filePath}`);
+    } else if (result.canceled) {
+      logMsg("Save cancelled by user");
+    } else {
+      errorMsg(`Failed to save file: ${result.error}`);
+    }
+  } else {
+    // Browser fallback - use download link
+    const blob = new Blob([data], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = defaultFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    logMsg(`Flash data downloaded as "${defaultFilename}"`);
+  }
+}
+
+/**
+ * Read file from disk - uses Electron API in desktop app
+ */
+async function readFileFromDisk() {
+  if (isElectron) {
+    const result = await window.electronAPI.openFile();
+    
+    if (result.success) {
+      return {
+        data: new Uint8Array(result.data),
+        filename: result.filename,
+        filePath: result.filePath
+      };
+    } else if (result.canceled) {
+      return null;
+    } else {
+      throw new Error(result.error);
+    }
+  }
+  return null;
+}
+
+
+/**
+ * Open and mount a filesystem partition
+ */
+async function openFilesystem(partition) {
+  try {
+    logMsg(`Detecting filesystem type for partition "${partition.name}"...`);
+    
+    // Detect filesystem type
+    const fsType = await detectFilesystemType(partition.offset, partition.size);
+    logMsg(`Detected filesystem: ${fsType}`);
+    
+    if (fsType === 'littlefs') {
+      await openLittleFS(partition);
+    } else if (fsType === 'spiffs') {
+      errorMsg('SPIFFS support not yet implemented. Use LittleFS partitions.');
+    } else {
+      errorMsg('Unknown filesystem type. Cannot open partition.');
+    }
+  } catch (e) {
+    errorMsg(`Failed to open filesystem: ${e.message || e}`);
+  }
+}
+
+/**
+ * Detect filesystem type by reading partition header
+ * 
+ * LittleFS Detection:
+ * - LittleFS stores metadata blocks at the beginning of the partition
+ * - The superblock contains the string "littlefs" in its metadata
+ * - LittleFS uses a specific block structure with magic numbers
+ * 
+ * SPIFFS Detection:
+ * - SPIFFS has a different structure without the "littlefs" string
+ * - SPIFFS uses object headers with different magic numbers
+ * 
+ * Detection Strategy:
+ * 1. Read first 8KB of partition (covers multiple blocks)
+ * 2. Search for "littlefs" string in ASCII representation
+ * 3. If found -> LittleFS, otherwise -> SPIFFS
+ */
+async function detectFilesystemType(offset, size) {
+  try {
+    // Read first 8KB or entire partition if smaller
+    const readSize = Math.min(8192, size);
+    const data = await espStub.readFlash(offset, readSize);
+    
+    if (data.length < 32) {
+      logMsg('Partition too small, assuming SPIFFS');
+      return 'spiffs';
+    }
+    
+    // Method 1: Check for "littlefs" string in metadata
+    // LittleFS stores this in the superblock metadata
+    const decoder = new TextDecoder('ascii', { fatal: false });
+    const dataStr = decoder.decode(data);
+    
+    if (dataStr.includes('littlefs')) {
+      logMsg('✓ LittleFS detected: Found "littlefs" signature in partition data');
+      return 'littlefs';
+    }
+    
+    // Method 2: Check for LittleFS block structure
+    // LittleFS blocks start with a CRC and metadata
+    // Look for patterns that indicate LittleFS structure
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    
+    // Check multiple potential block starts (common block sizes: 512, 1024, 2048, 4096)
+    const blockSizes = [4096, 2048, 1024, 512];
+    for (const blockSize of blockSizes) {
+      if (data.length >= blockSize * 2) {
+        // LittleFS superblock is typically in first two blocks
+        // Check for consistent block structure patterns
+        try {
+          // Look for metadata tags (LittleFS uses specific tag patterns)
+          // Tag format: type (12 bits) | id (10 bits) | length (10 bits)
+          for (let i = 0; i < Math.min(blockSize, data.length - 4); i += 4) {
+            const tag = view.getUint32(i, true);
+            // Check if this looks like a LittleFS metadata tag
+            const type = (tag >> 20) & 0xFFF;
+            const length = tag & 0x3FF;
+            
+            // LittleFS metadata types are in specific ranges
+            // Type 0x000-0x7FF are valid metadata types
+            if (type <= 0x7FF && length > 0 && length <= 1022) {
+              // Found potential LittleFS structure
+              // Additional validation: check if data follows expected pattern
+              if (i + length + 4 <= data.length) {
+                logMsg('✓ LittleFS detected: Found valid metadata structure');
+                return 'littlefs';
+              }
+            }
+          }
+        } catch (e) {
+          // Continue checking other methods
+        }
+      }
+    }
+    
+    // Method 3: Check for SPIFFS signatures
+    // SPIFFS object headers have specific magic numbers
+    // SPIFFS magic: 0x20140529 (in some implementations)
+    for (let i = 0; i < Math.min(4096, data.length - 4); i += 4) {
+      const magic = view.getUint32(i, true);
+      // Common SPIFFS magic numbers
+      if (magic === 0x20140529 || magic === 0x20160529) {
+        logMsg('✓ SPIFFS detected: Found SPIFFS magic number');
+        return 'spiffs';
+      }
+    }
+    
+    // Default: If no clear signature found, assume SPIFFS
+    // (SPIFFS is more common and older, so it's a safer default)
+    logMsg('⚠ No clear filesystem signature found, assuming SPIFFS');
+    return 'spiffs';
+    
+  } catch (err) {
+    errorMsg(`Failed to detect filesystem type: ${err.message || err}`);
+    return 'spiffs'; // Safe fallback
+  }
+}
+
+/**
+ * Open LittleFS partition
+ */
+async function openLittleFS(partition) {
+  try {
+    logMsg(`Reading LittleFS partition "${partition.name}" (${formatSize(partition.size)})...`);
+    
+    // Read entire partition
+    const partitionProgress = document.getElementById("partitionProgress");
+    const progressBar = partitionProgress.querySelector("div");
+    partitionProgress.classList.remove("hidden");
+    
+    const data = await espStub.readFlash(
+      partition.offset,
+      partition.size,
+      (packet, progress, totalSize) => {
+        const percent = Math.floor((progress / totalSize) * 100);
+        progressBar.style.width = percent + "%";
+      }
+    );
+    
+    partitionProgress.classList.add("hidden");
+    progressBar.style.width = "0%";
+    
+    logMsg('Mounting LittleFS filesystem...');
+    
+    // Try to mount with different block sizes
+    const blockSizes = [4096, 2048, 1024, 512];
+    let fs = null;
+    let blockSize = 0;
+    
+    // Dynamically import littlefs-wasm from local wasm directory
+    const { createLittleFSFromImage, formatDiskVersion } = await import('./wasm/littlefs/index.js');
+    
+    for (const bs of blockSizes) {
+      try {
+        const blockCount = Math.floor(partition.size / bs);
+        fs = await createLittleFSFromImage(data, {
+          blockSize: bs,
+          blockCount: blockCount,
+        });
+        
+        // Try to list root to verify it works
+        fs.list('/');
+        blockSize = bs;
+        logMsg(`Successfully mounted LittleFS with block size ${bs}`);
+        break;
+      } catch (err) {
+        // Try next block size
+        if (fs) {
+          try { fs.destroy(); } catch (e) {}
+        }
+        fs = null;
+      }
+    }
+    
+    if (!fs) {
+      throw new Error('Failed to mount LittleFS with any block size');
+    }
+    
+    // Store filesystem instance
+    currentLittleFS = fs;
+    currentLittleFSPartition = partition;
+    currentLittleFSPath = '/';
+    
+    // Update UI
+    littlefsPartitionName.textContent = partition.name;
+    littlefsPartitionSize.textContent = formatSize(partition.size);
+    
+    // Get disk version
+    try {
+      const diskVer = fs.getDiskVersion();
+      const major = (diskVer >> 16) & 0xFFFF;
+      const minor = diskVer & 0xFFFF;
+      littlefsDiskVersion.textContent = `v${major}.${minor}`;
+    } catch (e) {
+      littlefsDiskVersion.textContent = '';
+    }
+    
+    // Show manager
+    littlefsManager.classList.remove('hidden');
+    
+    // Load files
+    refreshLittleFS();
+    
+    logMsg('LittleFS filesystem opened successfully');
+  } catch (e) {
+    errorMsg(`Failed to open LittleFS: ${e.message || e}`);
+    if (currentLittleFS) {
+      try { currentLittleFS.destroy(); } catch (err) {}
+      currentLittleFS = null;
+    }
+  }
+}
+
+/**
+ * Refresh LittleFS file list
+ */
+function refreshLittleFS() {
+  if (!currentLittleFS) return;
+  
+  try {
+    // Update usage
+    const usage = currentLittleFS.getUsage();
+    const usedPercent = Math.round((usage.used / usage.total) * 100);
+    littlefsUsageBar.style.width = usedPercent + '%';
+    littlefsUsageText.textContent = `Used: ${formatSize(usage.used)} / ${formatSize(usage.total)} (${usedPercent}%)`;
+    
+    // Update breadcrumb
+    littlefsBreadcrumb.textContent = currentLittleFSPath || '/';
+    butLittlefsUp.disabled = currentLittleFSPath === '/' || !currentLittleFSPath;
+    
+    // List files
+    const entries = currentLittleFS.list(currentLittleFSPath);
+    
+    // Clear table
+    littlefsFileList.innerHTML = '';
+    
+    if (entries.length === 0) {
+      const row = document.createElement('tr');
+      row.innerHTML = '<td colspan="4" class="empty-state">No files in this directory</td>';
+      littlefsFileList.appendChild(row);
+      return;
+    }
+    
+    // Sort: directories first, then files
+    entries.sort((a, b) => {
+      if (a.type === 'dir' && b.type !== 'dir') return -1;
+      if (a.type !== 'dir' && b.type === 'dir') return 1;
+      return a.path.localeCompare(b.path);
+    });
+    
+    // Add rows
+    entries.forEach(entry => {
+      const row = document.createElement('tr');
+      
+      // Name
+      const nameCell = document.createElement('td');
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'file-name' + (entry.type === 'dir' ? ' clickable' : '');
+      
+      const icon = document.createElement('span');
+      icon.className = 'file-icon';
+      icon.textContent = entry.type === 'dir' ? '📁' : '📄';
+      
+      const name = entry.path.split('/').filter(Boolean).pop() || '/';
+      const nameText = document.createElement('span');
+      nameText.textContent = name;
+      
+      nameDiv.appendChild(icon);
+      nameDiv.appendChild(nameText);
+      
+      if (entry.type === 'dir') {
+        nameDiv.onclick = () => navigateLittleFS(entry.path);
+      }
+      
+      nameCell.appendChild(nameDiv);
+      row.appendChild(nameCell);
+      
+      // Type
+      const typeCell = document.createElement('td');
+      typeCell.textContent = entry.type === 'dir' ? 'Directory' : 'File';
+      row.appendChild(typeCell);
+      
+      // Size
+      const sizeCell = document.createElement('td');
+      sizeCell.textContent = entry.type === 'file' ? formatSize(entry.size) : '-';
+      row.appendChild(sizeCell);
+      
+      // Actions
+      const actionsCell = document.createElement('td');
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'file-actions';
+      
+      if (entry.type === 'file') {
+        const downloadBtn = document.createElement('button');
+        downloadBtn.textContent = 'Download';
+        downloadBtn.onclick = () => downloadLittleFSFile(entry.path);
+        actionsDiv.appendChild(downloadBtn);
+      }
+      
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.onclick = () => deleteLittleFSFile(entry.path, entry.type);
+      actionsDiv.appendChild(deleteBtn);
+      
+      actionsCell.appendChild(actionsDiv);
+      row.appendChild(actionsCell);
+      
+      littlefsFileList.appendChild(row);
+    });
+  } catch (e) {
+    errorMsg(`Failed to refresh file list: ${e.message || e}`);
+  }
+}
+
+/**
+ * Navigate to a directory in LittleFS
+ */
+function navigateLittleFS(path) {
+  currentLittleFSPath = path;
+  refreshLittleFS();
+}
+
+/**
+ * Navigate up one directory
+ */
+function clickLittlefsUp() {
+  if (currentLittleFSPath === '/' || !currentLittleFSPath) return;
+  
+  const parts = currentLittleFSPath.split('/').filter(Boolean);
+  parts.pop();
+  currentLittleFSPath = '/' + parts.join('/');
+  if (currentLittleFSPath !== '/' && !currentLittleFSPath.endsWith('/')) {
+    currentLittleFSPath += '/';
+  }
+  refreshLittleFS();
+}
+
+/**
+ * Refresh button handler
+ */
+function clickLittlefsRefresh() {
+  refreshLittleFS();
+  logMsg('LittleFS file list refreshed');
+}
+
+/**
+ * Backup LittleFS image
+ */
+async function clickLittlefsBackup() {
+  if (!currentLittleFS || !currentLittleFSPartition) return;
+  
+  try {
+    logMsg('Creating LittleFS backup image...');
+    const image = currentLittleFS.toImage();
+    
+    const filename = `${currentLittleFSPartition.name}_littlefs_backup.bin`;
+    await saveDataToFile(image, filename);
+    
+    logMsg(`LittleFS backup saved as "${filename}"`);
+  } catch (e) {
+    errorMsg(`Failed to backup LittleFS: ${e.message || e}`);
+  }
+}
+
+/**
+ * Close LittleFS manager
+ */
+function clickLittlefsClose() {
+  if (currentLittleFS) {
+    try {
+      currentLittleFS.destroy();
+    } catch (e) {
+      console.error('Error destroying LittleFS:', e);
+    }
+    currentLittleFS = null;
+  }
+  
+  currentLittleFSPartition = null;
+  currentLittleFSPath = '/';
+  littlefsManager.classList.add('hidden');
+  logMsg('LittleFS manager closed');
+}
+
+/**
+ * Upload file to LittleFS
+ */
+async function clickLittlefsUpload() {
+  if (!currentLittleFS || !littlefsFileInput.files.length) return;
+  
+  const file = littlefsFileInput.files[0];
+  
+  try {
+    logMsg(`Uploading file "${file.name}"...`);
+    
+    const data = await file.arrayBuffer();
+    const uint8Data = new Uint8Array(data);
+    
+    // Construct target path
+    let targetPath = currentLittleFSPath;
+    if (!targetPath.endsWith('/')) targetPath += '/';
+    targetPath += file.name;
+    
+    // Write file
+    currentLittleFS.writeFile(targetPath, uint8Data);
+    
+    // Clear input
+    littlefsFileInput.value = '';
+    butLittlefsUpload.disabled = true;
+    
+    // Refresh list
+    refreshLittleFS();
+    
+    logMsg(`File "${file.name}" uploaded successfully`);
+  } catch (e) {
+    errorMsg(`Failed to upload file: ${e.message || e}`);
+  }
+}
+
+/**
+ * Create new directory
+ */
+function clickLittlefsMkdir() {
+  if (!currentLittleFS) return;
+  
+  const dirName = prompt('Enter directory name:');
+  if (!dirName || !dirName.trim()) return;
+  
+  try {
+    let targetPath = currentLittleFSPath;
+    if (!targetPath.endsWith('/')) targetPath += '/';
+    targetPath += dirName.trim();
+    
+    currentLittleFS.mkdir(targetPath);
+    refreshLittleFS();
+    
+    logMsg(`Directory "${dirName}" created successfully`);
+  } catch (e) {
+    errorMsg(`Failed to create directory: ${e.message || e}`);
+  }
+}
+
+/**
+ * Download file from LittleFS
+ */
+async function downloadLittleFSFile(path) {
+  if (!currentLittleFS) return;
+  
+  try {
+    logMsg(`Downloading file "${path}"...`);
+    
+    const data = currentLittleFS.readFile(path);
+    const filename = path.split('/').filter(Boolean).pop() || 'file.bin';
+    
+    await saveDataToFile(data, filename);
+    
+    logMsg(`File "${filename}" downloaded successfully`);
+  } catch (e) {
+    errorMsg(`Failed to download file: ${e.message || e}`);
+  }
+}
+
+/**
+ * Delete file or directory from LittleFS
+ */
+function deleteLittleFSFile(path, type) {
+  if (!currentLittleFS) return;
+  
+  const name = path.split('/').filter(Boolean).pop() || path;
+  const confirmed = confirm(`Delete ${type} "${name}"?`);
+  
+  if (!confirmed) return;
+  
+  try {
+    if (type === 'dir') {
+      currentLittleFS.delete(path, { recursive: true });
+    } else {
+      currentLittleFS.deleteFile(path);
+    }
+    
+    refreshLittleFS();
+    logMsg(`${type === 'dir' ? 'Directory' : 'File'} "${name}" deleted successfully`);
+  } catch (e) {
+    errorMsg(`Failed to delete ${type}: ${e.message || e}`);
+  }
 }
