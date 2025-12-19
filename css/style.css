@@ -550,3 +550,266 @@ div.clear {
 .center {
   text-align: center;
 }
+
+/* LittleFS Manager Styles */
+.littlefs-manager {
+  width: 900px;
+  margin: 30px auto;
+  padding: 25px;
+  border: 2px solid #00a7e9;
+  border-radius: 10px;
+  background-color: rgba(0, 167, 233, 0.05);
+}
+
+.littlefs-manager h3 {
+  margin: 0 0 20px 0;
+  color: #00a7e9;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.littlefs-info {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+}
+
+.littlefs-partition-info {
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.littlefs-size {
+  color: #666;
+  margin-left: 8px;
+}
+
+.littlefs-usage {
+  margin-top: 10px;
+}
+
+.usage-bar {
+  width: 100%;
+  height: 20px;
+  background-color: #e0e0e0;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.usage-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #71ae1e 0%, #8ec641 100%);
+  transition: width 0.3s ease;
+}
+
+.usage-text {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #555;
+}
+
+.disk-version {
+  font-size: 12px;
+  padding: 2px 8px;
+  background-color: #00a7e9;
+  color: white;
+  border-radius: 4px;
+}
+
+.littlefs-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.littlefs-controls button {
+  padding: 8px 20px;
+  border: 2px solid #00a7e9;
+  background-color: white;
+  color: #00a7e9;
+  border-radius: 15px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.littlefs-controls button:hover:not(:disabled) {
+  background-color: #00a7e9;
+  color: white;
+}
+
+.littlefs-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.littlefs-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding: 10px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+}
+
+.littlefs-breadcrumb button {
+  padding: 5px 12px;
+  border: 2px solid #666;
+  background-color: white;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.littlefs-breadcrumb button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.littlefs-breadcrumb span {
+  font-family: monospace;
+  font-size: 14px;
+  color: #333;
+}
+
+.littlefs-file-upload {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  align-items: center;
+}
+
+.littlefs-file-upload input[type="file"] {
+  flex: 1;
+  padding: 5px;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+}
+
+.littlefs-file-upload button {
+  padding: 8px 20px;
+  border: 2px solid #00a7e9;
+  background-color: white;
+  color: #00a7e9;
+  border-radius: 15px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.littlefs-file-upload button:hover:not(:disabled) {
+  background-color: #00a7e9;
+  color: white;
+}
+
+.littlefs-file-upload button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.littlefs-files {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.file-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.file-table thead {
+  position: sticky;
+  top: 0;
+  background-color: #f5f5f5;
+  z-index: 10;
+}
+
+.file-table th {
+  padding: 10px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid #ccc;
+}
+
+.file-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.file-table tbody tr:hover {
+  background-color: rgba(0, 167, 233, 0.1);
+}
+
+.file-table .empty-state {
+  text-align: center;
+  color: #999;
+  padding: 30px;
+  font-style: italic;
+}
+
+.file-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.file-name.clickable:hover {
+  color: #00a7e9;
+  text-decoration: underline;
+}
+
+.file-icon {
+  font-size: 16px;
+}
+
+.file-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.file-actions button {
+  padding: 4px 12px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  background-color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.file-actions button:hover {
+  background-color: #00a7e9;
+  color: white;
+  border-color: #00a7e9;
+}
+
+.file-actions button.delete-btn:hover {
+  background-color: #c64141;
+  border-color: #c64141;
+}
+
+.littlefs-fs-button {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  background-color: #8ec641;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.littlefs-fs-button:hover {
+  background-color: #71ae1e;
+}

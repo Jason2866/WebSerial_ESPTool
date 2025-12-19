@@ -8,6 +8,7 @@ const config = {
     dir: "dist/web",
     format: "module",
   },
+  external: ['littlefs-wasm'],
   // preserveEntrySignatures: false,
   plugins: [nodeResolve(), json()],
 };
