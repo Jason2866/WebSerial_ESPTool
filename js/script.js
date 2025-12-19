@@ -36,6 +36,7 @@ const littlefsBreadcrumb = document.getElementById("littlefsBreadcrumb");
 const butLittlefsUp = document.getElementById("butLittlefsUp");
 const butLittlefsRefresh = document.getElementById("butLittlefsRefresh");
 const butLittlefsBackup = document.getElementById("butLittlefsBackup");
+const butLittlefsWrite = document.getElementById("butLittlefsWrite");
 const butLittlefsClose = document.getElementById("butLittlefsClose");
 const littlefsFileInput = document.getElementById("littlefsFileInput");
 const butLittlefsUpload = document.getElementById("butLittlefsUpload");
@@ -69,6 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
   butReadPartitions.addEventListener("click", clickReadPartitions);
   butLittlefsRefresh.addEventListener("click", clickLittlefsRefresh);
   butLittlefsBackup.addEventListener("click", clickLittlefsBackup);
+  butLittlefsWrite.addEventListener("click", clickLittlefsWrite);
   butLittlefsClose.addEventListener("click", clickLittlefsClose);
   butLittlefsUp.addEventListener("click", clickLittlefsUp);
   butLittlefsUpload.addEventListener("click", clickLittlefsUpload);
@@ -1453,6 +1455,133 @@ async function clickLittlefsBackup() {
 }
 
 /**
+ * Write LittleFS image to flash
+ */
+async function clickLittlefsWrite() {
+  if (!currentLittleFS || !currentLittleFSPartition) return;
+  
+  const confirmed = confirm(
+    `Write modified LittleFS to flash?\n\n` +
+    `Partition: ${currentLittleFSPartition.name}\n` +
+    `Offset: 0x${currentLittleFSPartition.offset.toString(16)}\n` +
+    `Size: ${formatSize(currentLittleFSPartition.size)}\n\n` +
+    `This will overwrite the current filesystem on the device!`
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    logMsg('Preparing LittleFS image for writing...');
+    
+    // List all files before creating image (for debugging)
+    try {
+      const allFiles = currentLittleFS.list('/');
+      logMsg(`Files in filesystem before write: ${allFiles.length} entries`);
+      allFiles.forEach(entry => {
+        logMsg(`  - ${entry.path} (${entry.type}, ${entry.size} bytes)`);
+      });
+    } catch (e) {
+      logMsg(`Could not list files: ${e.message}`);
+    }
+    
+    // IMPORTANT: Create image from current filesystem state
+    logMsg('Creating filesystem image...');
+    const image = currentLittleFS.toImage();
+    logMsg(`Image created: ${formatSize(image.length)}`);
+    
+    // Verify the image by mounting it and checking files
+    try {
+      logMsg('Verifying image contents...');
+      const { createLittleFSFromImage } = await import('./wasm/littlefs/index.js');
+      
+      const blockSize = 4096; // Use same block size
+      const blockCount = Math.floor(currentLittleFSPartition.size / blockSize);
+      
+      const verifyFS = await createLittleFSFromImage(image, {
+        blockSize,
+        blockCount,
+      });
+      
+      const verifyFiles = verifyFS.list('/');
+      logMsg(`Image verification: ${verifyFiles.length} files found in image`);
+      verifyFiles.forEach(entry => {
+        logMsg(`  ✓ ${entry.path} (${entry.type}, ${entry.size} bytes)`);
+      });
+      
+      // Check if our uploaded file is in the image
+      const uploadedFile = verifyFiles.find(f => f.path === '/defconfig.p4');
+      if (uploadedFile) {
+        logMsg(`✓ Uploaded file found in image: ${uploadedFile.path}`);
+      } else {
+        errorMsg(`⚠ WARNING: Uploaded file NOT found in image!`);
+      }
+      
+      // Cleanup verification filesystem
+      try {
+        if (typeof verifyFS.cleanup === 'function') {
+          verifyFS.cleanup();
+        }
+      } catch (cleanupErr) {
+        // Ignore cleanup errors
+      }
+    } catch (verifyError) {
+      errorMsg(`Image verification failed: ${verifyError.message}`);
+    }
+    
+    if (image.length > currentLittleFSPartition.size) {
+      errorMsg(`Image size (${formatSize(image.length)}) exceeds partition size (${formatSize(currentLittleFSPartition.size)})`);
+      return;
+    }
+    
+    // Disable buttons during write
+    butLittlefsRefresh.disabled = true;
+    butLittlefsBackup.disabled = true;
+    butLittlefsWrite.disabled = true;
+    butLittlefsClose.disabled = true;
+    butLittlefsUpload.disabled = true;
+    butLittlefsMkdir.disabled = true;
+    
+    logMsg(`Writing ${formatSize(image.length)} to partition "${currentLittleFSPartition.name}" at 0x${currentLittleFSPartition.offset.toString(16)}...`);
+    
+    // Use the partition progress bar
+    const partitionProgress = document.getElementById("partitionProgress");
+    const progressBar = partitionProgress.querySelector("div");
+    partitionProgress.classList.remove("hidden");
+    
+    // Convert Uint8Array to ArrayBuffer (CRITICAL: flashData expects ArrayBuffer, not Uint8Array)
+    // This matches the ESPConnect implementation
+    const imageBuffer = image.buffer.slice(image.byteOffset, image.byteOffset + image.byteLength);
+    
+    // Write the image to flash
+    await espStub.flashData(
+      imageBuffer,
+      (bytesWritten, totalBytes) => {
+        const percent = Math.floor((bytesWritten / totalBytes) * 100);
+        progressBar.style.width = percent + "%";
+      },
+      currentLittleFSPartition.offset
+    );
+    
+    partitionProgress.classList.add("hidden");
+    progressBar.style.width = "0%";
+    
+    logMsg(`✓ LittleFS successfully written to flash!`);
+    logMsg(`To use the new filesystem, reset your device.`);
+    
+  } catch (e) {
+    errorMsg(`Failed to write LittleFS to flash: ${e.message || e}`);
+  } finally {
+    // Re-enable buttons
+    butLittlefsRefresh.disabled = false;
+    butLittlefsBackup.disabled = false;
+    butLittlefsWrite.disabled = false;
+    butLittlefsClose.disabled = false;
+    butLittlefsUpload.disabled = !littlefsFileInput.files.length;
+    butLittlefsMkdir.disabled = false;
+  }
+}
+
+/**
  * Close LittleFS manager
  */
 function clickLittlefsClose() {
@@ -1490,8 +1619,30 @@ async function clickLittlefsUpload() {
     if (!targetPath.endsWith('/')) targetPath += '/';
     targetPath += file.name;
     
-    // Write file
-    currentLittleFS.writeFile(targetPath, uint8Data);
+    // Ensure parent directories exist
+    const segments = targetPath.split('/').filter(Boolean);
+    if (segments.length > 1) {
+      let built = '';
+      for (let i = 0; i < segments.length - 1; i++) {
+        built += `/${segments[i]}`;
+        try {
+          currentLittleFS.mkdir(built);
+        } catch (e) {
+          // Ignore if directory already exists
+        }
+      }
+    }
+    
+    // Write file to LittleFS - EXACTLY like ESPConnect
+    if (typeof currentLittleFS.writeFile === 'function') {
+      currentLittleFS.writeFile(targetPath, uint8Data);
+    } else if (typeof currentLittleFS.addFile === 'function') {
+      currentLittleFS.addFile(targetPath, uint8Data);
+    }
+    
+    // Verify by reading back
+    const readBack = currentLittleFS.readFile(targetPath);
+    logMsg(`✓ File written: ${readBack.length} bytes at ${targetPath}`);
     
     // Clear input
     littlefsFileInput.value = '';
