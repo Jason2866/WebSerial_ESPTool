@@ -574,14 +574,14 @@ div.clear {
   width: 900px;
   margin: 30px auto;
   padding: 25px;
-  border: 2px solid #00a7e9;
+  border: 2px solid #71ae1e;
   border-radius: 10px;
-  background-color: rgba(0, 167, 233, 0.05);
+  background-color: rgba(113, 174, 30, 0.05);
 }
 
 .littlefs-manager h3 {
   margin: 0 0 20px 0;
-  color: #00a7e9;
+  color: #71ae1e;
   font-size: 20px;
   font-weight: 600;
 }
@@ -633,7 +633,7 @@ div.clear {
 .disk-version {
   font-size: 12px;
   padding: 2px 8px;
-  background-color: #00a7e9;
+  background-color: #71ae1e;
   color: white;
   border-radius: 4px;
 }
@@ -646,19 +646,9 @@ div.clear {
 }
 
 .littlefs-controls button {
-  padding: 8px 20px;
-  border: 2px solid #00a7e9;
-  background-color: white;
-  color: #00a7e9;
-  border-radius: 15px;
+  /* Use default button styles from main stylesheet */
+  border-style: solid;
   cursor: pointer;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.littlefs-controls button:hover:not(:disabled) {
-  background-color: #00a7e9;
-  color: white;
 }
 
 .littlefs-controls button:disabled {
@@ -677,12 +667,9 @@ div.clear {
 }
 
 .littlefs-breadcrumb button {
-  padding: 5px 12px;
-  border: 2px solid #666;
-  background-color: white;
-  border-radius: 10px;
+  /* Use default button styles */
+  border-style: solid;
   cursor: pointer;
-  font-weight: 600;
 }
 
 .littlefs-breadcrumb button:disabled {
@@ -711,19 +698,9 @@ div.clear {
 }
 
 .littlefs-file-upload button {
-  padding: 8px 20px;
-  border: 2px solid #00a7e9;
-  background-color: white;
-  color: #00a7e9;
-  border-radius: 15px;
+  /* Use default button styles */
+  border-style: solid;
   cursor: pointer;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.littlefs-file-upload button:hover:not(:disabled) {
-  background-color: #00a7e9;
-  color: white;
 }
 
 .littlefs-file-upload button:disabled {
@@ -763,7 +740,7 @@ div.clear {
 }
 
 .file-table tbody tr:hover {
-  background-color: rgba(0, 167, 233, 0.1);
+  background-color: rgba(113, 174, 30, 0.1);
 }
 
 .file-table .empty-state {
@@ -781,7 +758,7 @@ div.clear {
 }
 
 .file-name.clickable:hover {
-  color: #00a7e9;
+  color: #71ae1e;
   text-decoration: underline;
 }
 
@@ -797,22 +774,10 @@ div.clear {
 .file-actions button {
   padding: 4px 12px;
   font-size: 12px;
-  border: 1px solid #ccc;
-  background-color: white;
-  border-radius: 8px;
+  height: auto;
+  border-style: solid;
   cursor: pointer;
   transition: all 0.2s;
-}
-
-.file-actions button:hover {
-  background-color: #00a7e9;
-  color: white;
-  border-color: #00a7e9;
-}
-
-.file-actions button.delete-btn:hover {
-  background-color: #c64141;
-  border-color: #c64141;
 }
 
 .littlefs-fs-button {
@@ -820,16 +785,11 @@ div.clear {
   margin-left: 8px;
   padding: 2px 8px;
   font-size: 11px;
-  background-color: #8ec641;
-  color: white;
+  height: auto;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-weight: 600;
-}
-
-.littlefs-fs-button:hover {
-  background-color: #71ae1e;
 }
 
 /* ESP32-S2 Reconnect Modal */

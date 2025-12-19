@@ -94,8 +94,8 @@ button {
 
 /* LittleFS Manager Light Mode */
 .littlefs-manager {
-  background-color: rgba(0, 167, 233, 0.05);
-  border-color: #00a7e9;
+  background-color: rgba(113, 174, 30, 0.05);
+  border-color: #71ae1e;
 }
 
 .littlefs-info {
@@ -128,38 +128,7 @@ button {
 }
 
 .file-table tbody tr:hover {
-  background-color: rgba(0, 167, 233, 0.1);
-}
-
-.littlefs-controls button,
-.littlefs-file-upload button {
-  background-color: white;
-  color: #00a7e9;
-  border-color: #00a7e9;
-}
-
-.littlefs-controls button:hover:not(:disabled),
-.littlefs-file-upload button:hover:not(:disabled) {
-  background-color: #00a7e9;
-  color: white;
-}
-
-.littlefs-breadcrumb button {
-  background-color: white;
-  color: #333;
-  border-color: #666;
-}
-
-.file-actions button {
-  background-color: white;
-  color: #333;
-  border-color: #ccc;
-}
-
-.file-actions button:hover {
-  background-color: #00a7e9;
-  color: white;
-  border-color: #00a7e9;
+  background-color: rgba(113, 174, 30, 0.1);
 }
 
 .littlefs-file-upload input[type="file"] {
@@ -175,4 +144,13 @@ button {
 
 .partition-table-display td {
   border-color: #ccc;
+}
+
+.littlefs-fs-button {
+  background-color: #8ec641;
+  color: white;
+}
+
+.littlefs-fs-button:hover {
+  background-color: #71ae1e;
 }
