@@ -23,10 +23,15 @@ jobs:
           rm -rf dist
           rm -rf js/modules
           mkdir js/modules
-      - name: install node v20
+      - name: install node v22
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - name: Update npm to latest
+        run: npm install -g npm@latest
+      - name: Check npm version
+        run: npm --version
       - name: Install NPM
         run: npm install
       - name: Compile TypeScript
@@ -44,11 +49,10 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "Github Action: Updated dist files"
-      - name: Publish to NPM registry
+      - name: Publish to NPM registry (OIDC Trusted Publishing)
         uses: JS-DevTools/npm-publish@v4
         with:
           registry: https://registry.npmjs.org/
-          token: ${{ secrets.NPM_TOKEN }}
           strategy: all
       - name: Setup Pages
         uses: actions/configure-pages@v5
