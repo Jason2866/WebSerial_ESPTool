@@ -1490,27 +1490,30 @@ async function clickLittlefsWrite() {
     
     logMsg(`Writing ${formatSize(image.length)} to partition "${currentLittleFSPartition.name}" at 0x${currentLittleFSPartition.offset.toString(16)}...`);
     
-    // Use the partition progress bar
-    const partitionProgress = document.getElementById("partitionProgress");
-    const progressBar = partitionProgress.querySelector("div");
-    partitionProgress.classList.remove("hidden");
+    // Use the LittleFS usage bar as progress indicator
+    const usageBar = document.getElementById("littlefsUsageBar");
+    const usageText = document.getElementById("littlefsUsageText");
+    const originalUsageBarWidth = usageBar.style.width;
+    const originalUsageText = usageText.textContent;
     
     // Convert Uint8Array to ArrayBuffer (CRITICAL: flashData expects ArrayBuffer, not Uint8Array)
     // This matches the ESPConnect implementation
     const imageBuffer = image.buffer.slice(image.byteOffset, image.byteOffset + image.byteLength);
     
-    // Write the image to flash
+    // Write the image to flash with progress indication
     await espStub.flashData(
       imageBuffer,
       (bytesWritten, totalBytes) => {
         const percent = Math.floor((bytesWritten / totalBytes) * 100);
-        progressBar.style.width = percent + "%";
+        usageBar.style.width = percent + "%";
+        usageText.textContent = `Writing: ${formatSize(bytesWritten)} / ${formatSize(totalBytes)} (${percent}%)`;
       },
       currentLittleFSPartition.offset
     );
     
-    partitionProgress.classList.add("hidden");
-    progressBar.style.width = "0%";
+    // Restore original usage display
+    usageBar.style.width = originalUsageBarWidth;
+    usageText.textContent = originalUsageText;
     
     logMsg(`✓ LittleFS successfully written to flash!`);
     logMsg(`To use the new filesystem, reset your device.`);
