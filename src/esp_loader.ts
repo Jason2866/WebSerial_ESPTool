@@ -83,6 +83,8 @@ export class ESPLoader extends EventTarget {
   private _currentBaudRate: number = ESP_ROM_BAUD;
   private _maxUSBSerialBaudrate?: number;
   private _reader?: ReadableStreamDefaultReader<Uint8Array>;
+  private _isESP32S2NativeUSB: boolean = false;
+  private _initializationSucceeded: boolean = false;
 
   constructor(
     public port: SerialPort,
@@ -184,6 +186,10 @@ export class ESPLoader extends EventTarget {
           this._maxUSBSerialBaudrate = chipInfo.maxBaudrate;
           this.logger.log(`Max baudrate: ${chipInfo.maxBaudrate}`);
         }
+        // Detect ESP32-S2 Native USB
+        if (portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x2) {
+          this._isESP32S2NativeUSB = true;
+        }
       }
 
       // Don't await this promise so it doesn't block rest of method.
@@ -207,6 +213,9 @@ export class ESPLoader extends EventTarget {
     this.logger.debug(
       `Bootloader flash offset: 0x${FlAddr.flashOffs.toString(16)}`,
     );
+
+    // Mark initialization as successful
+    this._initializationSucceeded = true;
   }
 
   /**
@@ -406,6 +415,20 @@ export class ESPLoader extends EventTarget {
     }
     // Disconnected!
     this.connected = false;
+
+    // Check if this is ESP32-S2 Native USB that needs port reselection
+    // Only trigger reconnect if initialization did NOT succeed (wrong port)
+    if (this._isESP32S2NativeUSB && !this._initializationSucceeded) {
+      this.logger.log(
+        "ESP32-S2 Native USB detected - requesting port reselection",
+      );
+      this.dispatchEvent(
+        new CustomEvent("esp32s2-usb-reconnect", {
+          detail: { message: "ESP32-S2 Native USB requires port reselection" },
+        }),
+      );
+    }
+
     this.dispatchEvent(new Event("disconnect"));
     this.logger.debug("Finished read loop");
   }
@@ -1455,7 +1478,11 @@ export class ESPLoader extends EventTarget {
   }
 
   async writeToStream(data: number[]) {
-    const writer = this.port.writable!.getWriter();
+    if (!this.port.writable) {
+      this.logger.debug("Port writable stream not available, skipping write");
+      return;
+    }
+    const writer = this.port.writable.getWriter();
     await writer.write(new Uint8Array(data));
     try {
       writer.releaseLock();
@@ -1469,7 +1496,11 @@ export class ESPLoader extends EventTarget {
       await this._parent.disconnect();
       return;
     }
-    await this.port.writable!.getWriter().close();
+    if (!this.port.writable) {
+      this.logger.debug("Port already closed, skipping disconnect");
+      return;
+    }
+    await this.port.writable.getWriter().close();
     await new Promise((resolve) => {
       if (!this._reader) {
         resolve(undefined);
