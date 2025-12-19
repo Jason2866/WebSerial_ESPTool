@@ -1471,62 +1471,9 @@ async function clickLittlefsWrite() {
   if (!confirmed) return;
   
   try {
-    logMsg('Preparing LittleFS image for writing...');
-    
-    // List all files before creating image (for debugging)
-    try {
-      const allFiles = currentLittleFS.list('/');
-      logMsg(`Files in filesystem before write: ${allFiles.length} entries`);
-      allFiles.forEach(entry => {
-        logMsg(`  - ${entry.path} (${entry.type}, ${entry.size} bytes)`);
-      });
-    } catch (e) {
-      logMsg(`Could not list files: ${e.message}`);
-    }
-    
-    // IMPORTANT: Create image from current filesystem state
-    logMsg('Creating filesystem image...');
+    logMsg('Creating LittleFS image...');
     const image = currentLittleFS.toImage();
     logMsg(`Image created: ${formatSize(image.length)}`);
-    
-    // Verify the image by mounting it and checking files
-    try {
-      logMsg('Verifying image contents...');
-      const { createLittleFSFromImage } = await import('./wasm/littlefs/index.js');
-      
-      const blockSize = 4096; // Use same block size
-      const blockCount = Math.floor(currentLittleFSPartition.size / blockSize);
-      
-      const verifyFS = await createLittleFSFromImage(image, {
-        blockSize,
-        blockCount,
-      });
-      
-      const verifyFiles = verifyFS.list('/');
-      logMsg(`Image verification: ${verifyFiles.length} files found in image`);
-      verifyFiles.forEach(entry => {
-        logMsg(`  ✓ ${entry.path} (${entry.type}, ${entry.size} bytes)`);
-      });
-      
-      // Check if our uploaded file is in the image
-      const uploadedFile = verifyFiles.find(f => f.path === '/defconfig.p4');
-      if (uploadedFile) {
-        logMsg(`✓ Uploaded file found in image: ${uploadedFile.path}`);
-      } else {
-        errorMsg(`⚠ WARNING: Uploaded file NOT found in image!`);
-      }
-      
-      // Cleanup verification filesystem
-      try {
-        if (typeof verifyFS.cleanup === 'function') {
-          verifyFS.cleanup();
-        }
-      } catch (cleanupErr) {
-        // Ignore cleanup errors
-      }
-    } catch (verifyError) {
-      errorMsg(`Image verification failed: ${verifyError.message}`);
-    }
     
     if (image.length > currentLittleFSPartition.size) {
       errorMsg(`Image size (${formatSize(image.length)}) exceeds partition size (${formatSize(currentLittleFSPartition.size)})`);
