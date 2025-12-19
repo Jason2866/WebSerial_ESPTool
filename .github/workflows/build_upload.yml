@@ -51,11 +51,11 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "Github Action: Updated dist files"
-      - name: Publish to NPM registry (OIDC Trusted Publishing)
-        uses: JS-DevTools/npm-publish@v4
-        with:
-          registry: https://registry.npmjs.org/
-          strategy: all
+#      - name: Publish to NPM registry (OIDC Trusted Publishing)
+#        uses: JS-DevTools/npm-publish@v4
+#        with:
+#          registry: https://registry.npmjs.org/
+#          strategy: all
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
