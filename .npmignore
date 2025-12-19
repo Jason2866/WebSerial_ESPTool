@@ -10,6 +10,7 @@
 #Exclude config files
 rollup.config.mjs
 tsconfig.json
+forge.config.js
 .eslint.config.js
 .prettierignore
 .package.json

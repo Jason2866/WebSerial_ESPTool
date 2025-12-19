@@ -1,0 +1,150 @@
+name: Build Electron App
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # macOS Intel
+          - os: macos-15-intel
+            platform: darwin
+            arch: x64
+            artifact_name: macos-intel
+          # macOS ARM (Apple Silicon)
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            artifact_name: macos-arm64
+          # Windows
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            artifact_name: windows
+          # Linux
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            artifact_name: linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript and Rollup
+        run: npm run prepublishOnly
+
+      - name: Build Electron app
+        run: npm run make -- --arch=${{ matrix.arch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # macOS: Upload only DMG
+      - name: Upload macOS DMG
+        if: matrix.platform == 'darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: out/make/*.dmg
+          retention-days: 5
+
+      # Windows: Upload Squirrel installer and ZIP
+      - name: Upload Windows artifacts
+        if: matrix.platform == 'win32'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            out/make/squirrel.windows/**/*.exe
+            out/make/zip/**/*.zip
+          retention-days: 5
+
+      # Linux: Upload DEB and RPM
+      - name: Upload Linux artifacts
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            out/make/deb/**/*.deb
+            out/make/rpm/**/*.rpm
+            out/make/zip/**/*.zip
+          retention-days: 5
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Set version without v prefix
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f | head -50
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: WebSerial ESPTool ${{ github.ref_name }}
+          body: |
+            ## WebSerial ESPTool ${{ github.ref_name }}
+            
+            ### Downloads
+            
+            | Platform | Architecture | File |
+            |----------|--------------|------|
+            | macOS | Apple Silicon | `*.arm64.dmg` |
+            | macOS | Intel | `*.x64.dmg` |
+            | Windows | x64 | `*.exe` / `*.zip` |
+            | Linux | x64 | `*.deb` / `*.rpm` / `*.zip` |
+            
+            ### Installation
+            
+            **macOS Apple Silicon:** Download with `curl -L -O "https://github.com/Jason2866/WebSerial_ESPTool/releases/download/${{ github.ref_name }}/WebSerial.ESPTool-${{ steps.version.outputs.VERSION }}-arm64.dmg"` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
+            
+            **macOS Intel:** Download with `curl -L -O "https://github.com/Jason2866/WebSerial_ESPTool/releases/download/${{ github.ref_name }}/WebSerial.ESPTool-${{ steps.version.outputs.VERSION }}-x64.dmg"` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
+            
+            **Windows:** Run the `.exe` installer or extract the `.zip` archive.
+            
+            **Linux:** Install via `sudo dpkg -i *.deb` or `sudo rpm -i *.rpm`, or extract the `.zip` archive.
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.exe
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+            artifacts/**/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
