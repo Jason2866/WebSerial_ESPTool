@@ -3,6 +3,7 @@ let esp32s2ReconnectInProgress = false;
 let currentLittleFS = null;
 let currentLittleFSPartition = null;
 let currentLittleFSPath = '/';
+let currentLittleFSBlockSize = 4096;
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 const bufferSize = 512;
@@ -1271,6 +1272,7 @@ async function openLittleFS(partition) {
     currentLittleFS = fs;
     currentLittleFSPartition = partition;
     currentLittleFSPath = '/';
+    currentLittleFSBlockSize = blockSize;
     
     // Update UI
     littlefsPartitionName.textContent = partition.name;
@@ -1303,17 +1305,48 @@ async function openLittleFS(partition) {
 }
 
 /**
+ * Estimate LittleFS storage footprint for a single file (data + metadata block)
+ */
+function littlefsEstimateFileFootprint(size) {
+  const block = currentLittleFSBlockSize || 4096;
+  const dataBytes = Math.max(1, Math.ceil(size / block)) * block;
+  const metadataBytes = block; // per-file metadata block
+  return dataBytes + metadataBytes;
+}
+
+/**
+ * Estimate total LittleFS usage for a set of entries
+ */
+function littlefsEstimateUsage(entries) {
+  const block = currentLittleFSBlockSize || 4096;
+  let total = block * 2; // root metadata copies
+  
+  for (const entry of entries || []) {
+    if (entry.type === 'dir') {
+      total += block;
+    } else {
+      total += littlefsEstimateFileFootprint(entry.size || 0);
+    }
+  }
+  
+  return total;
+}
+
+/**
  * Refresh LittleFS file list
  */
 function refreshLittleFS() {
   if (!currentLittleFS) return;
   
   try {
-    // Update usage
-    const usage = currentLittleFS.getUsage();
-    const usedPercent = Math.round((usage.used / usage.total) * 100);
+    // Calculate usage based on all files (like ESPConnect)
+    const allFiles = currentLittleFS.list('/');
+    const usedBytes = littlefsEstimateUsage(allFiles);
+    const totalBytes = currentLittleFSPartition.size;
+    const usedPercent = Math.round((usedBytes / totalBytes) * 100);
+    
     littlefsUsageBar.style.width = usedPercent + '%';
-    littlefsUsageText.textContent = `Used: ${formatSize(usage.used)} / ${formatSize(usage.total)} (${usedPercent}%)`;
+    littlefsUsageText.textContent = `Used: ${formatSize(usedBytes)} / ${formatSize(totalBytes)} (${usedPercent}%)`;
     
     // Update breadcrumb
     littlefsBreadcrumb.textContent = currentLittleFSPath || '/';
