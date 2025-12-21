@@ -309,13 +309,13 @@ async function clickConnect() {
               }
             });
           }
-        }, 100);
+        }, 50);
         
-        // Timeout after 3 seconds
+        // Timeout after 500 ms
         setTimeout(() => {
           clearInterval(checkInterval);
           resolve(null);
-        }, 3000);
+        }, 500);
       });
       
       const newPort = await waitForNewPort;
@@ -326,7 +326,7 @@ async function clickConnect() {
       }
       
       // Additional small delay to ensure port is ready
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Open the new port and create ESPLoader directly
       await newPort.open({ baudRate: 115200 });
