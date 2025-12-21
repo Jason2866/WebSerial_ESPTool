@@ -271,103 +271,112 @@ async function clickConnect() {
 
   const esploaderMod = await window.esptoolPackage;
 
-  const esploader = await esploaderMod.connect({
+  let esploader = await esploaderMod.connect({
     log: (...args) => logMsg(...args),
     debug: (...args) => debugMsg(...args),
     error: (...args) => errorMsg(...args),
   });
   
-  // Handle ESP32-S2 Native USB reconnection requirement - must be set on esploader, not espStub
-  // Only add listener if not already in reconnect mode
-  if (!esp32s2ReconnectInProgress) {
-    esploader.addEventListener("esp32s2-usb-reconnect", async () => {
-      // Prevent recursive calls
-      if (esp32s2ReconnectInProgress) {
-        return;
-      }
-      
-      esp32s2ReconnectInProgress = true;
-      logMsg("ESP32-S2 Native USB detected!");
-      toggleUIConnected(false);
-      espStub = undefined;
-      
-      try {
-        await esploader.port.close();
-        
-        if (esploader.port.forget) {
-          await esploader.port.forget();
-        }
-      } catch (disconnectErr) {
-        // Ignore disconnect errors
-      }
-      
-      // Show modal dialog
-      const modal = document.getElementById("esp32s2Modal");
-      const reconnectBtn = document.getElementById("butReconnectS2");
-      
-      modal.classList.remove("hidden");
-      
-      // Handle reconnect button click
-      const handleReconnect = async () => {
-        modal.classList.add("hidden");
-        reconnectBtn.removeEventListener("click", handleReconnect);
-        
-        // Trigger port selection
-        try {
-          await clickConnect();
-          // Reset flag on successful connection
-          esp32s2ReconnectInProgress = false;
-        } catch (err) {
-          errorMsg("Failed to reconnect: " + err);
-          // Reset flag on error so user can try again
-          esp32s2ReconnectInProgress = false;
-        }
-      };
-      
-      reconnectBtn.addEventListener("click", handleReconnect);
-    });
-  }
+  // Store port info for ESP32-S2 detection
+  let portInfo = esploader.port?.getInfo ? esploader.port.getInfo() : {};
+  let isESP32S2 = portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x0002;
   
   try {
     await esploader.initialize();
-
-    logMsg("Connected to " + esploader.chipName);
-    logMsg("MAC Address: " + formatMacAddr(esploader.macAddr()));
-
-    espStub = await esploader.runStub();
-    toggleUIConnected(true);
-    toggleUIToolbar(true);
-    
-    // Set detected flash size in the read size field
-    if (espStub.flashSize) {
-      const flashSizeBytes = parseInt(espStub.flashSize) * 1024 * 1024; // Convert MB to bytes
-      readSize.value = "0x" + flashSizeBytes.toString(16);
-    }
-    
-    // Set the selected baud rate
-    let baud = parseInt(baudRate.value);
-    if (baudRates.includes(baud)) {
-      await espStub.setBaudrate(baud);
-    }
-    
-    espStub.addEventListener("disconnect", () => {
-      toggleUIConnected(false);
-      espStub = false;
-    });
   } catch (err) {
-    // If ESP32-S2 reconnect is in progress, suppress the error
-    if (esp32s2ReconnectInProgress) {
-      logMsg("Initialization interrupted for ESP32-S2 reconnection.");
-      return;
+    // Check if this is an ESP32-S2 that needs reconnection
+    if (isESP32S2 && isElectron && !esp32s2ReconnectInProgress) {
+      esp32s2ReconnectInProgress = true;
+      logMsg("ESP32-S2 Native USB detected - automatic reconnection...");
+      toggleUIConnected(false);
+      
+      try {
+        await esploader.port.close();
+      } catch (e) {
+        console.debug("Port close error:", e);
+      }
+      
+      // Wait for new port to appear
+      logMsg("Waiting for ESP32-S2 CDC port...");
+      
+      const waitForNewPort = new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (navigator.serial && navigator.serial.getPorts) {
+            navigator.serial.getPorts().then(ports => {
+              if (ports.length > 0) {
+                clearInterval(checkInterval);
+                resolve(ports[0]);
+              }
+            });
+          }
+        }, 100);
+        
+        // Timeout after 3 seconds
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          resolve(null);
+        }, 3000);
+      });
+      
+      const newPort = await waitForNewPort;
+      
+      if (!newPort) {
+        esp32s2ReconnectInProgress = false;
+        throw new Error("ESP32-S2 CDC port did not appear in time");
+      }
+      
+      // Additional small delay to ensure port is ready
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Open the new port and create ESPLoader directly
+      await newPort.open({ baudRate: 115200 });
+      logMsg("Connected successfully.");
+      
+      esploader = new esploaderMod.ESPLoader(newPort, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+      
+      // Initialize the new connection
+      await esploader.initialize();
+      
+      esp32s2ReconnectInProgress = false;
+      logMsg("ESP32-S2 reconnection successful!");
+    } else {
+      // Not ESP32-S2 or reconnect already attempted
+      try {
+        await esploader.disconnect();
+      } catch (disconnectErr) {
+        // Ignore disconnect errors
+      }
+      throw err;
     }
-    
-    try {
-      await esploader.disconnect();
-    } catch (disconnectErr) {
-      // Ignore disconnect errors
-    }
-    throw err;
   }
+
+  logMsg("Connected to " + esploader.chipName);
+  logMsg("MAC Address: " + formatMacAddr(esploader.macAddr()));
+
+  espStub = await esploader.runStub();
+  toggleUIConnected(true);
+  toggleUIToolbar(true);
+  
+  // Set detected flash size in the read size field
+  if (espStub.flashSize) {
+    const flashSizeBytes = parseInt(espStub.flashSize) * 1024 * 1024; // Convert MB to bytes
+    readSize.value = "0x" + flashSizeBytes.toString(16);
+  }
+  
+  // Set the selected baud rate
+  let baud = parseInt(baudRate.value);
+  if (baudRates.includes(baud)) {
+    await espStub.setBaudrate(baud);
+  }
+  
+  espStub.addEventListener("disconnect", () => {
+    toggleUIConnected(false);
+    espStub = false;
+  });
 }
 
 /**

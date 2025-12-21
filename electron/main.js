@@ -52,6 +52,10 @@ function createWindow() {
 }
 
 function setupSerialPortHandlers(ses) {
+  let lastSelectedPort = null;
+  let esp32s2ReconnectPending = false;
+  let portSelectionQueue = [];
+  
   // Handle serial port selection - shows when navigator.serial.requestPort() is called
   ses.on('select-serial-port', (event, portList, webContents, callback) => {
     event.preventDefault();
@@ -81,21 +85,47 @@ function setupSerialPortHandlers(ses) {
       // Select ESP-compatible port or first available
       const selectedPort = espPort || portList[0];
       console.log('Selected port:', selectedPort.portId, selectedPort.displayName || selectedPort.portName);
+      lastSelectedPort = selectedPort;
+      
       callback(selectedPort.portId);
     } else {
-      console.log('No serial ports available');
-      callback('');
+      console.log('No serial ports available - queuing selection');
+      // No ports available yet - queue this callback for when a port appears
+      portSelectionQueue.push(callback);
     }
   });
 
-  // Track port additions
+  // Track port additions - handle ESP32-S2 reconnect
   ses.on('serial-port-added', (event, port) => {
     console.log('Serial port added:', port);
+    
+    // If we have queued port selections, handle them now
+    if (portSelectionQueue.length > 0) {
+      console.log('Processing queued port selection');
+      const callback = portSelectionQueue.shift();
+      callback(port.portId);
+      lastSelectedPort = port;
+    }
+    
+    // Check if this looks like an ESP32-S2 CDC port appearing after ROM port disappeared
+    if (lastSelectedPort && port.portName !== lastSelectedPort.portName) {
+      const name = (port.displayName || port.portName || '').toLowerCase();
+      if (name.includes('esp') || name.includes('usb') || name.includes('uart')) {
+        console.log('ESP32-S2 reconnect detected - new CDC port available');
+        esp32s2ReconnectPending = true;
+      }
+    }
   });
 
-  // Track port removals
+  // Track port removals - detect ESP32-S2 disconnect
   ses.on('serial-port-removed', (event, port) => {
     console.log('Serial port removed:', port);
+    
+    // If the last selected port was removed, prepare for reconnect
+    if (lastSelectedPort && port.portId === lastSelectedPort.portId) {
+      console.log('Last selected port removed - may be ESP32-S2 mode switch');
+      // Don't clear lastSelectedPort yet, we might need it for comparison
+    }
   });
 
   // Grant permission for serial port access checks
