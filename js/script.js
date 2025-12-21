@@ -353,6 +353,7 @@ async function clickConnect() {
     
     espStub.addEventListener("disconnect", () => {
       toggleUIConnected(false);
+      resetLittleFSState(); // Clean up on disconnect event
       espStub = false;
     });
   } catch (err) {
@@ -370,57 +371,6 @@ async function clickConnect() {
     throw err;
   }
 }
-
-  // Handle ESP32-S2 Native USB reconnection requirement - must be set on esploader, not espStub
-  // Only add listener if not already in reconnect mode
-  if (!esp32s2ReconnectInProgress) {
-    esploader.addEventListener("esp32s2-usb-reconnect", async () => {
-      // Prevent recursive calls
-      if (esp32s2ReconnectInProgress) {
-        return;
-      }
-      
-      esp32s2ReconnectInProgress = true;
-      logMsg("ESP32-S2 Native USB detected!");
-      toggleUIConnected(false);
-      espStub = undefined;
-      
-      try {
-        await esploader.port.close();
-        
-        if (esploader.port.forget) {
-          await esploader.port.forget();
-        }
-      } catch (disconnectErr) {
-        // Ignore disconnect errors
-      }
-      
-      // Show modal dialog
-      const modal = document.getElementById("esp32s2Modal");
-      const reconnectBtn = document.getElementById("butReconnectS2");
-      
-      modal.classList.remove("hidden");
-      
-      // Handle reconnect button click
-      const handleReconnect = async () => {
-        modal.classList.add("hidden");
-        reconnectBtn.removeEventListener("click", handleReconnect);
-        
-        // Trigger port selection
-        try {
-          await clickConnect();
-          // Reset flag on successful connection
-          esp32s2ReconnectInProgress = false;
-        } catch (err) {
-          errorMsg("Failed to reconnect: " + err);
-          // Reset flag on error so user can try again
-          esp32s2ReconnectInProgress = false;
-        }
-      };
-      
-      reconnectBtn.addEventListener("click", handleReconnect);
-    });
-  }
 
 /**
  * @name changeBaudRate
@@ -1243,11 +1193,19 @@ function resetLittleFSState() {
   currentLittleFSPath = '/';
   currentLittleFSBlockSize = 4096;
   
-  // Hide UI
-  littlefsManager.classList.add('hidden');
-  
-  // Clear file list
-  littlefsFileList.innerHTML = '';
+  // Hide UI - safely check if elements exist
+  try {
+    if (littlefsManager) {
+      littlefsManager.classList.add('hidden');
+    }
+    
+    // Clear file list
+    if (littlefsFileList) {
+      littlefsFileList.innerHTML = '';
+    }
+  } catch (e) {
+    console.error('Error resetting LittleFS UI:', e);
+  }
 }
 
 /**
