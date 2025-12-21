@@ -1240,7 +1240,7 @@ async function openLittleFS(partition) {
     let blockSize = 0;
     
     // Dynamically import littlefs-wasm from local wasm directory
-    const { createLittleFSFromImage, formatDiskVersion } = await import('./wasm/littlefs/index.js');
+    const { createLittleFSFromImage, formatDiskVersion } = await import('../src/wasm/littlefs/index.js');
     
     for (const bs of blockSizes) {
       try {

@@ -15,7 +15,7 @@ module.exports = {
     appCategoryType: 'public.app-category.developer-tools',
     // Files to exclude from the app
     ignore: [
-      /^\/src/,
+      /^\/src\/(?!wasm)/,  // Exclude src/ but keep src/wasm/
       /^\/script/,
       /^\/\.github/,
       /^\/node_modules\/(?!electron)/,
