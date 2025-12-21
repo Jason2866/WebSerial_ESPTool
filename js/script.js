@@ -4,6 +4,7 @@ let currentLittleFS = null;
 let currentLittleFSPartition = null;
 let currentLittleFSPath = '/';
 let currentLittleFSBlockSize = 4096;
+let littlefsModulePromise = null; // Cache for LittleFS WASM module
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 const bufferSize = 512;
@@ -264,6 +265,7 @@ async function clickConnect() {
     await espStub.disconnect();
     await espStub.port.close();
     toggleUIConnected(false);
+    resetLittleFSState(); // Clean up LittleFS state
     espStub = undefined;
     return;
   }
@@ -1209,6 +1211,46 @@ async function detectFilesystemType(offset, size) {
 }
 
 /**
+ * Lazy-load and cache the LittleFS WASM module
+ */
+async function loadLittlefsModule() {
+  if (!littlefsModulePromise) {
+    littlefsModulePromise = import('../src/wasm/littlefs/index.js')
+      .catch(error => {
+        littlefsModulePromise = null; // Reset on error so it can be retried
+        throw error;
+      });
+  }
+  return littlefsModulePromise;
+}
+
+/**
+ * Reset LittleFS state
+ */
+function resetLittleFSState() {
+  // Clean up existing filesystem instance
+  if (currentLittleFS) {
+    try {
+      // Don't call destroy() - it can cause crashes
+      // Just let garbage collection handle it
+    } catch (e) {
+      console.error('Error cleaning up LittleFS:', e);
+    }
+  }
+  
+  currentLittleFS = null;
+  currentLittleFSPartition = null;
+  currentLittleFSPath = '/';
+  currentLittleFSBlockSize = 4096;
+  
+  // Hide UI
+  littlefsManager.classList.add('hidden');
+  
+  // Clear file list
+  littlefsFileList.innerHTML = '';
+}
+
+/**
  * Open LittleFS partition
  */
 async function openLittleFS(partition) {
@@ -1239,8 +1281,9 @@ async function openLittleFS(partition) {
     let fs = null;
     let blockSize = 0;
     
-    // Dynamically import littlefs-wasm from local wasm directory
-    const { createLittleFSFromImage, formatDiskVersion } = await import('../src/wasm/littlefs/index.js');
+    // Use cached module loader
+    const module = await loadLittlefsModule();
+    const { createLittleFSFromImage, formatDiskVersion } = module;
     
     for (const bs of blockSizes) {
       try {
@@ -1257,9 +1300,7 @@ async function openLittleFS(partition) {
         break;
       } catch (err) {
         // Try next block size
-        if (fs) {
-          try { fs.destroy(); } catch (e) {}
-        }
+        // Don't call destroy() - just let it be garbage collected
         fs = null;
       }
     }
@@ -1297,10 +1338,8 @@ async function openLittleFS(partition) {
     logMsg('LittleFS filesystem opened successfully');
   } catch (e) {
     errorMsg(`Failed to open LittleFS: ${e.message || e}`);
-    if (currentLittleFS) {
-      try { currentLittleFS.destroy(); } catch (err) {}
-      currentLittleFS = null;
-    }
+    // Don't call destroy() - just reset state
+    resetLittleFSState();
   }
 }
 
