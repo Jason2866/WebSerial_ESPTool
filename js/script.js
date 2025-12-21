@@ -265,7 +265,6 @@ async function clickConnect() {
     await espStub.disconnect();
     await espStub.port.close();
     toggleUIConnected(false);
-    resetLittleFSState(); // Clean up LittleFS state
     espStub = undefined;
     return;
   }
@@ -353,7 +352,6 @@ async function clickConnect() {
     
     espStub.addEventListener("disconnect", () => {
       toggleUIConnected(false);
-      resetLittleFSState(); // Clean up on disconnect event
       espStub = false;
     });
   } catch (err) {
