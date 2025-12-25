@@ -817,6 +817,9 @@ export class ESPLoader extends EventTarget {
       await this.reconfigurePort(baud);
     }
 
+    // Wait for port to be ready after baudrate change
+    await sleep(SYNC_TIMEOUT);
+
     // Track current baudrate for reconnect
     if (this._parent) {
       this._parent._currentBaudRate = baud;
