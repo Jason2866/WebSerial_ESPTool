@@ -9,7 +9,7 @@ While this issue was primarily observed with CP210x chips on Windows, the fix is
 ## Solution
 
 The solution is based on the esptool.py commit:
-https://github.com/espressif/esptool/commit/5338ea054e5099ac7be235c54034802ac8a43162
+[esptool commit 5338ea054e](https://github.com/espressif/esptool/commit/5338ea054e5099ac7be235c54034802ac8a43162)
 
 ### Implemented Changes
 
