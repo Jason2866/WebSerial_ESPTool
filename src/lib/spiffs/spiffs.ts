@@ -122,13 +122,14 @@ export class SpiffsFS {
     }
 
     let bix = this.blocks.length;
+    let remaining = this.remainingBlocks;
 
     if (this.buildConfig.useMagic) {
       // Create empty blocks with magic numbers
-      while (this.remainingBlocks > 0) {
+      while (remaining > 0) {
         const block = new SpiffsBlock(bix, this.buildConfig);
         allBlocks.push(block.toBinary(this.blocksLim));
-        this.remainingBlocks--;
+        remaining--;
         bix++;
       }
     } else {
