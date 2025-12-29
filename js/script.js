@@ -20,6 +20,53 @@ function getFilesystemDisplayName() {
   }
 }
 
+/**
+ * Clear all cached data and state on disconnect
+ */
+function clearAllCachedData() {
+  // Close filesystem if open
+  if (currentLittleFS) {
+    try {
+      // Only call destroy if it exists (LittleFS has it, FatFS/SPIFFS don't)
+      if (typeof currentLittleFS.destroy === 'function') {
+        currentLittleFS.destroy();
+      }
+    } catch (e) {
+      console.error('Error destroying filesystem:', e);
+    }
+  }
+  
+  // Reset filesystem state
+  currentLittleFS = null;
+  currentLittleFSPartition = null;
+  currentLittleFSPath = '/';
+  currentLittleFSBlockSize = 4096;
+  currentFilesystemType = null;
+  
+  // Hide filesystem manager
+  littlefsManager.classList.add('hidden');
+  
+  // Clear partition list
+  partitionList.innerHTML = '';
+  partitionList.classList.add('hidden');
+  
+  // Show the Read Partition Table button again
+  butReadPartitions.classList.remove('hidden');
+  
+  // Clear file input
+  if (littlefsFileInput) {
+    littlefsFileInput.value = '';
+  }
+  
+  // Reset buttons
+  butLittlefsUpload.disabled = true;
+  
+  // Clear any cached module promises
+  littlefsModulePromise = null;
+  
+  logMsg('All cached data cleared');
+}
+
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 const bufferSize = 512;
 const colors = ["#00a7e9", "#f89521", "#be1e2d"];
@@ -276,10 +323,19 @@ function formatMacAddr(macAddr) {
  */
 async function clickConnect() {
   if (espStub) {
+    // Remove disconnect event listener to prevent it from firing during manual disconnect
+    if (espStub.handleDisconnect) {
+      espStub.removeEventListener("disconnect", espStub.handleDisconnect);
+    }
+    
     await espStub.disconnect();
     await espStub.port.close();
     toggleUIConnected(false);
     espStub = undefined;
+    
+    // Clear all cached data and state
+    clearAllCachedData();
+    
     return;
   }
 
@@ -444,10 +500,13 @@ async function clickConnect() {
     await espStub.setBaudrate(baud);
   }
   
-  espStub.addEventListener("disconnect", () => {
+  // Store disconnect handler so we can remove it later
+  const handleDisconnect = () => {
     toggleUIConnected(false);
     espStub = false;
-  });
+  };
+  espStub.handleDisconnect = handleDisconnect; // Store reference on espStub
+  espStub.addEventListener("disconnect", handleDisconnect);
 }
 
 /**
@@ -2035,7 +2094,10 @@ function clickLittlefsClose() {
   
   if (currentLittleFS) {
     try {
-      currentLittleFS.destroy();
+      // Only call destroy if it exists (LittleFS has it, FatFS/SPIFFS don't)
+      if (typeof currentLittleFS.destroy === 'function') {
+        currentLittleFS.destroy();
+      }
     } catch (e) {
       console.error(`Error destroying ${fsName}:`, e);
     }
