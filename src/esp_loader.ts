@@ -440,9 +440,9 @@ export class ESPLoader extends EventTarget {
   state_DTR = false;
   async setRTS(state: boolean) {
     await this.port.setSignals({ requestToSend: state });
-    // # Work-around for adapters on Windows using the usbser.sys driver:
-    // # generate a dummy change to DTR so that the set-control-line-state
-    // # request is sent with the updated RTS state and the same DTR state
+    // Work-around for adapters on Windows using the usbser.sys driver:
+    // generate a dummy change to DTR so that the set-control-line-state
+    // request is sent with the updated RTS state and the same DTR state
     // Referenced to esptool.py
     await this.setDTR(this.state_DTR);
   }
@@ -634,6 +634,9 @@ export class ESPLoader extends EventTarget {
     }
     if (status[0] == 1) {
       if (status[1] == ROM_INVALID_RECV_MSG) {
+        // Unsupported command can result in more than one error response
+        // Use drainInputBuffer for CP210x compatibility on Windows
+        await this.drainInputBuffer(200);
         throw new Error("Invalid (unsupported) command " + toHex(opcode));
       } else {
         throw new Error("Command failure error code " + toHex(status[1]));
@@ -777,7 +780,9 @@ export class ESPLoader extends EventTarget {
         return [val, data];
       }
       if (data[0] != 0 && data[1] == ROM_INVALID_RECV_MSG) {
-        this._inputBuffer.length = 0;
+        // Unsupported command can result in more than one error response
+        // Use drainInputBuffer for CP210x compatibility on Windows
+        await this.drainInputBuffer(200);
         throw new Error(`Invalid (unsupported) command ${toHex(opcode)}`);
       }
     }
@@ -1617,6 +1622,53 @@ export class ESPLoader extends EventTarget {
       Object.assign(this, stubLoader);
     }
     this.logger.debug("Reconnection successful");
+  }
+
+  /**
+   * @name drainInputBuffer
+   * Actively drain the input buffer by reading data for a specified time.
+   * Simple approach for some drivers (especially CP210x on Windows) that have
+   * issues with buffer flushing.
+   *
+   * Based on esptool.py fix: https://github.com/espressif/esptool/commit/5338ea054e5099ac7be235c54034802ac8a43162
+   *
+   * @param bufferingTime - Time in milliseconds to wait for the buffer to fill
+   */
+  private async drainInputBuffer(bufferingTime = 200): Promise<void> {
+    // Wait for the buffer to fill
+    await sleep(bufferingTime);
+
+    // Unsupported command response is sent 8 times and has
+    // 14 bytes length including delimiter 0xC0 bytes.
+    // At least part of it is read as a command response,
+    // but to be safe, read it all.
+    const bytesToDrain = 14 * 8;
+    let drained = 0;
+
+    // Drain the buffer by reading available data
+    const drainStart = Date.now();
+    const drainTimeout = 100; // Short timeout for draining
+
+    while (drained < bytesToDrain && Date.now() - drainStart < drainTimeout) {
+      if (this._inputBuffer.length > 0) {
+        const byte = this._inputBuffer.shift();
+        if (byte !== undefined) {
+          drained++;
+        }
+      } else {
+        // Small sleep to avoid busy waiting
+        await sleep(1);
+      }
+    }
+
+    if (drained > 0) {
+      this.logger.debug(`Drained ${drained} bytes from input buffer`);
+    }
+
+    // Final clear of application buffer
+    if (!this._parent) {
+      this.__inputBuffer = [];
+    }
   }
 
   /**
