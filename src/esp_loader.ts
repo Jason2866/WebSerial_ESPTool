@@ -1629,9 +1629,9 @@ export class ESPLoader extends EventTarget {
    * Actively drain the input buffer by reading data for a specified time.
    * Simple approach for some drivers (especially CP210x on Windows) that have
    * issues with buffer flushing.
-   * 
+   *
    * Based on esptool.py fix: https://github.com/espressif/esptool/commit/5338ea054e5099ac7be235c54034802ac8a43162
-   * 
+   *
    * @param bufferingTime - Time in milliseconds to wait for the buffer to fill
    */
   private async drainInputBuffer(bufferingTime = 200): Promise<void> {
