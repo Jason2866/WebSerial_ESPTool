@@ -2016,7 +2016,7 @@ async function clickLittlefsWrite() {
   if (!currentLittleFS || !currentLittleFSPartition) return;
   
   const confirmed = confirm(
-    `Write modified LittleFS to flash?\n\n` +
+    `Write modified filesystem to flash?\n\n` +
     `Partition: ${currentLittleFSPartition.name}\n` +
     `Offset: 0x${currentLittleFSPartition.offset.toString(16)}\n` +
     `Size: ${formatSize(currentLittleFSPartition.size)}\n\n` +
