@@ -321,11 +321,13 @@ function handleFdWrite(context, fd, iov, iovcnt, pnum) {
         const ptr = view.getUint32(base, true);
         const len = view.getUint32(base + 4, true);
         total += len;
-        if (fd === 1 || fd === 2) {
-            const bytes = new Uint8Array(memory.buffer, ptr, len);
-            const text = new TextDecoder().decode(bytes);
-            console.info(`[fatfs-wasm::fd_write fd=${fd}] ${text}`);
-        }
+        // Suppress fd_write logging in production (fd 1=stdout, 2=stderr)
+        // Uncomment for debugging:
+        // if (fd === 1 || fd === 2) {
+        //     const bytes = new Uint8Array(memory.buffer, ptr, len);
+        //     const text = new TextDecoder().decode(bytes);
+        //     console.info(`[fatfs-wasm::fd_write fd=${fd}] ${text}`);
+        // }
     }
     view.setUint32(pnum, total, true);
     return 0;
