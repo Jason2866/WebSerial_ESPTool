@@ -6735,7 +6735,9 @@ class SpiffsObjIndexPage extends SpiffsObjPageWithIdx {
         }
         // Add page indices
         for (const page of this.pages) {
-            const pageIx = page >> Math.log2(this.buildConfig.pageSize);
+            // Calculate page index by dividing page offset by page size
+            // pageSize is always a power of 2, so integer division is safe
+            const pageIx = Math.floor(page / this.buildConfig.pageSize);
             const pageIxPacked = this.pack(this.buildConfig.pageIxLen === 1
                 ? "B"
                 : this.buildConfig.pageIxLen === 2
@@ -7001,12 +7003,13 @@ class SpiffsFS {
             allBlocks.push(block.toBinary(this.blocksLim));
         }
         let bix = this.blocks.length;
+        let remaining = this.remainingBlocks;
         if (this.buildConfig.useMagic) {
             // Create empty blocks with magic numbers
-            while (this.remainingBlocks > 0) {
+            while (remaining > 0) {
                 const block = new SpiffsBlock(bix, this.buildConfig);
                 allBlocks.push(block.toBinary(this.blocksLim));
-                this.remainingBlocks--;
+                remaining--;
                 bix++;
             }
         }
