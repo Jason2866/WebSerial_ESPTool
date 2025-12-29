@@ -289,7 +289,9 @@ export class SpiffsObjIndexPage extends SpiffsObjPageWithIdx {
 
     // Add page indices
     for (const page of this.pages) {
-      const pageIx = page >> Math.log2(this.buildConfig.pageSize);
+      // Calculate page index by dividing page offset by page size
+      // pageSize is always a power of 2, so integer division is safe
+      const pageIx = Math.floor(page / this.buildConfig.pageSize);
       const pageIxPacked = this.pack(
         this.buildConfig.pageIxLen === 1
           ? "B"
