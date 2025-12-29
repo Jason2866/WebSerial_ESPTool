@@ -33,3 +33,22 @@ export const connect = async (logger: Logger) => {
 
   return new ESPLoader(port, logger);
 };
+
+export {
+  parsePartitionTable,
+  getPartitionTableOffset,
+  formatSize,
+} from "./partition";
+export type { Partition } from "./partition";
+
+export {
+  FilesystemType,
+  detectFilesystemType,
+  detectFilesystemFromImage,
+  getDefaultBlockSize,
+  getBlockSizeCandidates,
+  LITTLEFS_DEFAULT_BLOCK_SIZE,
+  LITTLEFS_BLOCK_SIZE_CANDIDATES,
+  FATFS_DEFAULT_BLOCK_SIZE,
+  FATFS_BLOCK_SIZE_CANDIDATES,
+} from "./wasm/filesystems";

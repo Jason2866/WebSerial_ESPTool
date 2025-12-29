@@ -887,8 +887,9 @@ function displayPartitions(partitions) {
     downloadBtn.onclick = () => downloadPartition(partition);
     actionCell.appendChild(downloadBtn);
     
-    // Add "Open FS" button for data partitions (type 0x01, subtype 0x82)
-    if (partition.type === 0x01 && partition.subtype === 0x82) {
+    // Add "Open FS" button for data partitions with filesystem
+    // 0x81 = FAT, 0x82 = SPIFFS (often contains LittleFS)
+    if (partition.type === 0x01 && (partition.subtype === 0x81 || partition.subtype === 0x82)) {
       const fsBtn = document.createElement("button");
       fsBtn.textContent = "Open FS";
       fsBtn.className = "littlefs-fs-button";
@@ -1116,6 +1117,8 @@ async function openFilesystem(partition) {
     
     if (fsType === 'littlefs') {
       await openLittleFS(partition);
+    } else if (fsType === 'fatfs') {
+      await openFatFS(partition);
     } else if (fsType === 'spiffs') {
       errorMsg('SPIFFS support not yet implemented. Use LittleFS partitions.');
     } else {
@@ -1134,6 +1137,10 @@ async function openFilesystem(partition) {
  * - The superblock contains the string "littlefs" in its metadata
  * - LittleFS uses a specific block structure with magic numbers
  * 
+ * FatFS Detection:
+ * - FAT boot sector signature 0xAA55 at offset 510-511
+ * - FAT signature string at offset 54 (FAT16) or 82 (FAT32)
+ * 
  * SPIFFS Detection:
  * - SPIFFS has a different structure without the "littlefs" string
  * - SPIFFS uses object headers with different magic numbers
@@ -1141,7 +1148,9 @@ async function openFilesystem(partition) {
  * Detection Strategy:
  * 1. Read first 8KB of partition (covers multiple blocks)
  * 2. Search for "littlefs" string in ASCII representation
- * 3. If found -> LittleFS, otherwise -> SPIFFS
+ * 3. Check for FAT boot signature
+ * 4. Check for SPIFFS magic
+ * 5. If found -> corresponding FS, otherwise -> SPIFFS
  */
 async function detectFilesystemType(offset, size) {
   try {
@@ -1164,7 +1173,35 @@ async function detectFilesystemType(offset, size) {
       return 'littlefs';
     }
     
-    // Method 2: Check for LittleFS block structure
+    // Method 2: Check for FAT filesystem signatures
+    if (data.length >= 512) {
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const bootSig = view.getUint16(510, true);
+      
+      if (bootSig === 0xAA55) {
+        // logMsg('Found FAT boot signature (0xAA55) at offset 510-511');
+        
+        // Check for FAT signature strings
+        let fat16Sig = '';
+        let fat32Sig = '';
+        
+        if (data.length >= 62) {
+          fat16Sig = String.fromCharCode(data[54], data[55], data[56], data[57], data[58]);
+        }
+        if (data.length >= 90) {
+          fat32Sig = String.fromCharCode(data[82], data[83], data[84], data[85], data[86]);
+        }
+        
+        if (fat16Sig.startsWith('FAT') || fat32Sig.startsWith('FAT')) {
+          // logMsg('FatFS detected: Found FAT boot signature and FAT string');
+          return 'fatfs';
+        } else {
+          logMsg('Boot signature found but no FAT string - might be empty/unformatted FAT partition');
+        }
+      }
+    }
+    
+    // Method 3: Check for LittleFS block structure
     // LittleFS blocks start with a CRC and metadata
     // Look for patterns that indicate LittleFS structure
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -1190,7 +1227,7 @@ async function detectFilesystemType(offset, size) {
               // Found potential LittleFS structure
               // Additional validation: check if data follows expected pattern
               if (i + length + 4 <= data.length) {
-                logMsg('✓ LittleFS detected: Found valid metadata structure');
+                logMsg('LittleFS detected: Found valid metadata structure');
                 return 'littlefs';
               }
             }
@@ -1201,7 +1238,7 @@ async function detectFilesystemType(offset, size) {
       }
     }
     
-    // Method 3: Check for SPIFFS signatures
+    // Method 4: Check for SPIFFS signatures
     // SPIFFS object headers have specific magic numbers
     // SPIFFS magic: 0x20140529 (in some implementations)
     for (let i = 0; i < Math.min(4096, data.length - 4); i += 4) {
@@ -1215,7 +1252,7 @@ async function detectFilesystemType(offset, size) {
     
     // Default: If no clear signature found, assume SPIFFS
     // (SPIFFS is more common and older, so it's a safer default)
-    logMsg('⚠ No clear filesystem signature found, assuming SPIFFS');
+    logMsg('No clear filesystem signature found, assuming SPIFFS');
     return 'spiffs';
     
   } catch (err) {
@@ -1368,6 +1405,118 @@ async function openLittleFS(partition) {
   } catch (e) {
     errorMsg(`Failed to open LittleFS: ${e.message || e}`);
     // Don't call destroy() - just reset state
+    resetLittleFSState();
+  }
+}
+
+/**
+ * Open FatFS partition
+ */
+async function openFatFS(partition) {
+  try {
+    logMsg(`Reading FatFS partition "${partition.name}" (${formatSize(partition.size)})...`);
+    
+    // Read entire partition
+    const partitionProgress = document.getElementById("partitionProgress");
+    const progressBar = partitionProgress.querySelector("div");
+    partitionProgress.classList.remove("hidden");
+    
+    const data = await espStub.readFlash(
+      partition.offset,
+      partition.size,
+      (packet, progress, totalSize) => {
+        const percent = Math.floor((progress / totalSize) * 100);
+        progressBar.style.width = percent + "%";
+      }
+    );
+    
+    partitionProgress.classList.add("hidden");
+    progressBar.style.width = "0%";
+    
+    logMsg('Mounting FatFS filesystem...');
+    logMsg(`Partition size: ${formatSize(partition.size)} (${partition.size} bytes)`);
+    
+    // Load FatFS module
+    const basePath = window.location.pathname.endsWith('/') 
+      ? window.location.pathname 
+      : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    const modulePath = `${basePath}src/wasm/fatfs/index.js`;
+    
+    logMsg(`Loading FatFS module from: ${modulePath}`);
+    const module = await import(modulePath);
+    const { createFatFSFromImage, createFatFS } = module;
+    
+    // Use 4096 block size (ESP32 standard)
+    let blockSize = 4096;
+    let blockCount = Math.max(1, Math.floor(partition.size / blockSize));
+    if (blockCount <= 0) {
+      blockCount = 1;
+    }
+    
+    let fs = null;
+    
+    // First try to mount existing FatFS from image
+    try {
+      logMsg(`Trying to mount FatFS with block size ${blockSize} (${blockCount} blocks)...`);
+      
+      fs = await createFatFSFromImage(data, {
+        blockSize: blockSize,
+        blockCount: blockCount,
+      });
+      
+      logMsg(`FatFS instance created, attempting to list files...`);
+      const files = fs.list();
+      logMsg(`Successfully listed ${files.length} files/directories`);
+      logMsg(`Successfully mounted FatFS`);
+    } catch (err) {
+      logMsg(`Failed to mount existing FatFS: ${err.message || err}`);
+      
+      // If mounting fails, create a new empty formatted filesystem
+      // Note: This does NOT use the image data - it creates a blank filesystem
+      if (createFatFS) {
+        try {
+          logMsg(`Creating new blank FatFS (not using image data)...`);
+          fs = await createFatFS({
+            blockSize: blockSize,
+            blockCount: blockCount,
+            formatOnInit: true,
+          });
+          logMsg(`Created new formatted FatFS`);
+          logMsg(`Partition appears blank/unformatted. You can format and save to initialize it.`);
+        } catch (createErr) {
+          logMsg(`Failed to create new FatFS: ${createErr.message || createErr}`);
+          throw err; // Throw original error
+        }
+      } else {
+        throw err;
+      }
+    }
+    
+    if (!fs) {
+      throw new Error('Failed to mount FatFS with any block size. The partition may not contain a valid FAT filesystem or may be corrupted.');
+    }
+    
+    // Store filesystem instance and block size
+    currentLittleFS = fs;
+    currentLittleFSPartition = partition;
+    currentLittleFSPath = '/';
+    currentLittleFSBlockSize = blockSize;
+    
+    // Update UI
+    littlefsPartitionName.textContent = partition.name;
+    littlefsPartitionSize.textContent = formatSize(partition.size);
+    littlefsDiskVersion.textContent = 'FAT';
+    
+    // Show manager
+    littlefsManager.classList.remove('hidden');
+    
+    // Load files
+    refreshLittleFS();
+    
+    logMsg('FatFS filesystem opened successfully');
+  } catch (e) {
+    errorMsg(`Failed to open FatFS: ${e.message || e}`);
+    console.error('FatFS open error:', e);
     resetLittleFSState();
   }
 }
