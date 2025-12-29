@@ -4,7 +4,21 @@ let currentLittleFS = null;
 let currentLittleFSPartition = null;
 let currentLittleFSPath = '/';
 let currentLittleFSBlockSize = 4096;
+let currentFilesystemType = null; // 'littlefs', 'fatfs', or 'spiffs'
 let littlefsModulePromise = null; // Cache for LittleFS WASM module
+
+/**
+ * Get display name for current filesystem type
+ */
+function getFilesystemDisplayName() {
+  if (!currentFilesystemType) return 'Filesystem';
+  switch (currentFilesystemType) {
+    case 'littlefs': return 'LittleFS';
+    case 'fatfs': return 'FatFS';
+    case 'spiffs': return 'SPIFFS';
+    default: return 'Filesystem';
+  }
+}
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 const bufferSize = 512;
@@ -1166,13 +1180,27 @@ async function detectFilesystemType(offset, size) {
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     
     // Method 1: Check for SPIFFS magic number FIRST (most reliable)
-    // SPIFFS magic: 0x20140529 at the beginning or in first blocks
-    for (let i = 0; i < Math.min(4096, data.length - 4); i += 4) {
-      const magic = view.getUint32(i, true);
-      // Common SPIFFS magic numbers
-      if (magic === 0x20140529 || magic === 0x20160529) {
-        logMsg('✓ SPIFFS detected: Found SPIFFS magic number 0x' + magic.toString(16) + ' at offset ' + i);
-        return 'spiffs';
+    // SPIFFS magic: 0x20140529 XORed with page size and optionally (blocksLim - blockIndex)
+    // The magic is stored as objIdLen bytes (typically 2 bytes) in the last lookup page
+    // Pattern: Always ends with 0x05 in the second byte (from 0x0529)
+    
+    // Check at block boundaries (every 4KB) for SPIFFS magic
+    for (let blockOffset = 0; blockOffset < Math.min(8192, data.length); blockOffset += 4096) {
+      // SPIFFS stores magic near the end of the last lookup page
+      // For 4KB blocks, check around offset 0xF0-0xFF
+      for (let pageOffset = 0xE0; pageOffset < Math.min(0x100, data.length - blockOffset - 2); pageOffset += 2) {
+        const offset = blockOffset + pageOffset;
+        if (offset + 2 > data.length) break;
+        
+        // Read as 16-bit (objIdLen=2, most common)
+        const magic16 = view.getUint16(offset, true);
+        
+        // SPIFFS magic pattern: second byte is always 0x05 (from base 0x0529)
+        // First byte varies based on XOR with pageSize and block index
+        if ((magic16 & 0xFF00) === 0x0500) {
+          logMsg(`SPIFFS detected: Found SPIFFS magic pattern 0x${magic16.toString(16)} at offset 0x${offset.toString(16)}`);
+          return 'spiffs';
+        }
       }
     }
     
@@ -1182,7 +1210,7 @@ async function detectFilesystemType(offset, size) {
     const dataStr = decoder.decode(data);
     
     if (dataStr.includes('littlefs')) {
-      logMsg('✓ LittleFS detected: Found "littlefs" signature in partition data');
+      logMsg('LittleFS detected: Found "littlefs" signature in partition data');
       return 'littlefs';
     }
     
@@ -1203,7 +1231,7 @@ async function detectFilesystemType(offset, size) {
         }
         
         if (fat16Sig.startsWith('FAT') || fat32Sig.startsWith('FAT')) {
-          logMsg('✓ FatFS detected: Found FAT boot signature and FAT string');
+          logMsg('FatFS detected: Found FAT boot signature and FAT string');
           return 'fatfs';
         } else {
           logMsg('Boot signature found but no FAT string - might be empty/unformatted FAT partition');
@@ -1217,7 +1245,7 @@ async function detectFilesystemType(offset, size) {
     for (let i = 0; i < Math.min(8192, data.length - 4); i++) {
       const magic32 = view.getUint32(i, true);
       if (magic32 === 0x32736c66 || magic32 === 0x31736c66) {
-        logMsg('✓ LittleFS detected: Found LittleFS magic number 0x' + magic32.toString(16) + ' at offset ' + i);
+        logMsg('LittleFS detected: Found LittleFS magic number 0x' + magic32.toString(16) + ' at offset ' + i);
         return 'littlefs';
       }
     }
@@ -1351,6 +1379,7 @@ async function openLittleFS(partition) {
     currentLittleFSPartition = partition;
     currentLittleFSPath = '/';
     currentLittleFSBlockSize = blockSize;
+    currentFilesystemType = 'littlefs';
     
     // Update UI
     littlefsPartitionName.textContent = partition.name;
@@ -1477,6 +1506,7 @@ async function openFatFS(partition) {
     currentLittleFSPartition = partition;
     currentLittleFSPath = '/';
     currentLittleFSBlockSize = blockSize;
+    currentFilesystemType = 'fatfs';
     
     // Update UI
     littlefsPartitionName.textContent = partition.name;
@@ -1534,8 +1564,7 @@ async function openSPIFFS(partition) {
       ? window.location.pathname 
       : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
     const modulePath = `${basePath}js/modules/esptool.js`;
-    
-    logMsg(`Loading SPIFFS module from: ${modulePath}`);
+
     const { SpiffsFS, SpiffsReader, SpiffsBuildConfig, DEFAULT_SPIFFS_CONFIG } = await import(modulePath);
     
     // Create build config with partition size
@@ -1712,6 +1741,7 @@ async function openSPIFFS(partition) {
     currentLittleFSPartition = partition;
     currentLittleFSPath = '/';
     currentLittleFSBlockSize = config.blockSize;
+    currentFilesystemType = 'spiffs';
     
     // Update UI
     littlefsPartitionName.textContent = partition.name;
@@ -1899,7 +1929,7 @@ function clickLittlefsUp() {
  */
 function clickLittlefsRefresh() {
   refreshLittleFS();
-  logMsg('LittleFS file list refreshed');
+  logMsg(`${getFilesystemDisplayName()} file list refreshed`);
 }
 
 /**
@@ -1909,15 +1939,16 @@ async function clickLittlefsBackup() {
   if (!currentLittleFS || !currentLittleFSPartition) return;
   
   try {
-    logMsg('Creating LittleFS backup image...');
+    logMsg(`Creating ${getFilesystemDisplayName()} backup image...`);
     const image = currentLittleFS.toImage();
     
-    const filename = `${currentLittleFSPartition.name}_littlefs_backup.bin`;
+    const fsType = currentFilesystemType || 'filesystem';
+    const filename = `${currentLittleFSPartition.name}_${fsType}_backup.bin`;
     await saveDataToFile(image, filename);
     
-    logMsg(`LittleFS backup saved as "${filename}"`);
+    logMsg(`${getFilesystemDisplayName()} backup saved as "${filename}"`);
   } catch (e) {
-    errorMsg(`Failed to backup LittleFS: ${e.message || e}`);
+    errorMsg(`Failed to backup ${getFilesystemDisplayName()}: ${e.message || e}`);
   }
 }
 
@@ -1938,7 +1969,7 @@ async function clickLittlefsWrite() {
   if (!confirmed) return;
   
   try {
-    logMsg('Creating LittleFS image...');
+    logMsg(`Creating ${getFilesystemDisplayName()} image...`);
     const image = currentLittleFS.toImage();
     logMsg(`Image created: ${formatSize(image.length)}`);
     
@@ -1982,11 +2013,11 @@ async function clickLittlefsWrite() {
     usageBar.style.width = originalUsageBarWidth;
     usageText.textContent = originalUsageText;
     
-    logMsg(`✓ LittleFS successfully written to flash!`);
+    logMsg(`${getFilesystemDisplayName()} successfully written to flash!`);
     logMsg(`To use the new filesystem, reset your device.`);
     
   } catch (e) {
-    errorMsg(`Failed to write LittleFS to flash: ${e.message || e}`);
+    errorMsg(`Failed to write ${getFilesystemDisplayName()} to flash: ${e.message || e}`);
   } finally {
     // Re-enable buttons
     butLittlefsRefresh.disabled = false;
@@ -2002,19 +2033,22 @@ async function clickLittlefsWrite() {
  * Close LittleFS manager
  */
 function clickLittlefsClose() {
+  const fsName = getFilesystemDisplayName() || 'Filesystem';
+  
   if (currentLittleFS) {
     try {
       currentLittleFS.destroy();
     } catch (e) {
-      console.error('Error destroying LittleFS:', e);
+      console.error(`Error destroying ${fsName}:`, e);
     }
     currentLittleFS = null;
   }
   
   currentLittleFSPartition = null;
   currentLittleFSPath = '/';
+  currentFilesystemType = null;
   littlefsManager.classList.add('hidden');
-  logMsg('LittleFS manager closed');
+  logMsg(`${fsName} manager closed`);
 }
 
 /**
@@ -2059,7 +2093,7 @@ async function clickLittlefsUpload() {
     
     // Verify by reading back
     const readBack = currentLittleFS.readFile(targetPath);
-    logMsg(`✓ File written: ${readBack.length} bytes at ${targetPath}`);
+    logMsg(`File written: ${readBack.length} bytes at ${targetPath}`);
     
     // Clear input
     littlefsFileInput.value = '';
