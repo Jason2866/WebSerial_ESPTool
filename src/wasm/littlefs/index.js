@@ -175,7 +175,7 @@ export async function createLittleFSFromImage(image, options = {}) {
         }
 
         try {
-            // Copy image to WASM memory
+            // Copy image to WASM memory (access HEAPU8 after malloc to ensure current buffer)
             Module.HEAPU8.set(imageData, imagePtr);
 
             // Initialize from image
@@ -229,6 +229,7 @@ function createClient(Module, blockSize, blockCount) {
         const bytes = encoder.encode(str + '\0');
         const ptr = Module._malloc(bytes.length);
         if (!ptr) throw new LittleFSError("Failed to allocate string", -1);
+        // Get HEAPU8 AFTER malloc to avoid stale reference if memory grows
         Module.HEAPU8.set(bytes, ptr);
         return ptr;
     }
@@ -358,6 +359,7 @@ function createClient(Module, blockSize, blockCount) {
             }
 
             try {
+                // Access HEAPU8 after malloc to ensure we have current buffer
                 Module.HEAPU8.set(bytes, dataPtr);
                 const result = Module._lfs_wasm_write_file(pathPtr, dataPtr, bytes.length);
                 if (result < 0) {

@@ -45,12 +45,13 @@ export async function createFatFSFromImage(image, options = {}) {
     if (blockCount * blockSize !== bytes.length) {
         throw new Error("Image size must equal blockSize * blockCount");
     }
-    const heap = new Uint8Array(exports.memory.buffer);
     const ptr = exports.malloc(bytes.length || 1);
     if (!ptr) {
         throw new FatFSError("Failed to allocate WebAssembly memory", FATFS_ERR_NOT_ENOUGH_CORE);
     }
     try {
+        // Get heap AFTER malloc to avoid stale reference if memory grows
+        const heap = new Uint8Array(exports.memory.buffer);
         heap.set(bytes, ptr);
         const initResult = exports.fatfsjs_init_from_image(blockSize, blockCount, ptr, bytes.length);
         if (initResult < 0) {
