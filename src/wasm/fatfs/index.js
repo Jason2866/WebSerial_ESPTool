@@ -239,9 +239,14 @@ function parseListPayload(payload) {
         .filter((line) => line.length > 0)
         .map((line) => {
         const [rawPath, rawSize] = line.split("\t");
+        const path = rawPath ?? "";
+        const size = Number(rawSize ?? "0") || 0;
+        // Determine type: directories end with '/', files don't
+        const type = path.endsWith('/') ? 'dir' : 'file';
         return {
-            path: rawPath ?? "",
-            size: Number(rawSize ?? "0") || 0
+            path: path,
+            size: size,
+            type: type
         };
     });
 }
