@@ -6437,6 +6437,771 @@ function getBlockSizeCandidates(fsType) {
     }
 }
 
+/**
+ * SPIFFS Build Configuration
+ * Based on ESP-IDF spiffsgen.py
+ */
+const SPIFFS_PH_FLAG_USED_FINAL_INDEX = 0xf8;
+const SPIFFS_PH_FLAG_USED_FINAL = 0xfc;
+const SPIFFS_PH_FLAG_LEN = 1;
+const SPIFFS_PH_IX_SIZE_LEN = 4;
+const SPIFFS_PH_IX_OBJ_TYPE_LEN = 1;
+const SPIFFS_TYPE_FILE = 1;
+// Based on typedefs under spiffs_config.h
+const SPIFFS_OBJ_ID_LEN = 2; // spiffs_obj_id
+const SPIFFS_SPAN_IX_LEN = 2; // spiffs_span_ix
+const SPIFFS_PAGE_IX_LEN = 2; // spiffs_page_ix
+const SPIFFS_BLOCK_IX_LEN = 2; // spiffs_block_ix
+class SpiffsBuildConfig {
+    constructor(options) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+        if (options.blockSize % options.pageSize !== 0) {
+            throw new Error('block size should be a multiple of page size');
+        }
+        this.pageSize = options.pageSize;
+        this.blockSize = options.blockSize;
+        this.objIdLen = (_a = options.objIdLen) !== null && _a !== void 0 ? _a : SPIFFS_OBJ_ID_LEN;
+        this.spanIxLen = (_b = options.spanIxLen) !== null && _b !== void 0 ? _b : SPIFFS_SPAN_IX_LEN;
+        this.packed = (_c = options.packed) !== null && _c !== void 0 ? _c : true;
+        this.aligned = (_d = options.aligned) !== null && _d !== void 0 ? _d : true;
+        this.objNameLen = (_e = options.objNameLen) !== null && _e !== void 0 ? _e : 32;
+        this.metaLen = (_f = options.metaLen) !== null && _f !== void 0 ? _f : 4;
+        this.pageIxLen = (_g = options.pageIxLen) !== null && _g !== void 0 ? _g : SPIFFS_PAGE_IX_LEN;
+        this.blockIxLen = (_h = options.blockIxLen) !== null && _h !== void 0 ? _h : SPIFFS_BLOCK_IX_LEN;
+        this.endianness = (_j = options.endianness) !== null && _j !== void 0 ? _j : 'little';
+        this.useMagic = (_k = options.useMagic) !== null && _k !== void 0 ? _k : true;
+        this.useMagicLen = (_l = options.useMagicLen) !== null && _l !== void 0 ? _l : true;
+        this.alignedObjIxTables = (_m = options.alignedObjIxTables) !== null && _m !== void 0 ? _m : false;
+        this.PAGES_PER_BLOCK = Math.floor(this.blockSize / this.pageSize);
+        this.OBJ_LU_PAGES_PER_BLOCK = Math.ceil((this.blockSize / this.pageSize) * this.objIdLen / this.pageSize);
+        this.OBJ_USABLE_PAGES_PER_BLOCK = this.PAGES_PER_BLOCK - this.OBJ_LU_PAGES_PER_BLOCK;
+        this.OBJ_LU_PAGES_OBJ_IDS_LIM = Math.floor(this.pageSize / this.objIdLen);
+        this.OBJ_DATA_PAGE_HEADER_LEN = this.objIdLen + this.spanIxLen + SPIFFS_PH_FLAG_LEN;
+        const pad = 4 - (this.OBJ_DATA_PAGE_HEADER_LEN % 4 === 0 ? 4 : this.OBJ_DATA_PAGE_HEADER_LEN % 4);
+        this.OBJ_DATA_PAGE_HEADER_LEN_ALIGNED = this.OBJ_DATA_PAGE_HEADER_LEN + pad;
+        this.OBJ_DATA_PAGE_HEADER_LEN_ALIGNED_PAD = pad;
+        this.OBJ_DATA_PAGE_CONTENT_LEN = this.pageSize - this.OBJ_DATA_PAGE_HEADER_LEN;
+        this.OBJ_INDEX_PAGES_HEADER_LEN = (this.OBJ_DATA_PAGE_HEADER_LEN_ALIGNED +
+            SPIFFS_PH_IX_SIZE_LEN +
+            SPIFFS_PH_IX_OBJ_TYPE_LEN +
+            this.objNameLen +
+            this.metaLen);
+        if (this.alignedObjIxTables) {
+            this.OBJ_INDEX_PAGES_HEADER_LEN_ALIGNED =
+                (this.OBJ_INDEX_PAGES_HEADER_LEN + SPIFFS_PAGE_IX_LEN - 1) & -2;
+            this.OBJ_INDEX_PAGES_HEADER_LEN_ALIGNED_PAD =
+                this.OBJ_INDEX_PAGES_HEADER_LEN_ALIGNED - this.OBJ_INDEX_PAGES_HEADER_LEN;
+        }
+        else {
+            this.OBJ_INDEX_PAGES_HEADER_LEN_ALIGNED = this.OBJ_INDEX_PAGES_HEADER_LEN;
+            this.OBJ_INDEX_PAGES_HEADER_LEN_ALIGNED_PAD = 0;
+        }
+        this.OBJ_INDEX_PAGES_OBJ_IDS_HEAD_LIM = Math.floor((this.pageSize - this.OBJ_INDEX_PAGES_HEADER_LEN_ALIGNED) / this.blockIxLen);
+        this.OBJ_INDEX_PAGES_OBJ_IDS_LIM = Math.floor((this.pageSize - this.OBJ_DATA_PAGE_HEADER_LEN_ALIGNED) / this.blockIxLen);
+    }
+}
+class SpiffsFullError extends Error {
+    constructor(message = 'SPIFFS is full') {
+        super(message);
+        this.name = 'SpiffsFullError';
+    }
+}
+
+/**
+ * SPIFFS Page Classes
+ * Based on ESP-IDF spiffsgen.py
+ */
+class SpiffsPage {
+    constructor(bix, buildConfig) {
+        this.buildConfig = buildConfig;
+        this.bix = bix;
+    }
+    pack(format, ...values) {
+        const buffer = new ArrayBuffer(this.calcSize(format));
+        const view = new DataView(buffer);
+        let offset = 0;
+        for (let i = 0; i < format.length; i++) {
+            const type = format[i];
+            const value = values[i];
+            switch (type) {
+                case 'B': // unsigned char (1 byte)
+                    view.setUint8(offset, value);
+                    offset += 1;
+                    break;
+                case 'H': // unsigned short (2 bytes)
+                    if (this.buildConfig.endianness === 'little') {
+                        view.setUint16(offset, value, true);
+                    }
+                    else {
+                        view.setUint16(offset, value, false);
+                    }
+                    offset += 2;
+                    break;
+                case 'I': // unsigned int (4 bytes)
+                    if (this.buildConfig.endianness === 'little') {
+                        view.setUint32(offset, value, true);
+                    }
+                    else {
+                        view.setUint32(offset, value, false);
+                    }
+                    offset += 4;
+                    break;
+            }
+        }
+        return new Uint8Array(buffer);
+    }
+    unpack(format, data, offset = 0) {
+        const view = new DataView(data.buffer, data.byteOffset + offset);
+        const results = [];
+        let pos = 0;
+        for (const type of format) {
+            switch (type) {
+                case 'B':
+                    results.push(view.getUint8(pos));
+                    pos += 1;
+                    break;
+                case 'H':
+                    results.push(this.buildConfig.endianness === 'little'
+                        ? view.getUint16(pos, true)
+                        : view.getUint16(pos, false));
+                    pos += 2;
+                    break;
+                case 'I':
+                    results.push(this.buildConfig.endianness === 'little'
+                        ? view.getUint32(pos, true)
+                        : view.getUint32(pos, false));
+                    pos += 4;
+                    break;
+            }
+        }
+        return results;
+    }
+    calcSize(format) {
+        let size = 0;
+        for (const type of format) {
+            switch (type) {
+                case 'B':
+                    size += 1;
+                    break;
+                case 'H':
+                    size += 2;
+                    break;
+                case 'I':
+                    size += 4;
+                    break;
+            }
+        }
+        return size;
+    }
+}
+class SpiffsObjPageWithIdx extends SpiffsPage {
+    constructor(objId, buildConfig) {
+        super(0, buildConfig);
+        this.objId = objId;
+    }
+    getObjId() {
+        return this.objId;
+    }
+}
+class SpiffsObjLuPage extends SpiffsPage {
+    constructor(bix, buildConfig) {
+        super(bix, buildConfig);
+        this.objIdsLimit = this.buildConfig.OBJ_LU_PAGES_OBJ_IDS_LIM;
+        this.objIds = [];
+    }
+    calcMagic(blocksLim) {
+        let magic = 0x20140529 ^ this.buildConfig.pageSize;
+        if (this.buildConfig.useMagicLen) {
+            magic = magic ^ (blocksLim - this.bix);
+        }
+        const mask = (1 << (8 * this.buildConfig.objIdLen)) - 1;
+        return magic & mask;
+    }
+    registerPage(page) {
+        if (this.objIdsLimit <= 0) {
+            throw new SpiffsFullError();
+        }
+        const pageType = page instanceof SpiffsObjIndexPage ? 'index' : 'data';
+        this.objIds.push([page.getObjId(), pageType]);
+        this.objIdsLimit--;
+    }
+    toBinary() {
+        const img = new Uint8Array(this.buildConfig.pageSize);
+        img.fill(0xff);
+        let offset = 0;
+        for (const [objId, pageType] of this.objIds) {
+            let id = objId;
+            if (pageType === 'index') {
+                id ^= 1 << (this.buildConfig.objIdLen * 8 - 1);
+            }
+            const packed = this.pack(this.buildConfig.objIdLen === 1 ? 'B' : this.buildConfig.objIdLen === 2 ? 'H' : 'I', id);
+            img.set(packed, offset);
+            offset += packed.length;
+        }
+        return img;
+    }
+    magicfy(blocksLim) {
+        const remaining = this.objIdsLimit;
+        const emptyObjId = (1 << (this.buildConfig.objIdLen * 8)) - 1;
+        if (remaining >= 2) {
+            for (let i = 0; i < remaining; i++) {
+                if (i === remaining - 2) {
+                    this.objIds.push([this.calcMagic(blocksLim), 'data']);
+                    break;
+                }
+                else {
+                    this.objIds.push([emptyObjId, 'data']);
+                }
+                this.objIdsLimit--;
+            }
+        }
+    }
+}
+class SpiffsObjIndexPage extends SpiffsObjPageWithIdx {
+    constructor(objId, spanIx, size, name, buildConfig) {
+        super(objId, buildConfig);
+        this.spanIx = spanIx;
+        this.name = name;
+        this.size = size;
+        if (this.spanIx === 0) {
+            this.pagesLim = this.buildConfig.OBJ_INDEX_PAGES_OBJ_IDS_HEAD_LIM;
+        }
+        else {
+            this.pagesLim = this.buildConfig.OBJ_INDEX_PAGES_OBJ_IDS_LIM;
+        }
+        this.pages = [];
+    }
+    registerPage(page) {
+        if (this.pagesLim <= 0) {
+            throw new SpiffsFullError();
+        }
+        this.pages.push(page.offset);
+        this.pagesLim--;
+    }
+    toBinary() {
+        const img = new Uint8Array(this.buildConfig.pageSize);
+        img.fill(0xff);
+        const objId = this.objId ^ (1 << (this.buildConfig.objIdLen * 8 - 1));
+        const format = (this.buildConfig.objIdLen === 1 ? 'B' : this.buildConfig.objIdLen === 2 ? 'H' : 'I') +
+            (this.buildConfig.spanIxLen === 1 ? 'B' : this.buildConfig.spanIxLen === 2 ? 'H' : 'I') +
+            'B';
+        let offset = 0;
+        const header = this.pack(format, objId, this.spanIx, SPIFFS_PH_FLAG_USED_FINAL_INDEX);
+        img.set(header, offset);
+        offset += header.length;
+        // Add padding
+        offset += this.buildConfig.OBJ_DATA_PAGE_HEADER_LEN_ALIGNED_PAD;
+        // If first index page, add filename, type and size
+        if (this.spanIx === 0) {
+            const sizeType = this.pack('IB', this.size, SPIFFS_TYPE_FILE);
+            img.set(sizeType, offset);
+            offset += sizeType.length;
+            // Write filename with proper null-termination
+            const nameBytes = new TextEncoder().encode(this.name);
+            // Ensure we don't exceed objNameLen
+            const bytesToWrite = Math.min(nameBytes.length, this.buildConfig.objNameLen);
+            img.set(nameBytes.slice(0, bytesToWrite), offset);
+            // The rest is already 0xFF from img.fill(0xff), but SPIFFS expects 0x00 for unused name bytes
+            // Fill remaining name bytes with 0x00
+            for (let i = bytesToWrite; i < this.buildConfig.objNameLen; i++) {
+                img[offset + i] = 0x00;
+            }
+            offset +=
+                this.buildConfig.objNameLen +
+                    this.buildConfig.metaLen +
+                    this.buildConfig.OBJ_INDEX_PAGES_HEADER_LEN_ALIGNED_PAD;
+        }
+        // Add page indices
+        for (const page of this.pages) {
+            const pageIx = page >> Math.log2(this.buildConfig.pageSize);
+            const pageIxPacked = this.pack(this.buildConfig.pageIxLen === 1 ? 'B' : this.buildConfig.pageIxLen === 2 ? 'H' : 'I', pageIx);
+            img.set(pageIxPacked, offset);
+            offset += pageIxPacked.length;
+        }
+        return img;
+    }
+}
+class SpiffsObjDataPage extends SpiffsObjPageWithIdx {
+    constructor(offset, objId, spanIx, contents, buildConfig) {
+        super(objId, buildConfig);
+        this.offset = offset;
+        this.spanIx = spanIx;
+        this.contents = contents;
+    }
+    toBinary() {
+        const img = new Uint8Array(this.buildConfig.pageSize);
+        img.fill(0xff);
+        const format = (this.buildConfig.objIdLen === 1 ? 'B' : this.buildConfig.objIdLen === 2 ? 'H' : 'I') +
+            (this.buildConfig.spanIxLen === 1 ? 'B' : this.buildConfig.spanIxLen === 2 ? 'H' : 'I') +
+            'B';
+        const header = this.pack(format, this.objId, this.spanIx, SPIFFS_PH_FLAG_USED_FINAL);
+        img.set(header, 0);
+        img.set(this.contents, header.length);
+        return img;
+    }
+}
+
+/**
+ * SPIFFS Block Class
+ * Based on ESP-IDF spiffsgen.py
+ */
+class SpiffsBlock {
+    constructor(bix, buildConfig) {
+        this.buildConfig = buildConfig;
+        this.offset = bix * this.buildConfig.blockSize;
+        this.remainingPages = this.buildConfig.OBJ_USABLE_PAGES_PER_BLOCK;
+        this.pages = [];
+        this.bix = bix;
+        this.luPages = [];
+        for (let i = 0; i < this.buildConfig.OBJ_LU_PAGES_PER_BLOCK; i++) {
+            const page = new SpiffsObjLuPage(this.bix, this.buildConfig);
+            this.luPages.push(page);
+        }
+        this.pages.push(...this.luPages);
+        this.luPageIter = this.luPages[Symbol.iterator]();
+        this.luPage = this.luPageIter.next().value || null;
+        this.curObjIndexSpanIx = 0;
+        this.curObjDataSpanIx = 0;
+        this.curObjId = 0;
+        this.curObjIdxPage = null;
+    }
+    reset() {
+        this.curObjIndexSpanIx = 0;
+        this.curObjDataSpanIx = 0;
+        this.curObjId = 0;
+        this.curObjIdxPage = null;
+    }
+    registerPage(page) {
+        if (page instanceof SpiffsObjDataPage) {
+            if (!this.curObjIdxPage) {
+                throw new Error('No current object index page');
+            }
+            this.curObjIdxPage.registerPage(page);
+        }
+        try {
+            if (!this.luPage) {
+                throw new SpiffsFullError();
+            }
+            this.luPage.registerPage(page);
+        }
+        catch (e) {
+            if (e instanceof SpiffsFullError) {
+                const next = this.luPageIter.next();
+                if (next.done) {
+                    throw new Error('Invalid attempt to add page to a block when there is no more space in lookup');
+                }
+                this.luPage = next.value;
+                this.luPage.registerPage(page);
+            }
+            else {
+                throw e;
+            }
+        }
+        this.pages.push(page);
+    }
+    beginObj(objId, size, name, objIndexSpanIx = 0, objDataSpanIx = 0) {
+        if (this.remainingPages <= 0) {
+            throw new SpiffsFullError();
+        }
+        this.reset();
+        this.curObjId = objId;
+        this.curObjIndexSpanIx = objIndexSpanIx;
+        this.curObjDataSpanIx = objDataSpanIx;
+        const page = new SpiffsObjIndexPage(objId, this.curObjIndexSpanIx, size, name, this.buildConfig);
+        this.registerPage(page);
+        this.curObjIdxPage = page;
+        this.remainingPages--;
+        this.curObjIndexSpanIx++;
+    }
+    updateObj(contents) {
+        if (this.remainingPages <= 0) {
+            throw new SpiffsFullError();
+        }
+        const page = new SpiffsObjDataPage(this.offset + this.pages.length * this.buildConfig.pageSize, this.curObjId, this.curObjDataSpanIx, contents, this.buildConfig);
+        this.registerPage(page);
+        this.curObjDataSpanIx++;
+        this.remainingPages--;
+    }
+    endObj() {
+        this.reset();
+    }
+    isFull() {
+        return this.remainingPages <= 0;
+    }
+    toBinary(blocksLim) {
+        const img = new Uint8Array(this.buildConfig.blockSize);
+        img.fill(0xff);
+        let offset = 0;
+        if (this.buildConfig.useMagic) {
+            for (let idx = 0; idx < this.pages.length; idx++) {
+                const page = this.pages[idx];
+                if (idx === this.buildConfig.OBJ_LU_PAGES_PER_BLOCK - 1) {
+                    if (page instanceof SpiffsObjLuPage) {
+                        page.magicfy(blocksLim);
+                    }
+                }
+                const pageBinary = page.toBinary();
+                img.set(pageBinary, offset);
+                offset += pageBinary.length;
+            }
+        }
+        else {
+            for (const page of this.pages) {
+                const pageBinary = page.toBinary();
+                img.set(pageBinary, offset);
+                offset += pageBinary.length;
+            }
+        }
+        return img;
+    }
+    get currentObjIndexSpanIx() {
+        return this.curObjIndexSpanIx;
+    }
+    get currentObjDataSpanIx() {
+        return this.curObjDataSpanIx;
+    }
+    get currentObjId() {
+        return this.curObjId;
+    }
+    get currentObjIdxPage() {
+        return this.curObjIdxPage;
+    }
+    set currentObjId(value) {
+        this.curObjId = value;
+    }
+    set currentObjIdxPage(value) {
+        this.curObjIdxPage = value;
+    }
+    set currentObjDataSpanIx(value) {
+        this.curObjDataSpanIx = value;
+    }
+    set currentObjIndexSpanIx(value) {
+        this.curObjIndexSpanIx = value;
+    }
+}
+
+/**
+ * SPIFFS Filesystem Implementation
+ * Based on ESP-IDF spiffsgen.py
+ */
+class SpiffsFS {
+    constructor(imgSize, buildConfig) {
+        if (imgSize % buildConfig.blockSize !== 0) {
+            throw new Error('image size should be a multiple of block size');
+        }
+        this.imgSize = imgSize;
+        this.buildConfig = buildConfig;
+        this.blocks = [];
+        this.blocksLim = Math.floor(this.imgSize / this.buildConfig.blockSize);
+        this.remainingBlocks = this.blocksLim;
+        this.curObjId = 1; // starting object id
+    }
+    createBlock() {
+        if (this.isFull()) {
+            throw new SpiffsFullError('the image size has been exceeded');
+        }
+        const block = new SpiffsBlock(this.blocks.length, this.buildConfig);
+        this.blocks.push(block);
+        this.remainingBlocks--;
+        return block;
+    }
+    isFull() {
+        return this.remainingBlocks <= 0;
+    }
+    createFile(imgPath, contents) {
+        if (imgPath.length > this.buildConfig.objNameLen) {
+            throw new Error(`object name '${imgPath}' too long`);
+        }
+        const name = imgPath;
+        let offset = 0;
+        try {
+            const block = this.blocks[this.blocks.length - 1];
+            block.beginObj(this.curObjId, contents.length, name);
+        }
+        catch (e) {
+            const block = this.createBlock();
+            block.beginObj(this.curObjId, contents.length, name);
+        }
+        while (offset < contents.length) {
+            const chunkSize = Math.min(this.buildConfig.OBJ_DATA_PAGE_CONTENT_LEN, contents.length - offset);
+            const contentsChunk = contents.slice(offset, offset + chunkSize);
+            try {
+                const block = this.blocks[this.blocks.length - 1];
+                try {
+                    block.updateObj(contentsChunk);
+                }
+                catch (e) {
+                    if (e instanceof SpiffsFullError) {
+                        if (block.isFull()) {
+                            throw e;
+                        }
+                        // Object index exhausted, write another object index page
+                        block.beginObj(this.curObjId, contents.length, name, block.currentObjIndexSpanIx, block.currentObjDataSpanIx);
+                        continue;
+                    }
+                    throw e;
+                }
+            }
+            catch (e) {
+                if (e instanceof SpiffsFullError) {
+                    // All pages in block exhausted, create new block
+                    const prevBlock = this.blocks[this.blocks.length - 1];
+                    const block = this.createBlock();
+                    block.currentObjId = prevBlock.currentObjId;
+                    block.currentObjIdxPage = prevBlock.currentObjIdxPage;
+                    block.currentObjDataSpanIx = prevBlock.currentObjDataSpanIx;
+                    block.currentObjIndexSpanIx = prevBlock.currentObjIndexSpanIx;
+                    continue;
+                }
+                throw e;
+            }
+            offset += chunkSize;
+        }
+        const block = this.blocks[this.blocks.length - 1];
+        block.endObj();
+        this.curObjId++;
+    }
+    toBinary() {
+        const allBlocks = [];
+        for (const block of this.blocks) {
+            allBlocks.push(block.toBinary(this.blocksLim));
+        }
+        let bix = this.blocks.length;
+        if (this.buildConfig.useMagic) {
+            // Create empty blocks with magic numbers
+            while (this.remainingBlocks > 0) {
+                const block = new SpiffsBlock(bix, this.buildConfig);
+                allBlocks.push(block.toBinary(this.blocksLim));
+                this.remainingBlocks--;
+                bix++;
+            }
+        }
+        else {
+            // Fill remaining space with 0xFF
+            const remainingSize = this.imgSize - allBlocks.length * this.buildConfig.blockSize;
+            if (remainingSize > 0) {
+                const padding = new Uint8Array(remainingSize);
+                padding.fill(0xff);
+                allBlocks.push(padding);
+            }
+        }
+        // Concatenate all blocks
+        const totalSize = allBlocks.reduce((sum, block) => sum + block.length, 0);
+        const img = new Uint8Array(totalSize);
+        let offset = 0;
+        for (const block of allBlocks) {
+            img.set(block, offset);
+            offset += block.length;
+        }
+        return img;
+    }
+    listFiles() {
+        // This would require parsing the blocks - implement in fromBinary
+        throw new Error('listFiles requires fromBinary to be called first');
+    }
+    readFile(path) {
+        // This would require parsing the blocks - implement in fromBinary
+        throw new Error('readFile requires fromBinary to be called first');
+    }
+    deleteFile(path) {
+        // SPIFFS doesn't support in-place deletion
+        // Need to recreate filesystem without the file
+        throw new Error('deleteFile not yet implemented - requires filesystem recreation');
+    }
+}
+
+/**
+ * SPIFFS Reader - Parse and extract files from SPIFFS images
+ * Based on ESP-IDF spiffsgen.py extract_files() method
+ */
+class SpiffsReader {
+    constructor(imageData, buildConfig) {
+        this.imageData = imageData;
+        this.buildConfig = buildConfig;
+        this.filesMap = new Map();
+    }
+    unpack(format, data, offset = 0) {
+        const view = new DataView(data.buffer, data.byteOffset + offset);
+        const results = [];
+        let pos = 0;
+        for (const type of format) {
+            switch (type) {
+                case 'B':
+                    results.push(view.getUint8(pos));
+                    pos += 1;
+                    break;
+                case 'H':
+                    results.push(this.buildConfig.endianness === 'little'
+                        ? view.getUint16(pos, true)
+                        : view.getUint16(pos, false));
+                    pos += 2;
+                    break;
+                case 'I':
+                    results.push(this.buildConfig.endianness === 'little'
+                        ? view.getUint32(pos, true)
+                        : view.getUint32(pos, false));
+                    pos += 4;
+                    break;
+            }
+        }
+        return results;
+    }
+    parse() {
+        const blocksCount = Math.floor(this.imageData.length / this.buildConfig.blockSize);
+        for (let bix = 0; bix < blocksCount; bix++) {
+            const blockOffset = bix * this.buildConfig.blockSize;
+            const blockData = this.imageData.slice(blockOffset, blockOffset + this.buildConfig.blockSize);
+            this.parseBlock(blockData);
+        }
+    }
+    parseBlock(blockData) {
+        // Parse lookup pages to find valid objects
+        for (let pageIdx = 0; pageIdx < this.buildConfig.OBJ_LU_PAGES_PER_BLOCK; pageIdx++) {
+            const luPageOffset = pageIdx * this.buildConfig.pageSize;
+            const luPageData = blockData.slice(luPageOffset, luPageOffset + this.buildConfig.pageSize);
+            // Parse object IDs from lookup page
+            for (let i = 0; i < luPageData.length; i += this.buildConfig.objIdLen) {
+                if (i + this.buildConfig.objIdLen > luPageData.length)
+                    break;
+                const objIdBytes = luPageData.slice(i, i + this.buildConfig.objIdLen);
+                const [objId] = this.unpack(this.buildConfig.objIdLen === 1 ? 'B' : this.buildConfig.objIdLen === 2 ? 'H' : 'I', objIdBytes);
+                // Check if it's a valid object (not erased/empty)
+                const emptyValue = (1 << (this.buildConfig.objIdLen * 8)) - 1;
+                if (objId === emptyValue)
+                    continue;
+                // Check if it's an index page (MSB set)
+                const isIndex = (objId & (1 << (this.buildConfig.objIdLen * 8 - 1))) !== 0;
+                const realObjId = objId & ~(1 << (this.buildConfig.objIdLen * 8 - 1));
+                if (isIndex && !this.filesMap.has(realObjId)) {
+                    this.filesMap.set(realObjId, {
+                        name: null,
+                        size: 0,
+                        dataPages: [],
+                    });
+                }
+            }
+        }
+        // Parse actual pages to get file metadata and content
+        for (let pageIdx = this.buildConfig.OBJ_LU_PAGES_PER_BLOCK; pageIdx < this.buildConfig.PAGES_PER_BLOCK; pageIdx++) {
+            const pageOffset = pageIdx * this.buildConfig.pageSize;
+            const pageData = blockData.slice(pageOffset, pageOffset + this.buildConfig.pageSize);
+            this.parsePage(pageData);
+        }
+    }
+    parsePage(pageData) {
+        // Parse page header
+        const headerFormat = (this.buildConfig.objIdLen === 1 ? 'B' : this.buildConfig.objIdLen === 2 ? 'H' : 'I') +
+            (this.buildConfig.spanIxLen === 1 ? 'B' : this.buildConfig.spanIxLen === 2 ? 'H' : 'I') +
+            'B';
+        const headerSize = this.buildConfig.objIdLen + this.buildConfig.spanIxLen + SPIFFS_PH_FLAG_LEN;
+        if (pageData.length < headerSize)
+            return;
+        const [objId, spanIx, flags] = this.unpack(headerFormat, pageData);
+        // Check for valid page
+        const emptyId = (1 << (this.buildConfig.objIdLen * 8)) - 1;
+        if (objId === emptyId)
+            return;
+        const isIndex = (objId & (1 << (this.buildConfig.objIdLen * 8 - 1))) !== 0;
+        const realObjId = objId & ~(1 << (this.buildConfig.objIdLen * 8 - 1));
+        if (isIndex && flags === SPIFFS_PH_FLAG_USED_FINAL_INDEX) {
+            // Index page - contains file metadata
+            if (!this.filesMap.has(realObjId)) {
+                this.filesMap.set(realObjId, {
+                    name: null,
+                    size: 0,
+                    dataPages: [],
+                });
+            }
+            // Only first index page (span_ix == 0) has filename and size
+            if (spanIx === 0) {
+                this.parseIndexPage(pageData, headerSize, realObjId);
+            }
+        }
+        else if (!isIndex && flags === SPIFFS_PH_FLAG_USED_FINAL) {
+            // Data page - contains file content
+            if (this.filesMap.has(realObjId)) {
+                const contentStart = headerSize;
+                const content = pageData.slice(contentStart, contentStart + this.buildConfig.OBJ_DATA_PAGE_CONTENT_LEN);
+                this.filesMap.get(realObjId).dataPages.push([spanIx, content]);
+            }
+        }
+    }
+    parseIndexPage(pageData, headerSize, objId) {
+        // Skip to size and type fields
+        let offset = headerSize + this.buildConfig.OBJ_DATA_PAGE_HEADER_LEN_ALIGNED_PAD;
+        const sizeTypeFormat = 'IB';
+        const sizeTypeSize = SPIFFS_PH_IX_SIZE_LEN + SPIFFS_PH_IX_OBJ_TYPE_LEN;
+        if (offset + sizeTypeSize <= pageData.length) {
+            const [fileSize] = this.unpack(sizeTypeFormat, pageData, offset);
+            offset += sizeTypeSize;
+            // Read filename
+            const nameEnd = offset + this.buildConfig.objNameLen;
+            if (nameEnd <= pageData.length) {
+                const nameBytes = pageData.slice(offset, nameEnd);
+                // Find null terminator
+                const nullPos = nameBytes.indexOf(0);
+                const actualNameBytes = nullPos !== -1 ? nameBytes.slice(0, nullPos) : nameBytes;
+                const filename = new TextDecoder().decode(actualNameBytes);
+                const fileInfo = this.filesMap.get(objId);
+                fileInfo.name = filename;
+                fileInfo.size = fileSize;
+            }
+        }
+    }
+    listFiles() {
+        const files = [];
+        for (const [, fileInfo] of this.filesMap) {
+            if (fileInfo.name === null)
+                continue;
+            // Sort data pages by span index
+            fileInfo.dataPages.sort((a, b) => a[0] - b[0]);
+            // Reconstruct file content
+            const chunks = [];
+            let totalWritten = 0;
+            for (const [, content] of fileInfo.dataPages) {
+                const remaining = fileInfo.size - totalWritten;
+                if (remaining <= 0)
+                    break;
+                const toWrite = Math.min(content.length, remaining);
+                chunks.push(content.slice(0, toWrite));
+                totalWritten += toWrite;
+            }
+            // Concatenate chunks
+            const data = new Uint8Array(totalWritten);
+            let offset = 0;
+            for (const chunk of chunks) {
+                data.set(chunk, offset);
+                offset += chunk.length;
+            }
+            files.push({
+                name: fileInfo.name,
+                size: fileInfo.size,
+                data,
+            });
+        }
+        return files;
+    }
+    readFile(path) {
+        const files = this.listFiles();
+        const file = files.find((f) => f.name === path || f.name === '/' + path);
+        return file ? file.data : null;
+    }
+}
+
+/**
+ * SPIFFS Module Entry Point
+ */
+// Default ESP32 SPIFFS configuration
+const DEFAULT_SPIFFS_CONFIG = {
+    pageSize: 256,
+    blockSize: 4096,
+    objNameLen: 32,
+    metaLen: 4,
+    useMagic: true,
+    useMagicLen: true,
+    alignedObjIxTables: false,
+};
+
 /// <reference types="@types/w3c-web-serial" />
 const connect = async (logger) => {
     // - Request a port and open a connection.
@@ -6446,4 +7211,4 @@ const connect = async (logger) => {
     return new ESPLoader(port, logger);
 };
 
-export { CHIP_FAMILY_ESP32, CHIP_FAMILY_ESP32C2, CHIP_FAMILY_ESP32C3, CHIP_FAMILY_ESP32C5, CHIP_FAMILY_ESP32C6, CHIP_FAMILY_ESP32C61, CHIP_FAMILY_ESP32H2, CHIP_FAMILY_ESP32H21, CHIP_FAMILY_ESP32H4, CHIP_FAMILY_ESP32P4, CHIP_FAMILY_ESP32S2, CHIP_FAMILY_ESP32S3, CHIP_FAMILY_ESP32S31, CHIP_FAMILY_ESP8266, ESPLoader, FATFS_BLOCK_SIZE_CANDIDATES, FATFS_DEFAULT_BLOCK_SIZE, FilesystemType, LITTLEFS_BLOCK_SIZE_CANDIDATES, LITTLEFS_DEFAULT_BLOCK_SIZE, connect, detectFilesystemFromImage, detectFilesystemType, formatSize, getBlockSizeCandidates, getDefaultBlockSize, getPartitionTableOffset, parsePartitionTable };
+export { CHIP_FAMILY_ESP32, CHIP_FAMILY_ESP32C2, CHIP_FAMILY_ESP32C3, CHIP_FAMILY_ESP32C5, CHIP_FAMILY_ESP32C6, CHIP_FAMILY_ESP32C61, CHIP_FAMILY_ESP32H2, CHIP_FAMILY_ESP32H21, CHIP_FAMILY_ESP32H4, CHIP_FAMILY_ESP32P4, CHIP_FAMILY_ESP32S2, CHIP_FAMILY_ESP32S3, CHIP_FAMILY_ESP32S31, CHIP_FAMILY_ESP8266, DEFAULT_SPIFFS_CONFIG, ESPLoader, FATFS_BLOCK_SIZE_CANDIDATES, FATFS_DEFAULT_BLOCK_SIZE, FilesystemType, LITTLEFS_BLOCK_SIZE_CANDIDATES, LITTLEFS_DEFAULT_BLOCK_SIZE, SpiffsBuildConfig, SpiffsFS, SpiffsReader, connect, detectFilesystemFromImage, detectFilesystemType, formatSize, getBlockSizeCandidates, getDefaultBlockSize, getPartitionTableOffset, parsePartitionTable };

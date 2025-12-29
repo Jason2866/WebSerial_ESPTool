@@ -52,3 +52,12 @@ export {
   FATFS_DEFAULT_BLOCK_SIZE,
   FATFS_BLOCK_SIZE_CANDIDATES,
 } from "./wasm/filesystems";
+
+export {
+  SpiffsFS,
+  SpiffsBuildConfig,
+  SpiffsReader,
+  DEFAULT_SPIFFS_CONFIG,
+  type SpiffsFile,
+  type SpiffsBuildConfigOptions,
+} from "./lib/spiffs/index";
