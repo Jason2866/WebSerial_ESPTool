@@ -1446,8 +1446,6 @@ async function openFatFS(partition) {
       ? window.location.pathname 
       : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
     const modulePath = `${basePath}src/wasm/fatfs/index.js`;
-    
-    logMsg(`Loading FatFS module from: ${modulePath}`);
     const module = await import(modulePath);
     const { createFatFSFromImage, createFatFS } = module;
     
