@@ -9,7 +9,7 @@ import {
   SPIFFS_PH_FLAG_USED_FINAL_INDEX,
   SPIFFS_PH_FLAG_USED_FINAL,
   SPIFFS_TYPE_FILE,
-} from './spiffsConfig';
+} from "./spiffsConfig";
 
 export abstract class SpiffsPage {
   protected buildConfig: SpiffsBuildConfig;
@@ -32,20 +32,20 @@ export abstract class SpiffsPage {
       const value = values[i];
 
       switch (type) {
-        case 'B': // unsigned char (1 byte)
+        case "B": // unsigned char (1 byte)
           view.setUint8(offset, value);
           offset += 1;
           break;
-        case 'H': // unsigned short (2 bytes)
-          if (this.buildConfig.endianness === 'little') {
+        case "H": // unsigned short (2 bytes)
+          if (this.buildConfig.endianness === "little") {
             view.setUint16(offset, value, true);
           } else {
             view.setUint16(offset, value, false);
           }
           offset += 2;
           break;
-        case 'I': // unsigned int (4 bytes)
-          if (this.buildConfig.endianness === 'little') {
+        case "I": // unsigned int (4 bytes)
+          if (this.buildConfig.endianness === "little") {
             view.setUint32(offset, value, true);
           } else {
             view.setUint32(offset, value, false);
@@ -65,23 +65,23 @@ export abstract class SpiffsPage {
 
     for (const type of format) {
       switch (type) {
-        case 'B':
+        case "B":
           results.push(view.getUint8(pos));
           pos += 1;
           break;
-        case 'H':
+        case "H":
           results.push(
-            this.buildConfig.endianness === 'little'
+            this.buildConfig.endianness === "little"
               ? view.getUint16(pos, true)
-              : view.getUint16(pos, false)
+              : view.getUint16(pos, false),
           );
           pos += 2;
           break;
-        case 'I':
+        case "I":
           results.push(
-            this.buildConfig.endianness === 'little'
+            this.buildConfig.endianness === "little"
               ? view.getUint32(pos, true)
-              : view.getUint32(pos, false)
+              : view.getUint32(pos, false),
           );
           pos += 4;
           break;
@@ -95,13 +95,13 @@ export abstract class SpiffsPage {
     let size = 0;
     for (const type of format) {
       switch (type) {
-        case 'B':
+        case "B":
           size += 1;
           break;
-        case 'H':
+        case "H":
           size += 2;
           break;
-        case 'I':
+        case "I":
           size += 4;
           break;
       }
@@ -146,7 +146,7 @@ export class SpiffsObjLuPage extends SpiffsPage {
     if (this.objIdsLimit <= 0) {
       throw new SpiffsFullError();
     }
-    const pageType = page instanceof SpiffsObjIndexPage ? 'index' : 'data';
+    const pageType = page instanceof SpiffsObjIndexPage ? "index" : "data";
     this.objIds.push([page.getObjId(), pageType]);
     this.objIdsLimit--;
   }
@@ -158,13 +158,17 @@ export class SpiffsObjLuPage extends SpiffsPage {
     let offset = 0;
     for (const [objId, pageType] of this.objIds) {
       let id = objId;
-      if (pageType === 'index') {
+      if (pageType === "index") {
         id ^= 1 << (this.buildConfig.objIdLen * 8 - 1);
       }
 
       const packed = this.pack(
-        this.buildConfig.objIdLen === 1 ? 'B' : this.buildConfig.objIdLen === 2 ? 'H' : 'I',
-        id
+        this.buildConfig.objIdLen === 1
+          ? "B"
+          : this.buildConfig.objIdLen === 2
+            ? "H"
+            : "I",
+        id,
       );
       img.set(packed, offset);
       offset += packed.length;
@@ -180,10 +184,10 @@ export class SpiffsObjLuPage extends SpiffsPage {
     if (remaining >= 2) {
       for (let i = 0; i < remaining; i++) {
         if (i === remaining - 2) {
-          this.objIds.push([this.calcMagic(blocksLim), 'data']);
+          this.objIds.push([this.calcMagic(blocksLim), "data"]);
           break;
         } else {
-          this.objIds.push([emptyObjId, 'data']);
+          this.objIds.push([emptyObjId, "data"]);
         }
         this.objIdsLimit--;
       }
@@ -203,7 +207,7 @@ export class SpiffsObjIndexPage extends SpiffsObjPageWithIdx {
     spanIx: number,
     size: number,
     name: string,
-    buildConfig: SpiffsBuildConfig
+    buildConfig: SpiffsBuildConfig,
   ) {
     super(objId, buildConfig);
     this.spanIx = spanIx;
@@ -233,12 +237,25 @@ export class SpiffsObjIndexPage extends SpiffsObjPageWithIdx {
     const objId = this.objId ^ (1 << (this.buildConfig.objIdLen * 8 - 1));
 
     const format =
-      (this.buildConfig.objIdLen === 1 ? 'B' : this.buildConfig.objIdLen === 2 ? 'H' : 'I') +
-      (this.buildConfig.spanIxLen === 1 ? 'B' : this.buildConfig.spanIxLen === 2 ? 'H' : 'I') +
-      'B';
+      (this.buildConfig.objIdLen === 1
+        ? "B"
+        : this.buildConfig.objIdLen === 2
+          ? "H"
+          : "I") +
+      (this.buildConfig.spanIxLen === 1
+        ? "B"
+        : this.buildConfig.spanIxLen === 2
+          ? "H"
+          : "I") +
+      "B";
 
     let offset = 0;
-    const header = this.pack(format, objId, this.spanIx, SPIFFS_PH_FLAG_USED_FINAL_INDEX);
+    const header = this.pack(
+      format,
+      objId,
+      this.spanIx,
+      SPIFFS_PH_FLAG_USED_FINAL_INDEX,
+    );
     img.set(header, offset);
     offset += header.length;
 
@@ -247,14 +264,17 @@ export class SpiffsObjIndexPage extends SpiffsObjPageWithIdx {
 
     // If first index page, add filename, type and size
     if (this.spanIx === 0) {
-      const sizeType = this.pack('IB', this.size, SPIFFS_TYPE_FILE);
+      const sizeType = this.pack("IB", this.size, SPIFFS_TYPE_FILE);
       img.set(sizeType, offset);
       offset += sizeType.length;
 
       // Write filename with proper null-termination
       const nameBytes = new TextEncoder().encode(this.name);
       // Ensure we don't exceed objNameLen
-      const bytesToWrite = Math.min(nameBytes.length, this.buildConfig.objNameLen);
+      const bytesToWrite = Math.min(
+        nameBytes.length,
+        this.buildConfig.objNameLen,
+      );
       img.set(nameBytes.slice(0, bytesToWrite), offset);
       // The rest is already 0xFF from img.fill(0xff), but SPIFFS expects 0x00 for unused name bytes
       // Fill remaining name bytes with 0x00
@@ -271,8 +291,12 @@ export class SpiffsObjIndexPage extends SpiffsObjPageWithIdx {
     for (const page of this.pages) {
       const pageIx = page >> Math.log2(this.buildConfig.pageSize);
       const pageIxPacked = this.pack(
-        this.buildConfig.pageIxLen === 1 ? 'B' : this.buildConfig.pageIxLen === 2 ? 'H' : 'I',
-        pageIx
+        this.buildConfig.pageIxLen === 1
+          ? "B"
+          : this.buildConfig.pageIxLen === 2
+            ? "H"
+            : "I",
+        pageIx,
       );
       img.set(pageIxPacked, offset);
       offset += pageIxPacked.length;
@@ -292,7 +316,7 @@ export class SpiffsObjDataPage extends SpiffsObjPageWithIdx {
     objId: number,
     spanIx: number,
     contents: Uint8Array,
-    buildConfig: SpiffsBuildConfig
+    buildConfig: SpiffsBuildConfig,
   ) {
     super(objId, buildConfig);
     this.offset = offset;
@@ -305,11 +329,24 @@ export class SpiffsObjDataPage extends SpiffsObjPageWithIdx {
     img.fill(0xff);
 
     const format =
-      (this.buildConfig.objIdLen === 1 ? 'B' : this.buildConfig.objIdLen === 2 ? 'H' : 'I') +
-      (this.buildConfig.spanIxLen === 1 ? 'B' : this.buildConfig.spanIxLen === 2 ? 'H' : 'I') +
-      'B';
+      (this.buildConfig.objIdLen === 1
+        ? "B"
+        : this.buildConfig.objIdLen === 2
+          ? "H"
+          : "I") +
+      (this.buildConfig.spanIxLen === 1
+        ? "B"
+        : this.buildConfig.spanIxLen === 2
+          ? "H"
+          : "I") +
+      "B";
 
-    const header = this.pack(format, this.objId, this.spanIx, SPIFFS_PH_FLAG_USED_FINAL);
+    const header = this.pack(
+      format,
+      this.objId,
+      this.spanIx,
+      SPIFFS_PH_FLAG_USED_FINAL,
+    );
     img.set(header, 0);
     img.set(this.contents, header.length);
 

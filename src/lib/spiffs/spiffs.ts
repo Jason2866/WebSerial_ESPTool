@@ -3,8 +3,8 @@
  * Based on ESP-IDF spiffsgen.py
  */
 
-import { SpiffsBuildConfig, SpiffsFullError } from './spiffsConfig';
-import { SpiffsBlock } from './spiffsBlock';
+import { SpiffsBuildConfig, SpiffsFullError } from "./spiffsConfig";
+import { SpiffsBlock } from "./spiffsBlock";
 
 export interface SpiffsFile {
   name: string;
@@ -22,7 +22,7 @@ export class SpiffsFS {
 
   constructor(imgSize: number, buildConfig: SpiffsBuildConfig) {
     if (imgSize % buildConfig.blockSize !== 0) {
-      throw new Error('image size should be a multiple of block size');
+      throw new Error("image size should be a multiple of block size");
     }
 
     this.imgSize = imgSize;
@@ -35,7 +35,7 @@ export class SpiffsFS {
 
   private createBlock(): SpiffsBlock {
     if (this.isFull()) {
-      throw new SpiffsFullError('the image size has been exceeded');
+      throw new SpiffsFullError("the image size has been exceeded");
     }
 
     const block = new SpiffsBlock(this.blocks.length, this.buildConfig);
@@ -67,7 +67,7 @@ export class SpiffsFS {
     while (offset < contents.length) {
       const chunkSize = Math.min(
         this.buildConfig.OBJ_DATA_PAGE_CONTENT_LEN,
-        contents.length - offset
+        contents.length - offset,
       );
       const contentsChunk = contents.slice(offset, offset + chunkSize);
 
@@ -86,7 +86,7 @@ export class SpiffsFS {
               contents.length,
               name,
               block.currentObjIndexSpanIx,
-              block.currentObjDataSpanIx
+              block.currentObjDataSpanIx,
             );
             continue;
           }
@@ -133,7 +133,8 @@ export class SpiffsFS {
       }
     } else {
       // Fill remaining space with 0xFF
-      const remainingSize = this.imgSize - allBlocks.length * this.buildConfig.blockSize;
+      const remainingSize =
+        this.imgSize - allBlocks.length * this.buildConfig.blockSize;
       if (remainingSize > 0) {
         const padding = new Uint8Array(remainingSize);
         padding.fill(0xff);
@@ -155,17 +156,19 @@ export class SpiffsFS {
 
   listFiles(): SpiffsFile[] {
     // This would require parsing the blocks - implement in fromBinary
-    throw new Error('listFiles requires fromBinary to be called first');
+    throw new Error("listFiles requires fromBinary to be called first");
   }
 
   readFile(path: string): Uint8Array {
     // This would require parsing the blocks - implement in fromBinary
-    throw new Error('readFile requires fromBinary to be called first');
+    throw new Error("readFile requires fromBinary to be called first");
   }
 
   deleteFile(path: string): void {
     // SPIFFS doesn't support in-place deletion
     // Need to recreate filesystem without the file
-    throw new Error('deleteFile not yet implemented - requires filesystem recreation');
+    throw new Error(
+      "deleteFile not yet implemented - requires filesystem recreation",
+    );
   }
 }

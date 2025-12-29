@@ -3,14 +3,14 @@
  * Based on ESP-IDF spiffsgen.py
  */
 
-import { SpiffsBuildConfig, SpiffsFullError } from './spiffsConfig';
+import { SpiffsBuildConfig, SpiffsFullError } from "./spiffsConfig";
 import {
   SpiffsPage,
   SpiffsObjLuPage,
   SpiffsObjIndexPage,
   SpiffsObjDataPage,
   SpiffsObjPageWithIdx,
-} from './spiffsPage';
+} from "./spiffsPage";
 
 export class SpiffsBlock {
   private buildConfig: SpiffsBuildConfig;
@@ -60,7 +60,7 @@ export class SpiffsBlock {
   private registerPage(page: SpiffsObjPageWithIdx): void {
     if (page instanceof SpiffsObjDataPage) {
       if (!this.curObjIdxPage) {
-        throw new Error('No current object index page');
+        throw new Error("No current object index page");
       }
       this.curObjIdxPage.registerPage(page);
     }
@@ -74,7 +74,9 @@ export class SpiffsBlock {
       if (e instanceof SpiffsFullError) {
         const next = this.luPageIter.next();
         if (next.done) {
-          throw new Error('Invalid attempt to add page to a block when there is no more space in lookup');
+          throw new Error(
+            "Invalid attempt to add page to a block when there is no more space in lookup",
+          );
         }
         this.luPage = next.value;
         this.luPage.registerPage(page);
@@ -86,7 +88,13 @@ export class SpiffsBlock {
     this.pages.push(page);
   }
 
-  beginObj(objId: number, size: number, name: string, objIndexSpanIx = 0, objDataSpanIx = 0): void {
+  beginObj(
+    objId: number,
+    size: number,
+    name: string,
+    objIndexSpanIx = 0,
+    objDataSpanIx = 0,
+  ): void {
     if (this.remainingPages <= 0) {
       throw new SpiffsFullError();
     }
@@ -96,7 +104,13 @@ export class SpiffsBlock {
     this.curObjIndexSpanIx = objIndexSpanIx;
     this.curObjDataSpanIx = objDataSpanIx;
 
-    const page = new SpiffsObjIndexPage(objId, this.curObjIndexSpanIx, size, name, this.buildConfig);
+    const page = new SpiffsObjIndexPage(
+      objId,
+      this.curObjIndexSpanIx,
+      size,
+      name,
+      this.buildConfig,
+    );
     this.registerPage(page);
     this.curObjIdxPage = page;
     this.remainingPages--;
@@ -113,7 +127,7 @@ export class SpiffsBlock {
       this.curObjId,
       this.curObjDataSpanIx,
       contents,
-      this.buildConfig
+      this.buildConfig,
     );
     this.registerPage(page);
     this.curObjDataSpanIx++;

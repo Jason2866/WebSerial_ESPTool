@@ -10,8 +10,8 @@ import {
   SPIFFS_PH_FLAG_LEN,
   SPIFFS_PH_IX_SIZE_LEN,
   SPIFFS_PH_IX_OBJ_TYPE_LEN,
-} from './spiffsConfig';
-import type { SpiffsFile } from './spiffs';
+} from "./spiffsConfig";
+import type { SpiffsFile } from "./spiffs";
 
 interface FileInfo {
   name: string | null;
@@ -37,23 +37,23 @@ export class SpiffsReader {
 
     for (const type of format) {
       switch (type) {
-        case 'B':
+        case "B":
           results.push(view.getUint8(pos));
           pos += 1;
           break;
-        case 'H':
+        case "H":
           results.push(
-            this.buildConfig.endianness === 'little'
+            this.buildConfig.endianness === "little"
               ? view.getUint16(pos, true)
-              : view.getUint16(pos, false)
+              : view.getUint16(pos, false),
           );
           pos += 2;
           break;
-        case 'I':
+        case "I":
           results.push(
-            this.buildConfig.endianness === 'little'
+            this.buildConfig.endianness === "little"
               ? view.getUint32(pos, true)
-              : view.getUint32(pos, false)
+              : view.getUint32(pos, false),
           );
           pos += 4;
           break;
@@ -64,13 +64,15 @@ export class SpiffsReader {
   }
 
   parse(): void {
-    const blocksCount = Math.floor(this.imageData.length / this.buildConfig.blockSize);
+    const blocksCount = Math.floor(
+      this.imageData.length / this.buildConfig.blockSize,
+    );
 
     for (let bix = 0; bix < blocksCount; bix++) {
       const blockOffset = bix * this.buildConfig.blockSize;
       const blockData = this.imageData.slice(
         blockOffset,
-        blockOffset + this.buildConfig.blockSize
+        blockOffset + this.buildConfig.blockSize,
       );
 
       this.parseBlock(blockData);
@@ -79,11 +81,15 @@ export class SpiffsReader {
 
   private parseBlock(blockData: Uint8Array): void {
     // Parse lookup pages to find valid objects
-    for (let pageIdx = 0; pageIdx < this.buildConfig.OBJ_LU_PAGES_PER_BLOCK; pageIdx++) {
+    for (
+      let pageIdx = 0;
+      pageIdx < this.buildConfig.OBJ_LU_PAGES_PER_BLOCK;
+      pageIdx++
+    ) {
       const luPageOffset = pageIdx * this.buildConfig.pageSize;
       const luPageData = blockData.slice(
         luPageOffset,
-        luPageOffset + this.buildConfig.pageSize
+        luPageOffset + this.buildConfig.pageSize,
       );
 
       // Parse object IDs from lookup page
@@ -92,8 +98,12 @@ export class SpiffsReader {
 
         const objIdBytes = luPageData.slice(i, i + this.buildConfig.objIdLen);
         const [objId] = this.unpack(
-          this.buildConfig.objIdLen === 1 ? 'B' : this.buildConfig.objIdLen === 2 ? 'H' : 'I',
-          objIdBytes
+          this.buildConfig.objIdLen === 1
+            ? "B"
+            : this.buildConfig.objIdLen === 2
+              ? "H"
+              : "I",
+          objIdBytes,
         );
 
         // Check if it's a valid object (not erased/empty)
@@ -101,7 +111,8 @@ export class SpiffsReader {
         if (objId === emptyValue) continue;
 
         // Check if it's an index page (MSB set)
-        const isIndex = (objId & (1 << (this.buildConfig.objIdLen * 8 - 1))) !== 0;
+        const isIndex =
+          (objId & (1 << (this.buildConfig.objIdLen * 8 - 1))) !== 0;
         const realObjId = objId & ~(1 << (this.buildConfig.objIdLen * 8 - 1));
 
         if (isIndex && !this.filesMap.has(realObjId)) {
@@ -121,7 +132,10 @@ export class SpiffsReader {
       pageIdx++
     ) {
       const pageOffset = pageIdx * this.buildConfig.pageSize;
-      const pageData = blockData.slice(pageOffset, pageOffset + this.buildConfig.pageSize);
+      const pageData = blockData.slice(
+        pageOffset,
+        pageOffset + this.buildConfig.pageSize,
+      );
 
       this.parsePage(pageData);
     }
@@ -130,12 +144,22 @@ export class SpiffsReader {
   private parsePage(pageData: Uint8Array): void {
     // Parse page header
     const headerFormat =
-      (this.buildConfig.objIdLen === 1 ? 'B' : this.buildConfig.objIdLen === 2 ? 'H' : 'I') +
-      (this.buildConfig.spanIxLen === 1 ? 'B' : this.buildConfig.spanIxLen === 2 ? 'H' : 'I') +
-      'B';
+      (this.buildConfig.objIdLen === 1
+        ? "B"
+        : this.buildConfig.objIdLen === 2
+          ? "H"
+          : "I") +
+      (this.buildConfig.spanIxLen === 1
+        ? "B"
+        : this.buildConfig.spanIxLen === 2
+          ? "H"
+          : "I") +
+      "B";
 
     const headerSize =
-      this.buildConfig.objIdLen + this.buildConfig.spanIxLen + SPIFFS_PH_FLAG_LEN;
+      this.buildConfig.objIdLen +
+      this.buildConfig.spanIxLen +
+      SPIFFS_PH_FLAG_LEN;
 
     if (pageData.length < headerSize) return;
 
@@ -168,18 +192,23 @@ export class SpiffsReader {
         const contentStart = headerSize;
         const content = pageData.slice(
           contentStart,
-          contentStart + this.buildConfig.OBJ_DATA_PAGE_CONTENT_LEN
+          contentStart + this.buildConfig.OBJ_DATA_PAGE_CONTENT_LEN,
         );
         this.filesMap.get(realObjId)!.dataPages.push([spanIx, content]);
       }
     }
   }
 
-  private parseIndexPage(pageData: Uint8Array, headerSize: number, objId: number): void {
+  private parseIndexPage(
+    pageData: Uint8Array,
+    headerSize: number,
+    objId: number,
+  ): void {
     // Skip to size and type fields
-    let offset = headerSize + this.buildConfig.OBJ_DATA_PAGE_HEADER_LEN_ALIGNED_PAD;
+    let offset =
+      headerSize + this.buildConfig.OBJ_DATA_PAGE_HEADER_LEN_ALIGNED_PAD;
 
-    const sizeTypeFormat = 'IB';
+    const sizeTypeFormat = "IB";
     const sizeTypeSize = SPIFFS_PH_IX_SIZE_LEN + SPIFFS_PH_IX_OBJ_TYPE_LEN;
 
     if (offset + sizeTypeSize <= pageData.length) {
@@ -192,7 +221,8 @@ export class SpiffsReader {
         const nameBytes = pageData.slice(offset, nameEnd);
         // Find null terminator
         const nullPos = nameBytes.indexOf(0);
-        const actualNameBytes = nullPos !== -1 ? nameBytes.slice(0, nullPos) : nameBytes;
+        const actualNameBytes =
+          nullPos !== -1 ? nameBytes.slice(0, nullPos) : nameBytes;
         const filename = new TextDecoder().decode(actualNameBytes);
 
         const fileInfo = this.filesMap.get(objId)!;
@@ -244,7 +274,7 @@ export class SpiffsReader {
 
   readFile(path: string): Uint8Array | null {
     const files = this.listFiles();
-    const file = files.find((f) => f.name === path || f.name === '/' + path);
+    const file = files.find((f) => f.name === path || f.name === "/" + path);
     return file ? file.data : null;
   }
 }

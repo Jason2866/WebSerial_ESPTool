@@ -2,9 +2,13 @@
  * SPIFFS Module Entry Point
  */
 
-export { SpiffsFS, type SpiffsFile } from './spiffs';
-export { SpiffsBuildConfig, type SpiffsBuildConfigOptions, SpiffsFullError } from './spiffsConfig';
-export { SpiffsReader } from './spiffsReader';
+export { SpiffsFS, type SpiffsFile } from "./spiffs";
+export {
+  SpiffsBuildConfig,
+  type SpiffsBuildConfigOptions,
+  SpiffsFullError,
+} from "./spiffsConfig";
+export { SpiffsReader } from "./spiffsReader";
 
 // Default ESP32 SPIFFS configuration
 export const DEFAULT_SPIFFS_CONFIG = {
