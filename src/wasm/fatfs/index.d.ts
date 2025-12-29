@@ -2,6 +2,7 @@ import type { FileSource, BinarySource } from "../shared/types";
 export interface FatFSEntry {
     path: string;
     size: number;
+    type: 'file' | 'dir';
 }
 export interface FatFSOptions {
     blockSize?: number;
