@@ -13,8 +13,8 @@ An [swiss army knife tool for esp32](https://github.com/Jason2866/esp32tool) is 
 - Run `script/develop`
 - Open http://localhost:5004/
 
-## Origin
+## Origin & Development
 
-This project was originally written by [Melissa LeBlanc-Williams](https://github.com/makermelissa). [Nabu Casa](https://www.nabucasa.com) ported the code over to TypeScript and in March 2022 took over maintenance from Adafruit. In July 2022, the Nabucasa stopped maintaining the project in favor of an official, but very early release of Espressif's [esptool-js](https://github.com/espressif/esptool-js/). Due to the instability of the tool, Adafruit updated their fork with Nabucasa's changes in November 2022 and took over maintenance once again. In December 2024, the tool was once again updated to use Espressif's esptool-js as the backend. Since Adafruit uses esptool.js which is still buggy, i decided to maintain my own version. In 12/2025 support for new MCUs and chip variant support for the different P4 revisions and flash read was added.
+This project was originally created by [Melissa LeBlanc-Williams](https://github.com/makermelissa). [Nabu Casa](https://www.nabucasa.com) ported the code to TypeScript and took over maintenance from Adafruit in March 2022. In July 2022, Nabu Casa stopped maintaining the project in favor of Espressif's [esptool-js](https://github.com/espressif/esptool-js). Due to instability, Adafruit updated their fork with Nabu Casa's changes in November 2022 and resumed maintenance. In December 2024, the backend was switched to Espressif's esptool-js. Since esptool.js remained buggy, this independent version was created. In December 2025, support for new MCUs, chip variants (P4 revisions), and optimized flash reading was added.
 
-Copyright: Adafruit, Nabu Casa and Johann Obermeier
+**Copyright:** Adafruit, Nabu Casa, and Johann Obermeier
