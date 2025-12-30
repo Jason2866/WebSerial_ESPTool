@@ -1,21 +1,40 @@
-# WebSerial ESPTool
 
-JavaScript package to install and make backups of firmwares on ESP devices via the browser using WebSerial.
+# 🚀 WebSerial ESPTool – Flash. Backup. Enjoy.
 
-WebSerial ESPTool is **not** based on esptool.js
+**The next-generation solution for ESP firmware – right in your browser!**
 
-An [swiss army knife tool for esp32](https://github.com/Jason2866/esp32tool) is available [Online](https://jason2866.github.io/esp32tool/) which is based on this project.
-The project [ESPConnect](https://github.com/thelastoutpostworkshop/ESPConnect) is using  WebSerial ESPTool. 
+WebSerial ESPTool brings you hassle-free firmware flashing and backup for your ESP devices, directly from your browser. No drivers, no command line, no headaches. Just plug in your ESP, open your browser, and experience seamless, lightning-fast firmware management.
 
-## Local development
+---
 
-- Clone this repository.
-- Install dependencies with `npm install`
-- Run `script/develop`
-- Open http://localhost:5004/
+✨ **Why choose WebSerial ESPTool?**
 
-## Origin & Development
+- **Plug & Play:** Install and back up firmware straight from your browser – no software installation required!
+- **Cutting-Edge Compatibility:** Supports the latest ESP MCUs and chip variants (including P4 revisions).
+- **Blazing Fast & Reliable:** Optimized flashing and reading for maximum performance.
+- **Truly Independent:** Not a clone of esptool.js – 100% original, innovative codebase!
 
-This project was originally created by [Melissa LeBlanc-Williams](https://github.com/makermelissa). [Nabu Casa](https://www.nabucasa.com) ported the code to TypeScript and took over maintenance from Adafruit in March 2022. In July 2022, Nabu Casa stopped maintaining the project in favor of Espressif's [esptool-js](https://github.com/espressif/esptool-js). Due to instability, Adafruit updated their fork with Nabu Casa's changes in November 2022 and resumed maintenance. In December 2024, the backend was switched to Espressif's esptool-js. Since esptool.js remained buggy, this independent version was created. In December 2025, support for new MCUs, chip variants (P4 revisions), and optimized flash reading was added.
+> **Did you know?**
+> - The [ESP32 Swiss Army Knife](https://github.com/Jason2866/esp32tool) is based on this project and available [online](https://jason2866.github.io/esp32tool/).
+> - [ESPConnect](https://github.com/thelastoutpostworkshop/ESPConnect) also uses WebSerial ESPTool under the hood.
 
-**Copyright:** Adafruit, Nabu Casa, and Johann Obermeier
+---
+
+## 🛠️ Quick Start for Developers
+
+1. Clone this repository
+2. Install dependencies: `npm install`
+3. Start the dev environment: `script/develop`
+4. Open [http://localhost:5004/](http://localhost:5004/) in your browser
+
+---
+
+## 🏆 The Story
+
+Originally created by [Melissa LeBlanc-Williams](https://github.com/makermelissa), further developed by [Nabu Casa](https://www.nabucasa.com) and Adafruit, and now with new features.
+
+**Latest update:** December 2025 – now with support for new MCUs, chip variants (P4), and ultra-fast flash reading!
+
+---
+
+© Adafruit, Nabu Casa & Johann Obermeier
