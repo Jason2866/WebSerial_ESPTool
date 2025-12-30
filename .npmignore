@@ -1,6 +1,7 @@
-# Exclude all markdown files except README.md
+# Exclude all markdown files except README.md and license.md
 *.md
 !README.md
+!license.md
 
 # Exclude all example html pages
 *.html
