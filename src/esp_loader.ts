@@ -196,6 +196,10 @@ export class ESPLoader extends EventTarget {
       this.readLoop();
     }
 
+    // Drain input buffer first for CP210x compatibility on Windows
+    // This helps clear any stale data before sync
+    await this.drainInputBuffer(200);
+
     // Clear buffer again after starting read loop
     await this.flushSerialBuffers();
     await this.sync();
@@ -260,6 +264,10 @@ export class ESPLoader extends EventTarget {
       this.logger.debug(
         `GET_SECURITY_INFO failed, using magic value detection: ${error}`,
       );
+
+      // Drain input buffer for CP210x compatibility on Windows
+      // This ensures all error responses are cleared before continuing
+      await this.drainInputBuffer(200);
 
       // Clear input buffer and re-sync to recover from failed command
       this._inputBuffer.length = 0;
