@@ -5,6 +5,7 @@ JavaScript package to install and make backups of firmwares on ESP devices via t
 WebSerial ESPTool is **not** based on esptool.js
 
 An [swiss army knife tool for esp32](https://github.com/Jason2866/esp32tool) is available [Online](https://jason2866.github.io/esp32tool/) which is based on this project.
+The project [ESPConnect](https://github.com/thelastoutpostworkshop/ESPConnect) is using  WebSerial ESPTool. 
 
 ## Local development
 
