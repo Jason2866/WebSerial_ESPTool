@@ -2,6 +2,9 @@
 *.md
 !README.md
 
+# Exclude all example html pages
+*.html
+
 # Exclude Docker, VSC and CI folders
 .devcontainer/
 .vscode/
