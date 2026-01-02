@@ -1745,6 +1745,8 @@ export class ESPLoader extends EventTarget {
 
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
+        let resp = new Uint8Array(0);
+        
         try {
           this.logger.debug(
             `Reading chunk at 0x${currentAddr.toString(16)}, size: 0x${chunkSize.toString(16)}`,
@@ -1757,8 +1759,6 @@ export class ESPLoader extends EventTarget {
           if (res != 0) {
             throw new Error("Failed to read memory: " + res);
           }
-
-          let resp = new Uint8Array(0);
 
           while (resp.length < chunkSize) {
             // Read a SLIP packet
@@ -1823,7 +1823,10 @@ export class ESPLoader extends EventTarget {
                 // Clear application buffer
                 await this.flushSerialBuffers();
                 
-                // Continue to retry the same chunk
+                // Wait a bit before retry
+                await sleep(100);
+                
+                // Continue to retry the same chunk (will send new read command)
               } catch (drainErr) {
                 this.logger.debug(`Buffer drain error: ${drainErr}`);
               }
