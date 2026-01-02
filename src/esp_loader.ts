@@ -1746,7 +1746,7 @@ export class ESPLoader extends EventTarget {
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
         let resp = new Uint8Array(0);
-        
+
         try {
           this.logger.debug(
             `Reading chunk at 0x${currentAddr.toString(16)}, size: 0x${chunkSize.toString(16)}`,
@@ -1770,11 +1770,22 @@ export class ESPLoader extends EventTarget {
                 this.logger.debug(
                   `SLIP read error at ${resp.length} bytes: ${err.message}`,
                 );
-                
+
+                // Send final ACK for any data we did receive before the error
+                if (resp.length > 0) {
+                  try {
+                    const ackData = pack("<I", resp.length);
+                    const slipEncodedAck = slipEncode(ackData);
+                    await this.writeToStream(slipEncodedAck);
+                  } catch (ackErr) {
+                    this.logger.debug(`ACK send error: ${ackErr}`);
+                  }
+                }
+
                 // Drain input buffer for CP210x compatibility on Windows
                 // This clears any stale data that may be causing the error
-                await this.drainInputBuffer(200);
-                
+                await this.drainInputBuffer(300);
+
                 // If we've read all the data we need, break
                 if (resp.length >= chunkSize) {
                   break;
@@ -1817,15 +1828,19 @@ export class ESPLoader extends EventTarget {
               );
 
               try {
-                // Drain input buffer for CP210x compatibility on Windows
-                await this.drainInputBuffer(200);
-                
+                // For CP210x on Windows, we need aggressive buffer draining
+                // First drain with longer timeout to catch all stale data
+                await this.drainInputBuffer(300);
+
+                // Second drain to ensure everything is cleared
+                await this.drainInputBuffer(100);
+
                 // Clear application buffer
                 await this.flushSerialBuffers();
-                
-                // Wait a bit before retry
-                await sleep(100);
-                
+
+                // Wait longer before retry to let hardware settle
+                await sleep(200);
+
                 // Continue to retry the same chunk (will send new read command)
               } catch (drainErr) {
                 this.logger.debug(`Buffer drain error: ${drainErr}`);
