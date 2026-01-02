@@ -14,7 +14,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "prepublishOnly": "script/build",
+    "build": "script/build",
     "format": "npm exec -- prettier --write src",
     "develop": "script/develop",
     "lint": "eslint src/",
