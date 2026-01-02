@@ -1642,7 +1642,7 @@ export class ESPLoader extends EventTarget {
    *
    * @param bufferingTime - Time in milliseconds to wait for the buffer to fill
    */
-  private async drainInputBuffer(bufferingTime = 200): Promise<void> {
+  async drainInputBuffer(bufferingTime = 200): Promise<void> {
     // Wait for the buffer to fill
     await sleep(bufferingTime);
 
@@ -1684,7 +1684,7 @@ export class ESPLoader extends EventTarget {
    * Flush any pending data in the TX and RX serial port buffers
    * This clears both the application RX buffer and waits for hardware buffers to drain
    */
-  private async flushSerialBuffers(): Promise<void> {
+  async flushSerialBuffers(): Promise<void> {
     // Clear application buffer
     if (!this._parent) {
       this.__inputBuffer = [];
@@ -1741,7 +1741,7 @@ export class ESPLoader extends EventTarget {
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
       let chunkSuccess = false;
       let retryCount = 0;
-      const MAX_RETRIES = 3;
+      const MAX_RETRIES = 5;
 
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
@@ -1770,6 +1770,11 @@ export class ESPLoader extends EventTarget {
                 this.logger.debug(
                   `SLIP read error at ${resp.length} bytes: ${err.message}`,
                 );
+                
+                // Drain input buffer for CP210x compatibility on Windows
+                // This clears any stale data that may be causing the error
+                await this.drainInputBuffer(200);
+                
                 // If we've read all the data we need, break
                 if (resp.length >= chunkSize) {
                   break;
@@ -1804,21 +1809,23 @@ export class ESPLoader extends EventTarget {
         } catch (err) {
           retryCount++;
 
-          // Check if it's a timeout error
-          if (
-            err instanceof SlipReadError &&
-            err.message.includes("Timed out")
-          ) {
+          // Check if it's a timeout error or SLIP error
+          if (err instanceof SlipReadError) {
             if (retryCount <= MAX_RETRIES) {
               this.logger.log(
-                `⚠️  Timeout error at 0x${currentAddr.toString(16)}. Reconnecting and retrying (attempt ${retryCount}/${MAX_RETRIES})...`,
+                `⚠️  ${err.message} at 0x${currentAddr.toString(16)}. Draining buffer and retrying (attempt ${retryCount}/${MAX_RETRIES})...`,
               );
 
               try {
-                await this.reconnect();
+                // Drain input buffer for CP210x compatibility on Windows
+                await this.drainInputBuffer(200);
+                
+                // Clear application buffer
+                await this.flushSerialBuffers();
+                
                 // Continue to retry the same chunk
-              } catch (reconnectErr) {
-                throw new Error(`Reconnect failed: ${reconnectErr}`);
+              } catch (drainErr) {
+                this.logger.debug(`Buffer drain error: ${drainErr}`);
               }
             } else {
               throw new Error(
@@ -1826,7 +1833,7 @@ export class ESPLoader extends EventTarget {
               );
             }
           } else {
-            // Non-timeout error, don't retry
+            // Non-SLIP error, don't retry
             throw err;
           }
         }
