@@ -1828,18 +1828,13 @@ export class ESPLoader extends EventTarget {
               );
 
               try {
-                // For CP210x on Windows, we need aggressive buffer draining
-                // First drain with longer timeout to catch all stale data
                 await this.drainInputBuffer(300);
-
-                // Second drain to ensure everything is cleared
-                await this.drainInputBuffer(100);
 
                 // Clear application buffer
                 await this.flushSerialBuffers();
 
-                // Wait longer before retry to let hardware settle
-                await sleep(200);
+                // Wait before retry to let hardware settle
+                await sleep(SYNC_TIMEOUT);
 
                 // Continue to retry the same chunk (will send new read command)
               } catch (drainErr) {
