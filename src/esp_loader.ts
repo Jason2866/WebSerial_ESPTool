@@ -166,8 +166,6 @@ export class ESPLoader extends EventTarget {
   }
 
   async initialize() {
-    await this.hardReset(true);
-
     if (!this._parent) {
       this.__inputBuffer = [];
       this.__totalBytesRead = 0;
@@ -196,13 +194,8 @@ export class ESPLoader extends EventTarget {
       this.readLoop();
     }
 
-    // Drain input buffer first for CP210x compatibility on Windows
-    // This helps clear any stale data before sync
-    await this.drainInputBuffer(200);
-
-    // Clear buffer again after starting read loop
-    await this.flushSerialBuffers();
-    await this.sync();
+    // Try to connect with different reset strategies
+    await this.connectWithResetStrategies();
 
     // Detect chip type
     await this.detectChip();
@@ -464,37 +457,11 @@ export class ESPLoader extends EventTarget {
     if (bootloader) {
       // enter flash mode
       if (this.port.getInfo().usbProductId === USB_JTAG_SERIAL_PID) {
-        // esp32c3 esp32s3 etc. build-in USB serial.
-        // when connect to computer direct via usb, using following signals
-        // to enter flash mode automatically.
-        await this.setDTR(false);
-        await this.setRTS(false);
-        await this.sleep(100);
-
-        await this.setDTR(true);
-        await this.setRTS(false);
-        await this.sleep(100);
-
-        await this.setRTS(true);
-        await this.setDTR(false);
-        await this.setRTS(true);
-
-        await this.sleep(100);
-        await this.setDTR(false);
-        await this.setRTS(false);
-        this.logger.log("USB MCU reset.");
+        await this.hardResetUSBJTAGSerial();
+        this.logger.log("USB-JTAG/Serial reset.");
       } else {
-        // otherwise, esp chip should be connected to computer via usb-serial
-        // bridge chip like ch340,CP2102 etc.
-        // use normal way to enter flash mode.
-        await this.setDTR(false);
-        await this.setRTS(true);
-        await this.sleep(100);
-        await this.setDTR(true);
-        await this.setRTS(false);
-        await this.sleep(50);
-        await this.setDTR(false);
-        this.logger.log("DTR/RTS USB serial chip reset.");
+        await this.hardResetClassic();
+        this.logger.log("Classic reset.");
       }
     } else {
       // just reset
@@ -877,6 +844,135 @@ export class ESPLoader extends EventTarget {
       this.logger.error(`Reconfigure port error: ${e}`);
       throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
     }
+  }
+
+  /**
+   * @name connectWithResetStrategies
+   * Try different reset strategies to enter bootloader mode
+   * Similar to esptool.py's connect() method with multiple reset strategies
+   */
+  async connectWithResetStrategies() {
+    const portInfo = this.port.getInfo();
+    const isUSBJTAGSerial = portInfo.usbProductId === USB_JTAG_SERIAL_PID;
+    const isEspressifUSB = portInfo.usbVendorId === 0x303a;
+
+    this.logger.log(
+      `Detected USB: VID=0x${portInfo.usbVendorId?.toString(16) || "unknown"}, PID=0x${portInfo.usbProductId?.toString(16) || "unknown"}`,
+    );
+
+    // Define reset strategies to try in order
+    const resetStrategies: Array<{ name: string; fn: () => Promise<void> }> =
+      [];
+
+    // Strategy 1: USB-JTAG/Serial reset (for ESP32-C3, C6, S3, etc.)
+    // Try this first if we detect Espressif USB VID or the specific PID
+    if (isUSBJTAGSerial || isEspressifUSB) {
+      resetStrategies.push({
+        name: "USB-JTAG/Serial",
+        fn: async () => await this.hardResetUSBJTAGSerial(),
+      });
+    }
+
+    // Strategy 2: Classic reset (for USB-to-Serial bridges)
+    resetStrategies.push({
+      name: "Classic",
+      fn: async () => await this.hardResetClassic(),
+    });
+
+    // Strategy 3: If USB-JTAG/Serial was not tried yet, try it as fallback
+    if (!isUSBJTAGSerial && !isEspressifUSB) {
+      resetStrategies.push({
+        name: "USB-JTAG/Serial (fallback)",
+        fn: async () => await this.hardResetUSBJTAGSerial(),
+      });
+    }
+
+    let lastError: Error | null = null;
+
+    // Try each reset strategy
+    for (const strategy of resetStrategies) {
+      try {
+        this.logger.log(`Trying ${strategy.name} reset...`);
+
+        // Check if port is still open, if not, skip this strategy
+        if (!this.connected || !this.port.writable) {
+          this.logger.log(`Port disconnected, skipping ${strategy.name} reset`);
+          continue;
+        }
+
+        await strategy.fn();
+
+        // Try to sync after reset
+        await this.sync();
+
+        // If we get here, sync succeeded
+        this.logger.log(`Connected successfully with ${strategy.name} reset.`);
+        return;
+      } catch (error) {
+        lastError = error as Error;
+        this.logger.log(
+          `${strategy.name} reset failed: ${(error as Error).message}`,
+        );
+
+        // If port got disconnected, we can't try more strategies
+        if (!this.connected || !this.port.writable) {
+          this.logger.log(`Port disconnected during reset attempt`);
+          break;
+        }
+
+        // Clear buffers before trying next strategy
+        this._inputBuffer.length = 0;
+        await this.drainInputBuffer(200);
+        await this.flushSerialBuffers();
+      }
+    }
+
+    // All strategies failed
+    throw new Error(
+      `Couldn't sync to ESP. Try resetting manually. Last error: ${lastError?.message}`,
+    );
+  }
+
+  /**
+   * @name hardResetUSBJTAGSerial
+   * USB-JTAG/Serial reset sequence for ESP32-C3, ESP32-S3, ESP32-C6, etc.
+   */
+  async hardResetUSBJTAGSerial() {
+    await this.setRTS(false);
+    await this.setDTR(false); // Idle
+    await this.sleep(100);
+
+    await this.setDTR(true); // Set IO0
+    await this.setRTS(false);
+    await this.sleep(100);
+
+    await this.setRTS(true); // Reset. Calls inverted to go through (1,1) instead of (0,0)
+    await this.setDTR(false);
+    await this.setRTS(true); // RTS set as Windows only propagates DTR on RTS setting
+    await this.sleep(100);
+
+    await this.setDTR(false);
+    await this.setRTS(false); // Chip out of reset
+
+    // Wait for chip to boot into bootloader
+    await this.sleep(200);
+  }
+
+  /**
+   * @name hardResetClassic
+   * Classic reset sequence for USB-to-Serial bridge chips (CH340, CP2102, etc.)
+   */
+  async hardResetClassic() {
+    await this.setDTR(false); // IO0=HIGH
+    await this.setRTS(true); // EN=LOW, chip in reset
+    await this.sleep(100);
+    await this.setDTR(true); // IO0=LOW
+    await this.setRTS(false); // EN=HIGH, chip out of reset
+    await this.sleep(50);
+    await this.setDTR(false); // IO0=HIGH, done
+
+    // Wait for chip to boot into bootloader
+    await this.sleep(200);
   }
 
   /**
