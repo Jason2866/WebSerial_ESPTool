@@ -1660,8 +1660,8 @@ export class ESPLoader extends EventTarget {
     }
 
     // Queue writes to prevent lock contention (critical for CP2102 on Windows)
-    this._writeChain = this._writeChain
-      .then(async () => {
+    this._writeChain = this._writeChain.then(
+      async () => {
         // Check if port is still writable before attempting write
         if (!this.port.writable) {
           throw new Error("Port became unavailable during write");
@@ -1679,21 +1679,34 @@ export class ESPLoader extends EventTarget {
 
         // Perform the write
         await this._writer.write(new Uint8Array(data));
-      })
-      .catch((err) => {
-        this.logger.error(`Write error: ${err}`);
-        // Ensure writer is cleaned up on any error
-        if (this._writer) {
-          try {
-            this._writer.releaseLock();
-          } catch (e) {
-            // Ignore release errors
-          }
-          this._writer = undefined;
+      },
+      async () => {
+        // Previous write failed, but still attempt this write
+        if (!this.port.writable) {
+          throw new Error("Port became unavailable during write");
         }
-        // Re-throw to propagate error
-        throw err;
-      });
+
+        // Writer was likely cleaned up by previous error, create new one
+        if (!this._writer) {
+          this._writer = this.port.writable.getWriter();
+        }
+
+        await this._writer.write(new Uint8Array(data));
+      }
+    ).catch((err) => {
+      this.logger.error(`Write error: ${err}`);
+      // Ensure writer is cleaned up on any error
+      if (this._writer) {
+        try {
+          this._writer.releaseLock();
+        } catch (e) {
+          // Ignore release errors
+        }
+        this._writer = undefined;
+      }
+      // Re-throw to propagate error
+      throw err;
+    });
 
     // Always await the write chain to ensure errors are caught
     await this._writeChain;
