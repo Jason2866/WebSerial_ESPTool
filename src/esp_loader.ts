@@ -85,7 +85,7 @@ export class ESPLoader extends EventTarget {
   private _reader?: ReadableStreamDefaultReader<Uint8Array>;
   private _isESP32S2NativeUSB: boolean = false;
   private _initializationSucceeded: boolean = false;
-  __commandLock: Promise<any> = Promise.resolve();
+  private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
 
   constructor(
     public port: SerialPort,
@@ -1678,19 +1678,7 @@ export class ESPLoader extends EventTarget {
         }
 
         // Perform the write
-        try {
-          await this._writer.write(new Uint8Array(data));
-        } catch (err) {
-          this.logger.error(`Write failed: ${err}`);
-          // Release writer on write error to allow recovery
-          try {
-            this._writer.releaseLock();
-          } catch (e) {
-            // Ignore release errors
-          }
-          this._writer = undefined;
-          throw err;
-        }
+        await this._writer.write(new Uint8Array(data));
       })
       .catch((err) => {
         this.logger.error(`Write error: ${err}`);
