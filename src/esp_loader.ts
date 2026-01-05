@@ -113,11 +113,11 @@ export class ESPLoader extends EventTarget {
     }
   }
 
-  private get _commandLock(): Promise<any> {
+  private get _commandLock(): Promise<[number, number[]]> {
     return this._parent ? this._parent._commandLock : this.__commandLock;
   }
 
-  private set _commandLock(value: Promise<any>) {
+  private set _commandLock(value: Promise<[number, number[]]>) {
     if (this._parent) {
       this._parent._commandLock = value;
     } else {
@@ -1726,7 +1726,8 @@ export class ESPLoader extends EventTarget {
       }
       this._writer = undefined;
     } else {
-      // No persistent writer, close stream directly
+      // No persistent writer exists, close stream directly
+      // This path is taken when no writes have been queued
       try {
         const writer = this.port.writable.getWriter();
         await writer.close();
