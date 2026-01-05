@@ -86,6 +86,7 @@ export class ESPLoader extends EventTarget {
   private _isESP32S2NativeUSB: boolean = false;
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
+  private _isReconfiguring: boolean = false;
 
   constructor(
     public port: SerialPort,
@@ -843,6 +844,8 @@ export class ESPLoader extends EventTarget {
 
   async reconfigurePort(baud: number) {
     try {
+      this._isReconfiguring = true;
+
       // Wait for pending writes to complete
       try {
         await this._writeChain;
@@ -878,6 +881,8 @@ export class ESPLoader extends EventTarget {
     } catch (e) {
       this.logger.error(`Reconfigure port error: ${e}`);
       throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
+    } finally {
+      this._isReconfiguring = false;
     }
   }
 
@@ -1659,6 +1664,10 @@ export class ESPLoader extends EventTarget {
       return;
     }
 
+    if (this._isReconfiguring) {
+      throw new Error("Cannot write during port reconfiguration");
+    }
+
     // Queue writes to prevent lock contention (critical for CP2102 on Windows)
     this._writeChain = this._writeChain
       .then(
@@ -1724,42 +1733,48 @@ export class ESPLoader extends EventTarget {
       return;
     }
 
-    // Wait for pending writes to complete
     try {
-      await this._writeChain;
-    } catch (err) {
-      this.logger.debug(`Pending write error during disconnect: ${err}`);
-    }
+      this._isReconfiguring = true;
 
-    // Release persistent writer before closing
-    if (this._writer) {
+      // Wait for pending writes to complete
       try {
-        await this._writer.close();
-        this._writer.releaseLock();
+        await this._writeChain;
       } catch (err) {
-        this.logger.debug(`Writer close/release error: ${err}`);
+        this.logger.debug(`Pending write error during disconnect: ${err}`);
       }
-      this._writer = undefined;
-    } else {
-      // No persistent writer exists, close stream directly
-      // This path is taken when no writes have been queued
-      try {
-        const writer = this.port.writable.getWriter();
-        await writer.close();
-        writer.releaseLock();
-      } catch (err) {
-        this.logger.debug(`Direct writer close error: ${err}`);
-      }
-    }
 
-    await new Promise((resolve) => {
-      if (!this._reader) {
-        resolve(undefined);
+      // Release persistent writer before closing
+      if (this._writer) {
+        try {
+          await this._writer.close();
+          this._writer.releaseLock();
+        } catch (err) {
+          this.logger.debug(`Writer close/release error: ${err}`);
+        }
+        this._writer = undefined;
+      } else {
+        // No persistent writer exists, close stream directly
+        // This path is taken when no writes have been queued
+        try {
+          const writer = this.port.writable.getWriter();
+          await writer.close();
+          writer.releaseLock();
+        } catch (err) {
+          this.logger.debug(`Direct writer close error: ${err}`);
+        }
       }
-      this.addEventListener("disconnect", resolve, { once: true });
-      this._reader!.cancel();
-    });
-    this.connected = false;
+
+      await new Promise((resolve) => {
+        if (!this._reader) {
+          resolve(undefined);
+        }
+        this.addEventListener("disconnect", resolve, { once: true });
+        this._reader!.cancel();
+      });
+      this.connected = false;
+    } finally {
+      this._isReconfiguring = false;
+    }
   }
 
   /**
@@ -1772,116 +1787,122 @@ export class ESPLoader extends EventTarget {
       return;
     }
 
-    this.logger.log("Reconnecting serial port...");
-
-    this.connected = false;
-    this.__inputBuffer = [];
-
-    // Wait for pending writes to complete
     try {
-      await this._writeChain;
-    } catch (err) {
-      this.logger.debug(`Pending write error during reconnect: ${err}`);
-    }
+      this._isReconfiguring = true;
 
-    // Release persistent writer
-    if (this._writer) {
-      try {
-        this._writer.releaseLock();
-      } catch (err) {
-        this.logger.debug(`Writer release error during reconnect: ${err}`);
-      }
-      this._writer = undefined;
-    }
+      this.logger.log("Reconnecting serial port...");
 
-    // Cancel reader
-    if (this._reader) {
-      try {
-        await this._reader.cancel();
-      } catch (err) {
-        this.logger.debug(`Reader cancel error: ${err}`);
-      }
-      this._reader = undefined;
-    }
-
-    // Close port
-    try {
-      await this.port.close();
-      this.logger.log("Port closed");
-    } catch (err) {
-      this.logger.debug(`Port close error: ${err}`);
-    }
-
-    // Open the port
-    this.logger.debug("Opening port...");
-    try {
-      await this.port.open({ baudRate: ESP_ROM_BAUD });
-      this.connected = true;
-    } catch (err) {
-      throw new Error(`Failed to open port: ${err}`);
-    }
-
-    // Verify port streams are available
-    if (!this.port.readable || !this.port.writable) {
-      throw new Error(
-        `Port streams not available after open (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
-      );
-    }
-
-    // Save chip info and flash size (no need to detect again)
-    const savedChipFamily = this.chipFamily;
-    const savedChipName = this.chipName;
-    const savedChipRevision = this.chipRevision;
-    const savedChipVariant = this.chipVariant;
-    const savedFlashSize = this.flashSize;
-
-    // Reinitialize
-    await this.hardReset(true);
-
-    if (!this._parent) {
+      this.connected = false;
       this.__inputBuffer = [];
-      this.__totalBytesRead = 0;
-      this.readLoop();
-    }
 
-    await this.flushSerialBuffers();
-    await this.sync();
+      // Wait for pending writes to complete
+      try {
+        await this._writeChain;
+      } catch (err) {
+        this.logger.debug(`Pending write error during reconnect: ${err}`);
+      }
 
-    // Restore chip info
-    this.chipFamily = savedChipFamily;
-    this.chipName = savedChipName;
-    this.chipRevision = savedChipRevision;
-    this.chipVariant = savedChipVariant;
-    this.flashSize = savedFlashSize;
+      // Release persistent writer
+      if (this._writer) {
+        try {
+          this._writer.releaseLock();
+        } catch (err) {
+          this.logger.debug(`Writer release error during reconnect: ${err}`);
+        }
+        this._writer = undefined;
+      }
 
-    this.logger.debug(`Reconnect complete (chip: ${this.chipName})`);
+      // Cancel reader
+      if (this._reader) {
+        try {
+          await this._reader.cancel();
+        } catch (err) {
+          this.logger.debug(`Reader cancel error: ${err}`);
+        }
+        this._reader = undefined;
+      }
 
-    // Verify port is ready
-    if (!this.port.writable || !this.port.readable) {
-      throw new Error("Port not ready after reconnect");
-    }
+      // Close port
+      try {
+        await this.port.close();
+        this.logger.log("Port closed");
+      } catch (err) {
+        this.logger.debug(`Port close error: ${err}`);
+      }
 
-    // Load stub
-    const stubLoader = await this.runStub(true);
-    this.logger.debug("Stub loaded");
+      // Open the port
+      this.logger.debug("Opening port...");
+      try {
+        await this.port.open({ baudRate: ESP_ROM_BAUD });
+        this.connected = true;
+      } catch (err) {
+        throw new Error(`Failed to open port: ${err}`);
+      }
 
-    // Restore baudrate if it was changed
-    if (this._currentBaudRate !== ESP_ROM_BAUD) {
-      await stubLoader.setBaudrate(this._currentBaudRate);
-
-      // Verify port is still ready after baudrate change
-      if (!this.port.writable || !this.port.readable) {
+      // Verify port streams are available
+      if (!this.port.readable || !this.port.writable) {
         throw new Error(
-          `Port not ready after baudrate change (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
+          `Port streams not available after open (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
         );
       }
-    }
 
-    // Copy stub state to this instance if we're a stub loader
-    if (this.IS_STUB) {
-      Object.assign(this, stubLoader);
+      // Save chip info and flash size (no need to detect again)
+      const savedChipFamily = this.chipFamily;
+      const savedChipName = this.chipName;
+      const savedChipRevision = this.chipRevision;
+      const savedChipVariant = this.chipVariant;
+      const savedFlashSize = this.flashSize;
+
+      // Reinitialize
+      await this.hardReset(true);
+
+      if (!this._parent) {
+        this.__inputBuffer = [];
+        this.__totalBytesRead = 0;
+        this.readLoop();
+      }
+
+      await this.flushSerialBuffers();
+      await this.sync();
+
+      // Restore chip info
+      this.chipFamily = savedChipFamily;
+      this.chipName = savedChipName;
+      this.chipRevision = savedChipRevision;
+      this.chipVariant = savedChipVariant;
+      this.flashSize = savedFlashSize;
+
+      this.logger.debug(`Reconnect complete (chip: ${this.chipName})`);
+
+      // Verify port is ready
+      if (!this.port.writable || !this.port.readable) {
+        throw new Error("Port not ready after reconnect");
+      }
+
+      // Load stub
+      const stubLoader = await this.runStub(true);
+      this.logger.debug("Stub loaded");
+
+      // Restore baudrate if it was changed
+      if (this._currentBaudRate !== ESP_ROM_BAUD) {
+        await stubLoader.setBaudrate(this._currentBaudRate);
+
+        // Verify port is still ready after baudrate change
+        if (!this.port.writable || !this.port.readable) {
+          throw new Error(
+            `Port not ready after baudrate change (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
+          );
+        }
+      }
+
+      // Copy stub state to this instance if we're a stub loader
+      if (this.IS_STUB) {
+        Object.assign(this, stubLoader);
+      }
+      this.logger.debug("Reconnection successful");
+    } finally {
+      this._isReconfiguring = false;
     }
-    this.logger.debug("Reconnection successful");
   }
 
   /**
