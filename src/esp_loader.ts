@@ -649,37 +649,34 @@ export class ESPLoader extends EventTarget {
   async readPacket(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
     let inEscape = false;
-    let readBytes: number[] = [];
+
+    const startTime = Date.now();
+
     while (true) {
-      const stamp = Date.now();
-      readBytes = [];
-      while (Date.now() - stamp < timeout) {
-        if (this._inputBuffer.length > 0) {
-          readBytes.push(this._inputBuffer.shift()!);
-          break;
-        } else {
-          // Reduced sleep time for faster response during high-speed transfers
-          await sleep(1);
-        }
-      }
-      if (readBytes.length == 0) {
+      // Check timeout
+      if (Date.now() - startTime > timeout) {
         const waitingFor = partialPacket === null ? "header" : "content";
         throw new SlipReadError("Timed out waiting for packet " + waitingFor);
       }
-      if (this.debug)
-        this.logger.debug(
-          "Read " + readBytes.length + " bytes: " + hexFormatter(readBytes),
-        );
-      for (const b of readBytes) {
+
+      // If no data available, wait a bit
+      if (this._inputBuffer.length === 0) {
+        await sleep(1);
+        continue;
+      }
+
+      // Process all available bytes without going back to outer loop
+      // This is critical for handling high-speed burst transfers
+      while (this._inputBuffer.length > 0) {
+        const b = this._inputBuffer.shift()!;
+
         if (partialPacket === null) {
           // waiting for packet header
           if (b == 0xc0) {
             partialPacket = [];
           } else {
             if (this.debug) {
-              this.logger.debug(
-                "Read invalid data: " + hexFormatter(readBytes),
-              );
+              this.logger.debug("Read invalid data: " + toHex(b));
               this.logger.debug(
                 "Remaining data in serial buffer: " +
                   hexFormatter(this._inputBuffer),
@@ -698,9 +695,7 @@ export class ESPLoader extends EventTarget {
             partialPacket.push(0xdb);
           } else {
             if (this.debug) {
-              this.logger.debug(
-                "Read invalid data: " + hexFormatter(readBytes),
-              );
+              this.logger.debug("Read invalid data: " + toHex(b));
               this.logger.debug(
                 "Remaining data in serial buffer: " +
                   hexFormatter(this._inputBuffer),
@@ -726,7 +721,6 @@ export class ESPLoader extends EventTarget {
         }
       }
     }
-    throw new SlipReadError("Invalid state");
   }
 
   /**
@@ -1837,18 +1831,22 @@ export class ESPLoader extends EventTarget {
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
       let chunkSuccess = false;
       let retryCount = 0;
-      const MAX_RETRIES = 5;
+      const MAX_RETRIES = 15;
 
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
         let resp = new Uint8Array(0);
 
         try {
-          this.logger.debug(
-            `Reading chunk at 0x${currentAddr.toString(16)}, size: 0x${chunkSize.toString(16)}`,
-          );
+          // Only log on first attempt or retries
+          if (retryCount === 0) {
+            this.logger.debug(
+              `Reading chunk at 0x${currentAddr.toString(16)}, size: 0x${chunkSize.toString(16)}`,
+            );
+          }
 
           // Send read flash command for this chunk
+          // This must be inside the retry loop so we send a fresh command after errors
           const pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, 1024);
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
@@ -1867,20 +1865,22 @@ export class ESPLoader extends EventTarget {
                   `SLIP read error at ${resp.length} bytes: ${err.message}`,
                 );
 
-                // Send final ACK for any data we did receive before the error
-                if (resp.length > 0) {
-                  try {
-                    const ackData = pack("<I", resp.length);
-                    const slipEncodedAck = slipEncode(ackData);
-                    await this.writeToStream(slipEncodedAck);
-                  } catch (ackErr) {
-                    this.logger.debug(`ACK send error: ${ackErr}`);
-                  }
+                // Send empty SLIP frame to abort the stub's read operation
+                // The stub expects 4 bytes (ACK), if we send less it will break out
+                try {
+                  // Send SLIP frame with no data (just delimiters)
+                  const abortFrame = [0xc0, 0xc0]; // Empty SLIP frame
+                  await this.writeToStream(abortFrame);
+                  this.logger.debug(`Sent abort frame to stub`);
+
+                  // Give stub time to process abort
+                  await sleep(50);
+                } catch (abortErr) {
+                  this.logger.debug(`Abort frame error: ${abortErr}`);
                 }
 
-                // Drain input buffer for CP210x compatibility on Windows
-                // This clears any stale data that may be causing the error
-                await this.drainInputBuffer(300);
+                // Drain input buffer to clear any stale data
+                await this.drainInputBuffer(200);
 
                 // If we've read all the data we need, break
                 if (resp.length >= chunkSize) {
@@ -1920,11 +1920,11 @@ export class ESPLoader extends EventTarget {
           if (err instanceof SlipReadError) {
             if (retryCount <= MAX_RETRIES) {
               this.logger.log(
-                `⚠️  ${err.message} at 0x${currentAddr.toString(16)}. Draining buffer and retrying (attempt ${retryCount}/${MAX_RETRIES})...`,
+                `${err.message} at 0x${currentAddr.toString(16)}. Draining buffer and retrying (attempt ${retryCount}/${MAX_RETRIES})...`,
               );
 
               try {
-                await this.drainInputBuffer(300);
+                await this.drainInputBuffer(200);
 
                 // Clear application buffer
                 await this.flushSerialBuffers();
@@ -1932,7 +1932,7 @@ export class ESPLoader extends EventTarget {
                 // Wait before retry to let hardware settle
                 await sleep(SYNC_TIMEOUT);
 
-                // Continue to retry the same chunk (will send new read command)
+                // Continue to retry the same chunk (will send NEW read command)
               } catch (drainErr) {
                 this.logger.debug(`Buffer drain error: ${drainErr}`);
               }
