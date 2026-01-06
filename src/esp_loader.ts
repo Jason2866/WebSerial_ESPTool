@@ -86,7 +86,7 @@ export class ESPLoader extends EventTarget {
   private _isESP32S2NativeUSB: boolean = false;
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
-  private _isReconfiguring: boolean = false;
+  private __isReconfiguring: boolean = false;
 
   constructor(
     public port: SerialPort,
@@ -123,6 +123,20 @@ export class ESPLoader extends EventTarget {
       this._parent._commandLock = value;
     } else {
       this.__commandLock = value;
+    }
+  }
+
+  private get _isReconfiguring(): boolean {
+    return this._parent
+      ? this._parent._isReconfiguring
+      : this.__isReconfiguring;
+  }
+
+  private set _isReconfiguring(value: boolean) {
+    if (this._parent) {
+      this._parent._isReconfiguring = value;
+    } else {
+      this.__isReconfiguring = value;
     }
   }
 
