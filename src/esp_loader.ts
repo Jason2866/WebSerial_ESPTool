@@ -86,7 +86,7 @@ export class ESPLoader extends EventTarget {
   private _isESP32S2NativeUSB: boolean = false;
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
-  private _isReconfiguring: boolean = false;
+  private __isReconfiguring: boolean = false;
 
   constructor(
     public port: SerialPort,
@@ -123,6 +123,20 @@ export class ESPLoader extends EventTarget {
       this._parent._commandLock = value;
     } else {
       this.__commandLock = value;
+    }
+  }
+
+  private get _isReconfiguring(): boolean {
+    return this._parent
+      ? this._parent._isReconfiguring
+      : this.__isReconfiguring;
+  }
+
+  private set _isReconfiguring(value: boolean) {
+    if (this._parent) {
+      this._parent._isReconfiguring = value;
+    } else {
+      this.__isReconfiguring = value;
     }
   }
 
@@ -844,14 +858,15 @@ export class ESPLoader extends EventTarget {
 
   async reconfigurePort(baud: number) {
     try {
-      this._isReconfiguring = true;
-
       // Wait for pending writes to complete
       try {
         await this._writeChain;
       } catch (err) {
         this.logger.debug(`Pending write error during reconfigure: ${err}`);
       }
+
+      // Block new writes during port close/open
+      this._isReconfiguring = true;
 
       // Release persistent writer before closing
       if (this._writer) {
@@ -873,16 +888,18 @@ export class ESPLoader extends EventTarget {
       // Reopen Port
       await this.port.open({ baudRate: baud });
 
+      // Port is now open - allow writes again
+      this._isReconfiguring = false;
+
       // Clear buffer again
       await this.flushSerialBuffers();
 
       // Restart Readloop
       this.readLoop();
     } catch (e) {
+      this._isReconfiguring = false;
       this.logger.error(`Reconfigure port error: ${e}`);
       throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
-    } finally {
-      this._isReconfiguring = false;
     }
   }
 
@@ -1734,14 +1751,15 @@ export class ESPLoader extends EventTarget {
     }
 
     try {
-      this._isReconfiguring = true;
-
       // Wait for pending writes to complete
       try {
         await this._writeChain;
       } catch (err) {
         this.logger.debug(`Pending write error during disconnect: ${err}`);
       }
+
+      // Block new writes during disconnect
+      this._isReconfiguring = true;
 
       // Release persistent writer before closing
       if (this._writer) {
@@ -1788,8 +1806,6 @@ export class ESPLoader extends EventTarget {
     }
 
     try {
-      this._isReconfiguring = true;
-
       this.logger.log("Reconnecting serial port...");
 
       this.connected = false;
@@ -1801,6 +1817,9 @@ export class ESPLoader extends EventTarget {
       } catch (err) {
         this.logger.debug(`Pending write error during reconnect: ${err}`);
       }
+
+      // Block new writes during port close/open
+      this._isReconfiguring = true;
 
       // Release persistent writer
       if (this._writer) {
@@ -1845,6 +1864,9 @@ export class ESPLoader extends EventTarget {
           `Port streams not available after open (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
         );
       }
+
+      // Port is now open and ready - allow writes for initialization
+      this._isReconfiguring = false;
 
       // Save chip info and flash size (no need to detect again)
       const savedChipFamily = this.chipFamily;
@@ -1900,8 +1922,10 @@ export class ESPLoader extends EventTarget {
         Object.assign(this, stubLoader);
       }
       this.logger.debug("Reconnection successful");
-    } finally {
+    } catch (err) {
+      // Ensure flag is reset on error
       this._isReconfiguring = false;
+      throw err;
     }
   }
 
@@ -2014,7 +2038,8 @@ export class ESPLoader extends EventTarget {
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
       let chunkSuccess = false;
       let retryCount = 0;
-      const MAX_RETRIES = 15;
+      const MAX_RETRIES = 5;
+      let deepRecoveryAttempted = false;
 
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
@@ -2120,9 +2145,36 @@ export class ESPLoader extends EventTarget {
                 this.logger.debug(`Buffer drain error: ${drainErr}`);
               }
             } else {
-              throw new Error(
-                `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries: ${err}`,
-              );
+              // All retries exhausted - attempt deep recovery by reconnecting and reloading stub
+              if (!deepRecoveryAttempted) {
+                deepRecoveryAttempted = true;
+
+                this.logger.log(
+                  `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting deep recovery (reconnect + reload stub)...`,
+                );
+
+                try {
+                  // Reconnect will close port, reopen, and reload stub
+                  await this.reconnect();
+
+                  this.logger.log(
+                    "Deep recovery successful. Resuming read from current position...",
+                  );
+
+                  // Reset retry counter to give it another chance after recovery
+                  retryCount = 0;
+                  continue;
+                } catch (reconnectErr) {
+                  throw new Error(
+                    `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and deep recovery failed: ${reconnectErr}`,
+                  );
+                }
+              } else {
+                // Deep recovery already attempted, give up
+                throw new Error(
+                  `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and deep recovery attempt`,
+                );
+              }
             }
           } else {
             // Non-SLIP error, don't retry
