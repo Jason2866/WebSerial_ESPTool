@@ -2134,7 +2134,7 @@ export class ESPLoader extends EventTarget {
               // All retries exhausted - attempt deep recovery by reconnecting and reloading stub
               if (!deepRecoveryAttempted) {
                 deepRecoveryAttempted = true;
-                
+
                 this.logger.log(
                   `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting deep recovery (reconnect + reload stub)...`,
                 );
@@ -2142,9 +2142,11 @@ export class ESPLoader extends EventTarget {
                 try {
                   // Reconnect will close port, reopen, and reload stub
                   await this.reconnect();
-                  
-                  this.logger.log("Deep recovery successful. Resuming read from current position...");
-                  
+
+                  this.logger.log(
+                    "Deep recovery successful. Resuming read from current position...",
+                  );
+
                   // Reset retry counter to give it another chance after recovery
                   retryCount = 0;
                   continue;
