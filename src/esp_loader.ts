@@ -688,27 +688,28 @@ export class ESPLoader extends EventTarget {
   async readPacket(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
     let inEscape = false;
-
-    const startTime = Date.now();
-
+    let readBytes: number[] = [];
     while (true) {
-      // Check timeout
-      if (Date.now() - startTime > timeout) {
+      const stamp = Date.now();
+      readBytes = [];
+      while (Date.now() - stamp < timeout) {
+        if (this._inputBuffer.length > 0) {
+          readBytes.push(this._inputBuffer.shift()!);
+          break;
+        } else {
+          // Reduced sleep time for faster response during high-speed transfers
+          await sleep(1);
+        }
+      }
+      if (readBytes.length == 0) {
         const waitingFor = partialPacket === null ? "header" : "content";
         throw new SlipReadError("Timed out waiting for packet " + waitingFor);
       }
-
-      // If no data available, wait a bit
-      if (this._inputBuffer.length === 0) {
-        await sleep(1);
-        continue;
-      }
-
-      // Process all available bytes without going back to outer loop
-      // This is critical for handling high-speed burst transfers
-      while (this._inputBuffer.length > 0) {
-        const b = this._inputBuffer.shift()!;
-
+      if (this.debug)
+        this.logger.debug(
+          "Read " + readBytes.length + " bytes: " + hexFormatter(readBytes),
+        );
+      for (const b of readBytes) {
         if (partialPacket === null) {
           // waiting for packet header
           if (b == 0xc0) {
