@@ -209,6 +209,11 @@ class WebUSBSerial {
                         await this.device.selectAlternateInterface(cand.iface.interfaceNumber, cand.altIndex); 
                     } catch (e) {
                         this._log(`[WebUSB] selectAlternateInterface failed: ${e.message}`);
+                       // If we can't select a non-default alternate, endpoints may not match; try next candidate.
+                       if (cand.altIndex !== 0) {
+                           try { await this.device.releaseInterface(cand.iface.interfaceNumber); } catch (_) {}
+                           continue;
+                       }
                     }
                     this.interfaceNumber = cand.iface.interfaceNumber;
 
@@ -513,6 +518,12 @@ class WebUSBSerial {
                 if (event.device === this.device) {
                     this._fireEvent('disconnect');
                     this._cleanup();
+                    // Mark instance unusable until a new requestPort/open cycle
+                    this.device = null;
+                    this.interfaceNumber = null;
+                    this.controlInterface = null;
+                    this.endpointIn = null;
+                    this.endpointOut = null;
                 }
             };
             navigator.usb.addEventListener('disconnect', this._usbDisconnectHandler);

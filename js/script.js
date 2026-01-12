@@ -108,7 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Check if Web Serial API or WebUSB is supported
   if ("serial" in navigator || "usb" in navigator) {
     const notSupported = document.getElementById("notSupported");
-    notSupported.classList.add("hidden");
+    notSupported?.classList.add("hidden");
   }
 
   initBaudRate();
