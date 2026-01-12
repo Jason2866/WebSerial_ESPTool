@@ -33,15 +33,12 @@
     />
 
     <!-- import the webpage's javascript file -->
-    <script module>
+    <script type="module">
       window.esptoolPackage = import(
-        // In development we import locally.
-        window.location.hostname === "localhost"
-          ? "./js/modules/esptool.js"
-          : "./js/modules/esptool.js"
+        "./js/modules/esptool.js"
       );
     </script>
-    <script src="js/script.js" module defer></script>
+    <script src="js/script.js" type="module" defer></script>
   </head>
   <body>
     <header class="header">

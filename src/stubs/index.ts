@@ -25,7 +25,7 @@ interface LoadedStub {
   data_start: number;
 }
 
-interface Stub {
+export interface Stub {
   text: number[];
   data: number[];
   text_start: number;
@@ -75,6 +75,9 @@ export const getStubCode = async (
     } else {
       stubcode = await import("./esp32p4.json");
     }
+  } else {
+    // Unknown chip family - no stub available
+    return null;
   }
 
   // Base64 decode the text and data
