@@ -2872,7 +2872,7 @@ export class ESPLoader extends EventTarget {
       CHUNK_SIZE = 0x4 * 0x1000; // 4KB = 16384 bytes
     } else {
       // Web Serial: Use larger chunks for better performance
-      CHUNK_SIZE = 0x80 * 0x1000;
+      CHUNK_SIZE = 0x40 * 0x1000;
     }
 
     let allData = new Uint8Array(0);
