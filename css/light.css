@@ -154,3 +154,14 @@ button {
 .littlefs-fs-button:hover {
   background-color: #71ae1e;
 }
+
+/* ESP8266 Info Box - Light Mode */
+.esp8266-info .info-box {
+  background-color: #f8f9fa;
+  border-color: #00a7e9;
+  color: #333;
+}
+
+.esp8266-info .info-box strong {
+  color: #00a7e9;
+}
