@@ -966,9 +966,12 @@ class WebUSBSerial {
 }
 
 /**
- * Unified port request function that tries WebUSB first on Android, Web Serial on Desktop
- * This provides seamless support for both desktop (Web Serial) and Android (WebUSB)
- * @param {boolean} forceNew - If true, forces selection of a new device (ignores already paired devices)
+ * Selects and returns a serial port using the most appropriate browser API for the current platform.
+ *
+ * Attempts WebUSB on Android (where Web Serial is unreliable) and prefers the Web Serial API on desktop,
+ * falling back between APIs as needed.
+ * @param {boolean} forceNew - When true, prefer requesting a new device (ignore previously authorized devices) for WebUSB.
+ * @returns {SerialPort|WebUSBSerial} A serial port obtained from the Web Serial API or a WebUSBSerial instance wrapping a USB device.
  */
 async function requestSerialPort(forceNew = false) {
     // Detect if we're on Android
