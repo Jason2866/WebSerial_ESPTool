@@ -1,5 +1,15 @@
+// Import WebUSB serial support for Android compatibility
+import { WebUSBSerial, requestSerialPort } from './webusb-serial.js';
+
+// Make requestSerialPort available globally for esptool.js
+// Use defensive assignment to avoid accidental overwrites
+if (!globalThis.requestSerialPort) {
+  globalThis.requestSerialPort = requestSerialPort;
+}
+
 let espStub;
 let esp32s2ReconnectInProgress = false;
+let isConnected = false; // Track connection state
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 const bufferSize = 512;
@@ -95,9 +105,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   
-  if ("serial" in navigator) {
+  // Check if Web Serial API or WebUSB is supported
+  if ("serial" in navigator || "usb" in navigator) {
     const notSupported = document.getElementById("notSupported");
-    notSupported.classList.add("hidden");
+    notSupported?.classList.add("hidden");
   }
 
   initBaudRate();
@@ -129,35 +140,22 @@ function logMsg(text) {
   }
 }
 
+/**
+ * Append one or more debug-formatted values to the application log when debug mode is enabled.
+ *
+ * Formats primitive values (strings, numbers, booleans), `null`, and `undefined` as readable text;
+ * formats Array and `Uint8Array` elements as hex bytes (e.g., `0x1a`) inside brackets; logs other
+ * object types to the browser console and records a message indicating an unhandled type.
+ *
+ * @param {...any} args - Values to format and append to the debug log. The first argument is written
+ *   without a leading prefix; subsequent arguments are appended without additional prefixes.
+ */
 function debugMsg(...args) {
   if (!debugMode.checked) {
     return;
   }
-  
-  function getStackTrace() {
-    let stack = new Error().stack;
-    //console.log(stack);
-    stack = stack.split("\n").map((v) => v.trim());
-    stack.shift();
-    stack.shift();
 
-    let trace = [];
-    for (let line of stack) {
-      line = line.replace("at ", "");
-      trace.push({
-        func: line.substr(0, line.indexOf("(") - 1),
-        pos: line.substring(line.indexOf(".js:") + 4, line.lastIndexOf(":")),
-      });
-    }
-
-    return trace;
-  }
-
-  let stack = getStackTrace();
-  stack.shift();
-  let top = stack.shift();
-  let prefix =
-    '<span class="debug-function">[' + top.func + ":" + top.pos + "]</span> ";
+  let prefix = "";
   for (let arg of args) {
     if (arg === undefined) {
       logMsg(prefix + "undefined");
@@ -216,6 +214,11 @@ function enableStyleSheet(node, enabled) {
   node.disabled = !enabled;
 }
 
+/**
+ * Format a MAC address byte array as colon-separated uppercase hexadecimal octets.
+ * @param {Array<number>|Uint8Array} macAddr - Array of bytes representing the MAC address (each 0–255).
+ * @returns {string} Colon-separated uppercase hex octets, e.g. "AA:BB:CC:DD:EE:FF".
+ */
 function formatMacAddr(macAddr) {
   return macAddr
     .map((value) => value.toString(16).toUpperCase().padStart(2, "0"))
@@ -223,27 +226,116 @@ function formatMacAddr(macAddr) {
 }
 
 /**
- * @name clickConnect
- * Click handler for the connect/disconnect button.
+ * Format a byte value as a two-digit hexadecimal string prefixed with `0x`.
+ * @param {number} value - Numeric value to format (treated as a byte).
+ * @returns {string} Hex string in the form `0xNN` with lowercase letters and at least two digits.
+ */
+function toHex(value) {
+  return "0x" + value.toString(16).padStart(2, "0");
+}
+
+/**
+ * Parse flash size string (e.g., "256KB", "4MB") to bytes
+ * @param {string} sizeStr - Flash size string with unit (KB or MB)
+ * @returns {number} Size in bytes
+ */
+function parseFlashSize(sizeStr) {
+  if (!sizeStr || typeof sizeStr !== 'string') {
+    return 0;
+  }
+  
+  // Extract number and unit
+  const match = sizeStr.match(/^(\d+)(KB|MB)$/i);
+  if (!match) {
+    // If no unit, assume it's already in MB (legacy behavior)
+    const num = parseInt(sizeStr);
+    return isNaN(num) ? 0 : num * 1024 * 1024;
+  }
+  
+  const value = parseInt(match[1]);
+  const unit = match[2].toUpperCase();
+  
+  if (unit === 'KB') {
+    return value * 1024; // KB to bytes
+  } else if (unit === 'MB') {
+    return value * 1024 * 1024; // MB to bytes
+  }
+  
+  return 0;
+}
+
+/**
+ * Toggle the connection state: connect to an ESP device (using WebUSB on Android or Web Serial on desktop) or disconnect if already connected.
+ *
+ * On connect, detect platform and transport, initialize the esploader, handle ESP32-S2 native USB reconnection flow when required (showing a modal on desktop or guidance on Android), run the device stub, update UI state, set the detected flash size and selected baud rate, and install a disconnect handler. On disconnect, remove the handler, close the port, clear the stub, and update the UI.
  */
 async function clickConnect() {
+  console.log('[clickConnect] Function called');
+  
   if (espStub) {
+    console.log('[clickConnect] Already connected, disconnecting...');
+    // Remove disconnect event listener to prevent it from firing during manual disconnect
+    if (espStub.handleDisconnect) {
+      espStub.removeEventListener("disconnect", espStub.handleDisconnect);
+    }
+    
     await espStub.disconnect();
-    await espStub.port.close();
+    try {
+      await espStub.port?.close?.();
+    } catch (e) {
+      // ignore double-close
+    }
     toggleUIConnected(false);
     espStub = undefined;
+    
     return;
   }
 
+  console.log('[clickConnect] Getting esploaderMod...');
   const esploaderMod = await window.esptoolPackage;
 
-  const esploader = await esploaderMod.connect({
-    log: (...args) => logMsg(...args),
-    debug: (...args) => debugMsg(...args),
-    error: (...args) => errorMsg(...args),
-  });
+  // Platform detection: Android always uses WebUSB, Desktop uses Web Serial
+  const userAgent = navigator.userAgent || '';
+  const isAndroid = /Android/i.test(userAgent);
   
-  // Handle ESP32-S2 Native USB reconnection requirement - must be set on esploader, not espStub
+  // Only log platform details to UI in debug mode (avoid fingerprinting surface)
+  if (debugMode.checked) {
+    const platformMsg = `Platform: ${isAndroid ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
+    logMsg(platformMsg);
+  }
+  logMsg(`Using: ${isAndroid ? 'WebUSB' : 'Web Serial'}`);
+  
+  let esploader;
+  
+  if (isAndroid) {
+    // Android: Use WebUSB directly
+    console.log('[Connect] Using WebUSB for Android');
+    try {
+      const port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
+      esploader = await esploaderMod.connectWithPort(port, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    } catch (err) {
+      logMsg(`WebUSB connection failed: ${err.message || err}`);
+      throw err;
+    }
+  } else {
+    // Desktop: Use Web Serial (standard esptool connect)
+    console.log('[Connect] Using Web Serial for Desktop');
+    esploader = await esploaderMod.connect({
+      log: (...args) => logMsg(...args),
+      debug: (...args) => debugMsg(...args),
+      error: (...args) => errorMsg(...args),
+    });
+  }
+  
+  // Store port info for ESP32-S2 detection
+  let portInfo = esploader.port?.getInfo ? esploader.port.getInfo() : {};
+  let isESP32S2 = portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x0002;
+  
+  // Handle ESP32-S2 Native USB reconnection requirement for BROWSER
   // Only add listener if not already in reconnect mode
   if (!esp32s2ReconnectInProgress) {
     esploader.addEventListener("esp32s2-usb-reconnect", async () => {
@@ -258,75 +350,68 @@ async function clickConnect() {
       espStub = undefined;
       
       try {
-        await esploader.port.close();
+        // Close the port first
+        await esploader.port?.close();
         
-        if (esploader.port.forget) {
+        // For Android WebUSB: ESP32-S2 automatic reconnection doesn't work
+        // Show message and let user reconnect manually with BOOT button
+        if (isAndroid) {
+          logMsg("ESP32-S2 has switched to CDC mode");
+          logMsg("Please press and HOLD the BOOT button on your ESP32-S2, then click Connect");
+          toggleUIConnected(false);
+          esp32s2ReconnectInProgress = false;
+          return;
+        }
+        // For Desktop Web Serial: Use the modal dialog approach
+        if (!isAndroid && esploader.port?.forget) {
           await esploader.port.forget();
         }
       } catch (disconnectErr) {
         // Ignore disconnect errors
+        console.warn("Error during disconnect:", disconnectErr);
       }
       
-      // Show modal dialog
-      const modal = document.getElementById("esp32s2Modal");
-      const reconnectBtn = document.getElementById("butReconnectS2");
-      
-      modal.classList.remove("hidden");
-      
-      // Handle reconnect button click
-      const handleReconnect = async () => {
-        modal.classList.add("hidden");
-        reconnectBtn.removeEventListener("click", handleReconnect);
+      // Show modal dialog ONLY for Desktop
+      if (!isAndroid) {
+        const modal = document.getElementById("esp32s2Modal");
+        const reconnectBtn = document.getElementById("butReconnectS2");
         
-        // Trigger port selection
-        try {
-          await clickConnect();
-          // Reset flag on successful connection
-          esp32s2ReconnectInProgress = false;
-        } catch (err) {
-          errorMsg("Failed to reconnect: " + err);
-          // Reset flag on error so user can try again
-          esp32s2ReconnectInProgress = false;
-        }
-      };
-      
-      reconnectBtn.addEventListener("click", handleReconnect);
+        modal.classList.remove("hidden");
+        
+        // Handle reconnect button click
+        const handleReconnect = async () => {
+          modal.classList.add("hidden");
+          reconnectBtn.removeEventListener("click", handleReconnect);
+          
+          logMsg("Requesting new device selection...");
+          
+          // Trigger port selection
+          try {
+            await clickConnect();
+            // Reset flag on successful connection
+            esp32s2ReconnectInProgress = false;
+          } catch (err) {
+            errorMsg("Failed to reconnect: " + err);
+            // Reset flag on error so user can try again
+            esp32s2ReconnectInProgress = false;
+          }
+        };
+        
+        reconnectBtn.addEventListener("click", handleReconnect);
+      }
     });
   }
   
   try {
     await esploader.initialize();
-
-    logMsg("Connected to " + esploader.chipName);
-    logMsg("MAC Address: " + formatMacAddr(esploader.macAddr()));
-
-    espStub = await esploader.runStub();
-    toggleUIConnected(true);
-    toggleUIToolbar(true);
-    
-    // Set detected flash size in the read size field
-    if (espStub.flashSize) {
-      const flashSizeBytes = parseInt(espStub.flashSize) * 1024 * 1024; // Convert MB to bytes
-      readSize.value = "0x" + flashSizeBytes.toString(16);
-    }
-    
-    // Set the selected baud rate
-    let baud = parseInt(baudRate.value);
-    if (baudRates.includes(baud)) {
-      await espStub.setBaudrate(baud);
-    }
-    
-    espStub.addEventListener("disconnect", () => {
-      toggleUIConnected(false);
-      espStub = false;
-    });
   } catch (err) {
-    // If ESP32-S2 reconnect is in progress, suppress the error
+    // If ESP32-S2 reconnect is in progress (handled by event listener), suppress the error
     if (esp32s2ReconnectInProgress) {
       logMsg("Initialization interrupted for ESP32-S2 reconnection.");
       return;
     }
     
+    // Not ESP32-S2 or other error
     try {
       await esploader.disconnect();
     } catch (disconnectErr) {
@@ -334,6 +419,34 @@ async function clickConnect() {
     }
     throw err;
   }
+
+  logMsg("Connected to " + esploader.chipName);
+  logMsg("MAC Address: " + formatMacAddr(esploader.macAddr()));
+
+  espStub = await esploader.runStub();
+  
+  toggleUIConnected(true);
+  toggleUIToolbar(true);
+  
+  // Set detected flash size in the read size field
+  if (espStub.flashSize) {
+    const flashSizeBytes = parseFlashSize(espStub.flashSize);
+    readSize.value = "0x" + flashSizeBytes.toString(16);
+  }
+  
+  // Set the selected baud rate
+  let baud = parseInt(baudRate.value);
+  if (baudRates.includes(baud)) {
+    await espStub.setBaudrate(baud);
+  }
+  
+  // Store disconnect handler so we can remove it later
+  const handleDisconnect = () => {
+    toggleUIConnected(false);
+    espStub = undefined;
+  };
+  espStub.handleDisconnect = handleDisconnect; // Store reference on espStub
+  espStub.addEventListener("disconnect", handleDisconnect);
 }
 
 /**

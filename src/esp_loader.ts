@@ -62,9 +62,19 @@ import {
 } from "./const";
 import { getStubCode } from "./stubs";
 import { hexFormatter, sleep, slipEncode, toHex } from "./util";
-// @ts-expect-error pako ESM module doesn't have proper type definitions
-import { deflate } from "pako/dist/pako.esm.mjs";
+import { deflate } from "pako";
 import { pack, unpack } from "./struct";
+
+// Interface for WebUSB Serial Port (extends SerialPort with WebUSB-specific methods)
+interface WebUSBSerialPort extends SerialPort {
+  isWebUSB?: boolean;
+  maxTransferSize?: number;
+  setSignals(signals: {
+    dataTerminalReady?: boolean;
+    requestToSend?: boolean;
+  }): Promise<void>;
+  setBaudRate(baudRate: number): Promise<void>;
+}
 
 export class ESPLoader extends EventTarget {
   chipFamily!: ChipFamily;
@@ -79,6 +89,7 @@ export class ESPLoader extends EventTarget {
   flashSize: string | null = null;
 
   __inputBuffer?: number[];
+  __inputBufferReadIndex?: number;
   __totalBytesRead?: number;
   private _currentBaudRate: number = ESP_ROM_BAUD;
   private _maxUSBSerialBaudrate?: number;
@@ -87,6 +98,15 @@ export class ESPLoader extends EventTarget {
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
   private __isReconfiguring: boolean = false;
+  private __abandonCurrentOperation: boolean = false;
+
+  // Adaptive speed adjustment for flash read operations - DISABLED
+  // Using fixed conservative values that work reliably
+  private __adaptiveBlockMultiplier: number = 1;
+  private __adaptiveMaxInFlightMultiplier: number = 1;
+  private __consecutiveSuccessfulChunks: number = 0;
+  private __lastAdaptiveAdjustment: number = 0;
+  private __isCDCDevice: boolean = false;
 
   constructor(
     public port: SerialPort,
@@ -98,6 +118,51 @@ export class ESPLoader extends EventTarget {
 
   private get _inputBuffer(): number[] {
     return this._parent ? this._parent._inputBuffer : this.__inputBuffer!;
+  }
+
+  private get _inputBufferReadIndex(): number {
+    return this._parent
+      ? this._parent._inputBufferReadIndex
+      : this.__inputBufferReadIndex || 0;
+  }
+
+  private set _inputBufferReadIndex(value: number) {
+    if (this._parent) {
+      this._parent._inputBufferReadIndex = value;
+    } else {
+      this.__inputBufferReadIndex = value;
+    }
+  }
+
+  // Get available bytes in buffer (from read index to end)
+  private get _inputBufferAvailable(): number {
+    return this._inputBuffer.length - this._inputBufferReadIndex;
+  }
+
+  // Read one byte from buffer (ring-buffer style with index pointer)
+  private _readByte(): number | undefined {
+    if (this._inputBufferReadIndex >= this._inputBuffer.length) {
+      return undefined;
+    }
+    return this._inputBuffer[this._inputBufferReadIndex++];
+  }
+
+  // Clear input buffer and reset read index
+  private _clearInputBuffer(): void {
+    this._inputBuffer.length = 0;
+    this._inputBufferReadIndex = 0;
+  }
+
+  // Compact buffer when read index gets too large (prevent memory growth)
+  private _compactInputBuffer(): void {
+    if (
+      this._inputBufferReadIndex > 1000 &&
+      this._inputBufferReadIndex > this._inputBuffer.length / 2
+    ) {
+      // Remove already-read bytes and reset index
+      this._inputBuffer.splice(0, this._inputBufferReadIndex);
+      this._inputBufferReadIndex = 0;
+    }
   }
 
   private get _totalBytesRead(): number {
@@ -137,6 +202,88 @@ export class ESPLoader extends EventTarget {
       this._parent._isReconfiguring = value;
     } else {
       this.__isReconfiguring = value;
+    }
+  }
+
+  private get _abandonCurrentOperation(): boolean {
+    return this._parent
+      ? this._parent._abandonCurrentOperation
+      : this.__abandonCurrentOperation;
+  }
+
+  private set _abandonCurrentOperation(value: boolean) {
+    if (this._parent) {
+      this._parent._abandonCurrentOperation = value;
+    } else {
+      this.__abandonCurrentOperation = value;
+    }
+  }
+
+  private get _adaptiveBlockMultiplier(): number {
+    return this._parent
+      ? this._parent._adaptiveBlockMultiplier
+      : this.__adaptiveBlockMultiplier;
+  }
+
+  private set _adaptiveBlockMultiplier(value: number) {
+    if (this._parent) {
+      this._parent._adaptiveBlockMultiplier = value;
+    } else {
+      this.__adaptiveBlockMultiplier = value;
+    }
+  }
+
+  private get _adaptiveMaxInFlightMultiplier(): number {
+    return this._parent
+      ? this._parent._adaptiveMaxInFlightMultiplier
+      : this.__adaptiveMaxInFlightMultiplier;
+  }
+
+  private set _adaptiveMaxInFlightMultiplier(value: number) {
+    if (this._parent) {
+      this._parent._adaptiveMaxInFlightMultiplier = value;
+    } else {
+      this.__adaptiveMaxInFlightMultiplier = value;
+    }
+  }
+
+  private get _consecutiveSuccessfulChunks(): number {
+    return this._parent
+      ? this._parent._consecutiveSuccessfulChunks
+      : this.__consecutiveSuccessfulChunks;
+  }
+
+  private set _consecutiveSuccessfulChunks(value: number) {
+    if (this._parent) {
+      this._parent._consecutiveSuccessfulChunks = value;
+    } else {
+      this.__consecutiveSuccessfulChunks = value;
+    }
+  }
+
+  private get _lastAdaptiveAdjustment(): number {
+    return this._parent
+      ? this._parent._lastAdaptiveAdjustment
+      : this.__lastAdaptiveAdjustment;
+  }
+
+  private set _lastAdaptiveAdjustment(value: number) {
+    if (this._parent) {
+      this._parent._lastAdaptiveAdjustment = value;
+    } else {
+      this.__lastAdaptiveAdjustment = value;
+    }
+  }
+
+  private get _isCDCDevice(): boolean {
+    return this._parent ? this._parent._isCDCDevice : this.__isCDCDevice;
+  }
+
+  private set _isCDCDevice(value: boolean) {
+    if (this._parent) {
+      this._parent._isCDCDevice = value;
+    } else {
+      this.__isCDCDevice = value;
     }
   }
 
@@ -196,6 +343,7 @@ export class ESPLoader extends EventTarget {
   async initialize() {
     if (!this._parent) {
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
       this.__totalBytesRead = 0;
 
       // Detect and log USB-Serial chip info
@@ -215,6 +363,15 @@ export class ESPLoader extends EventTarget {
         // Detect ESP32-S2 Native USB
         if (portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x2) {
           this._isESP32S2NativeUSB = true;
+        }
+
+        // Detect CDC devices for adaptive speed adjustment
+        // Espressif Native USB (VID: 0x303a) or CH343 (VID: 0x1a86, PID: 0x55d3)
+        if (
+          portInfo.usbVendorId === 0x303a ||
+          (portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3)
+        ) {
+          this._isCDCDevice = true;
         }
       }
 
@@ -291,7 +448,7 @@ export class ESPLoader extends EventTarget {
       await this.drainInputBuffer(200);
 
       // Clear input buffer and re-sync to recover from failed command
-      this._inputBuffer.length = 0;
+      this._clearInputBuffer();
       await sleep(SYNC_TIMEOUT);
 
       // Re-sync with the chip to ensure clean communication
@@ -467,6 +624,11 @@ export class ESPLoader extends EventTarget {
   }
 
   state_DTR = false;
+
+  // ============================================================================
+  // Web Serial (Desktop) - DTR/RTS Signal Handling & Reset Strategies
+  // ============================================================================
+
   async setRTS(state: boolean) {
     await this.port.setSignals({ requestToSend: state });
     // Work-around for adapters on Windows using the usbser.sys driver:
@@ -481,6 +643,575 @@ export class ESPLoader extends EventTarget {
     await this.port.setSignals({ dataTerminalReady: state });
   }
 
+  /**
+   * @name hardResetUSBJTAGSerial
+   * USB-JTAG/Serial reset for Web Serial (Desktop)
+   */
+  async hardResetUSBJTAGSerial() {
+    await this.setRTS(false);
+    await this.setDTR(false); // Idle
+    await this.sleep(100);
+
+    await this.setDTR(true); // Set IO0
+    await this.setRTS(false);
+    await this.sleep(100);
+
+    await this.setRTS(true); // Reset
+    await this.setDTR(false);
+    await this.setRTS(true);
+    await this.sleep(100);
+
+    await this.setDTR(false);
+    await this.setRTS(false); // Chip out of reset
+
+    await this.sleep(200);
+  }
+
+  /**
+   * @name hardResetClassic
+   * Classic reset for Web Serial (Desktop)
+   */
+  async hardResetClassic() {
+    await this.setDTR(false); // IO0=HIGH
+    await this.setRTS(true); // EN=LOW, chip in reset
+    await this.sleep(100);
+    await this.setDTR(true); // IO0=LOW
+    await this.setRTS(false); // EN=HIGH, chip out of reset
+    await this.sleep(50);
+    await this.setDTR(false); // IO0=HIGH, done
+
+    await this.sleep(200);
+  }
+
+  // ============================================================================
+  // WebUSB (Android) - DTR/RTS Signal Handling & Reset Strategies
+  // ============================================================================
+
+  async setRTSWebUSB(state: boolean) {
+    // Always specify both signals to avoid flipping the other line
+    // The WebUSB setSignals() now preserves unspecified signals, but being explicit is safer
+    await (this.port as WebUSBSerialPort).setSignals({
+      requestToSend: state,
+      dataTerminalReady: this.state_DTR,
+    });
+  }
+
+  async setDTRWebUSB(state: boolean) {
+    this.state_DTR = state;
+    // Always specify both signals to avoid flipping the other line
+    await (this.port as WebUSBSerialPort).setSignals({
+      dataTerminalReady: state,
+      requestToSend: undefined, // Let setSignals preserve current RTS state
+    });
+  }
+
+  async setDTRandRTSWebUSB(dtr: boolean, rts: boolean) {
+    this.state_DTR = dtr;
+    await (this.port as WebUSBSerialPort).setSignals({
+      dataTerminalReady: dtr,
+      requestToSend: rts,
+    });
+  }
+
+  /**
+   * @name hardResetUSBJTAGSerialWebUSB
+   * USB-JTAG/Serial reset for WebUSB (Android)
+   */
+  async hardResetUSBJTAGSerialWebUSB() {
+    await this.setRTSWebUSB(false);
+    await this.setDTRWebUSB(false); // Idle
+    await this.sleep(100);
+
+    await this.setDTRWebUSB(true); // Set IO0
+    await this.setRTSWebUSB(false);
+    await this.sleep(100);
+
+    await this.setRTSWebUSB(true); // Reset
+    await this.setDTRWebUSB(false);
+    await this.setRTSWebUSB(true);
+    await this.sleep(100);
+
+    await this.setDTRWebUSB(false);
+    await this.setRTSWebUSB(false); // Chip out of reset
+
+    await this.sleep(200);
+  }
+
+  /**
+   * @name hardResetUSBJTAGSerialInvertedDTRWebUSB
+   * USB-JTAG/Serial reset with inverted DTR for WebUSB (Android)
+   */
+  async hardResetUSBJTAGSerialInvertedDTRWebUSB() {
+    await this.setRTSWebUSB(false);
+    await this.setDTRWebUSB(true); // Idle (DTR inverted)
+    await this.sleep(100);
+
+    await this.setDTRWebUSB(false); // Set IO0 (DTR inverted)
+    await this.setRTSWebUSB(false);
+    await this.sleep(100);
+
+    await this.setRTSWebUSB(true); // Reset
+    await this.setDTRWebUSB(true); // (DTR inverted)
+    await this.setRTSWebUSB(true);
+    await this.sleep(100);
+
+    await this.setDTRWebUSB(true); // (DTR inverted)
+    await this.setRTSWebUSB(false); // Chip out of reset
+
+    await this.sleep(200);
+  }
+
+  /**
+   * @name hardResetClassicWebUSB
+   * Classic reset for WebUSB (Android)
+   */
+  async hardResetClassicWebUSB() {
+    await this.setDTRWebUSB(false); // IO0=HIGH
+    await this.setRTSWebUSB(true); // EN=LOW, chip in reset
+    await this.sleep(100);
+    await this.setDTRWebUSB(true); // IO0=LOW
+    await this.setRTSWebUSB(false); // EN=HIGH, chip out of reset
+    await this.sleep(50);
+    await this.setDTRWebUSB(false); // IO0=HIGH, done
+    await this.sleep(200);
+  }
+
+  /**
+   * @name hardResetUnixTightWebUSB
+   * Unix Tight reset for WebUSB (Android) - sets DTR and RTS simultaneously
+   */
+  async hardResetUnixTightWebUSB() {
+    await this.setDTRandRTSWebUSB(false, false);
+    await this.setDTRandRTSWebUSB(true, true);
+    await this.setDTRandRTSWebUSB(false, true); // IO0=HIGH & EN=LOW, chip in reset
+    await this.sleep(100);
+    await this.setDTRandRTSWebUSB(true, false); // IO0=LOW & EN=HIGH, chip out of reset
+    await this.sleep(50);
+    await this.setDTRandRTSWebUSB(false, false); // IO0=HIGH, done
+    await this.setDTRWebUSB(false); // Ensure IO0=HIGH
+    await this.sleep(200);
+  }
+
+  /**
+   * @name hardResetClassicLongDelayWebUSB
+   * Classic reset with longer delays for WebUSB (Android)
+   * Specifically for CP2102/CH340 which may need more time
+   */
+  async hardResetClassicLongDelayWebUSB() {
+    await this.setDTRWebUSB(false); // IO0=HIGH
+    await this.setRTSWebUSB(true); // EN=LOW, chip in reset
+    await this.sleep(500); // Extra long delay
+    await this.setDTRWebUSB(true); // IO0=LOW
+    await this.setRTSWebUSB(false); // EN=HIGH, chip out of reset
+    await this.sleep(200);
+    await this.setDTRWebUSB(false); // IO0=HIGH, done
+    await this.sleep(500); // Extra long delay
+  }
+
+  /**
+   * @name hardResetClassicShortDelayWebUSB
+   * Classic reset with shorter delays for WebUSB (Android)
+   */
+  async hardResetClassicShortDelayWebUSB() {
+    await this.setDTRWebUSB(false); // IO0=HIGH
+    await this.setRTSWebUSB(true); // EN=LOW, chip in reset
+    await this.sleep(50);
+    await this.setDTRWebUSB(true); // IO0=LOW
+    await this.setRTSWebUSB(false); // EN=HIGH, chip out of reset
+    await this.sleep(25);
+    await this.setDTRWebUSB(false); // IO0=HIGH, done
+    await this.sleep(100);
+  }
+
+  /**
+   * @name hardResetInvertedWebUSB
+   * Inverted reset sequence for WebUSB (Android) - both signals inverted
+   */
+  async hardResetInvertedWebUSB() {
+    await this.setDTRWebUSB(true); // IO0=HIGH (inverted)
+    await this.setRTSWebUSB(false); // EN=LOW, chip in reset (inverted)
+    await this.sleep(100);
+    await this.setDTRWebUSB(false); // IO0=LOW (inverted)
+    await this.setRTSWebUSB(true); // EN=HIGH, chip out of reset (inverted)
+    await this.sleep(50);
+    await this.setDTRWebUSB(true); // IO0=HIGH, done (inverted)
+    await this.sleep(200);
+  }
+
+  /**
+   * @name hardResetInvertedDTRWebUSB
+   * Only DTR inverted for WebUSB (Android)
+   */
+  async hardResetInvertedDTRWebUSB() {
+    await this.setDTRWebUSB(true); // IO0=HIGH (DTR inverted)
+    await this.setRTSWebUSB(true); // EN=LOW, chip in reset (RTS normal)
+    await this.sleep(100);
+    await this.setDTRWebUSB(false); // IO0=LOW (DTR inverted)
+    await this.setRTSWebUSB(false); // EN=HIGH, chip out of reset (RTS normal)
+    await this.sleep(50);
+    await this.setDTRWebUSB(true); // IO0=HIGH, done (DTR inverted)
+    await this.sleep(200);
+  }
+
+  /**
+   * @name hardResetInvertedRTSWebUSB
+   * Only RTS inverted for WebUSB (Android)
+   */
+  async hardResetInvertedRTSWebUSB() {
+    await this.setDTRWebUSB(false); // IO0=HIGH (DTR normal)
+    await this.setRTSWebUSB(false); // EN=LOW, chip in reset (RTS inverted)
+    await this.sleep(100);
+    await this.setDTRWebUSB(true); // IO0=LOW (DTR normal)
+    await this.setRTSWebUSB(true); // EN=HIGH, chip out of reset (RTS inverted)
+    await this.sleep(50);
+    await this.setDTRWebUSB(false); // IO0=HIGH, done (DTR normal)
+    await this.sleep(200);
+  }
+
+  /**
+   * Check if we're using WebUSB (Android) or Web Serial (Desktop)
+   */
+  private isWebUSB(): boolean {
+    // WebUSBSerial class has isWebUSB flag - this is the most reliable check
+    return (this.port as WebUSBSerialPort).isWebUSB === true;
+  }
+
+  /**
+   * @name connectWithResetStrategies
+   * Try different reset strategies to enter bootloader mode
+   * Similar to esptool.py's connect() method with multiple reset strategies
+   */
+  async connectWithResetStrategies() {
+    const portInfo = this.port.getInfo();
+    const isUSBJTAGSerial = portInfo.usbProductId === USB_JTAG_SERIAL_PID;
+    const isEspressifUSB = portInfo.usbVendorId === 0x303a;
+
+    //    this.logger.log(
+    //      `Detected USB: VID=0x${portInfo.usbVendorId?.toString(16) || "unknown"}, PID=0x${portInfo.usbProductId?.toString(16) || "unknown"}`,
+    //    );
+
+    // Define reset strategies to try in order
+    const resetStrategies: Array<{ name: string; fn: () => Promise<void> }> =
+      [];
+
+    const self = this;
+
+    // WebUSB (Android) uses different reset methods than Web Serial (Desktop)
+    if (this.isWebUSB()) {
+      // For USB-Serial chips (CP2102, CH340, etc.), try inverted strategies first
+      const isUSBSerialChip = !isUSBJTAGSerial && !isEspressifUSB;
+
+      // Detect specific chip types once
+      const isCP2102 = portInfo.usbVendorId === 0x10c4;
+      const isCH34x = portInfo.usbVendorId === 0x1a86;
+
+      // Check for ESP32-S2 Native USB (VID: 0x303a, PID: 0x0002)
+      const isESP32S2NativeUSB =
+        portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x0002;
+
+      // WebUSB Strategy 1: USB-JTAG/Serial reset (for Native USB only)
+      if (isUSBJTAGSerial || isEspressifUSB) {
+        if (isESP32S2NativeUSB) {
+          // ESP32-S2 Native USB: Try multiple strategies
+          // The device might be in JTAG mode OR CDC mode
+
+          // Strategy 1: USB-JTAG/Serial (works in CDC mode on Desktop)
+          resetStrategies.push({
+            name: "USB-JTAG/Serial (WebUSB) - ESP32-S2",
+            fn: async function () {
+              return await self.hardResetUSBJTAGSerialWebUSB();
+            },
+          });
+
+          // Strategy 2: USB-JTAG/Serial Inverted DTR (works in JTAG mode)
+          resetStrategies.push({
+            name: "USB-JTAG/Serial Inverted DTR (WebUSB) - ESP32-S2",
+            fn: async function () {
+              return await self.hardResetUSBJTAGSerialInvertedDTRWebUSB();
+            },
+          });
+
+          // Strategy 3: UnixTight (CDC fallback)
+          resetStrategies.push({
+            name: "UnixTight (WebUSB) - ESP32-S2 CDC",
+            fn: async function () {
+              return await self.hardResetUnixTightWebUSB();
+            },
+          });
+
+          // Strategy 4: Classic reset (CDC fallback)
+          resetStrategies.push({
+            name: "Classic (WebUSB) - ESP32-S2 CDC",
+            fn: async function () {
+              return await self.hardResetClassicWebUSB();
+            },
+          });
+        } else {
+          // Other USB-JTAG chips: Try Inverted DTR first - works best for ESP32-H2 and other JTAG chips
+          resetStrategies.push({
+            name: "USB-JTAG/Serial Inverted DTR (WebUSB)",
+            fn: async function () {
+              return await self.hardResetUSBJTAGSerialInvertedDTRWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "USB-JTAG/Serial (WebUSB)",
+            fn: async function () {
+              return await self.hardResetUSBJTAGSerialWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted DTR Classic (WebUSB)",
+            fn: async function () {
+              return await self.hardResetInvertedDTRWebUSB();
+            },
+          });
+        }
+      }
+
+      // For USB-Serial chips, try inverted strategies first
+      if (isUSBSerialChip) {
+        if (isCH34x) {
+          // CH340/CH343: UnixTight works best (like CP2102)
+          resetStrategies.push({
+            name: "UnixTight (WebUSB) - CH34x",
+            fn: async function () {
+              return await self.hardResetUnixTightWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Classic (WebUSB) - CH34x",
+            fn: async function () {
+              return await self.hardResetClassicWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted Both (WebUSB) - CH34x",
+            fn: async function () {
+              return await self.hardResetInvertedWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted RTS (WebUSB) - CH34x",
+            fn: async function () {
+              return await self.hardResetInvertedRTSWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted DTR (WebUSB) - CH34x",
+            fn: async function () {
+              return await self.hardResetInvertedDTRWebUSB();
+            },
+          });
+        } else if (isCP2102) {
+          // CP2102: UnixTight works best (tested and confirmed)
+          // Try it first, then fallback to other strategies
+
+          resetStrategies.push({
+            name: "UnixTight (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetUnixTightWebUSB();
+            },
+          });
+
+          resetStrategies.push({
+            name: "Classic (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetClassicWebUSB();
+            },
+          });
+
+          resetStrategies.push({
+            name: "Inverted Both (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetInvertedWebUSB();
+            },
+          });
+
+          resetStrategies.push({
+            name: "Inverted RTS (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetInvertedRTSWebUSB();
+            },
+          });
+
+          resetStrategies.push({
+            name: "Inverted DTR (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetInvertedDTRWebUSB();
+            },
+          });
+        } else {
+          // For other USB-Serial chips, try UnixTight first, then multiple strategies
+          resetStrategies.push({
+            name: "UnixTight (WebUSB)",
+            fn: async function () {
+              return await self.hardResetUnixTightWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Classic (WebUSB)",
+            fn: async function () {
+              return await self.hardResetClassicWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted Both (WebUSB)",
+            fn: async function () {
+              return await self.hardResetInvertedWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted RTS (WebUSB)",
+            fn: async function () {
+              return await self.hardResetInvertedRTSWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted DTR (WebUSB)",
+            fn: async function () {
+              return await self.hardResetInvertedDTRWebUSB();
+            },
+          });
+        }
+      }
+
+      // Add general fallback strategies only for non-CP2102 and non-ESP32-S2 Native USB chips
+      if (!isCP2102 && !isESP32S2NativeUSB) {
+        // Classic reset (for chips not handled above)
+        if (portInfo.usbVendorId !== 0x1a86) {
+          resetStrategies.push({
+            name: "Classic (WebUSB)",
+            fn: async function () {
+              return await self.hardResetClassicWebUSB();
+            },
+          });
+        }
+
+        // UnixTight reset (sets DTR/RTS simultaneously)
+        resetStrategies.push({
+          name: "UnixTight (WebUSB)",
+          fn: async function () {
+            return await self.hardResetUnixTightWebUSB();
+          },
+        });
+
+        // WebUSB Strategy: Classic with long delays
+        resetStrategies.push({
+          name: "Classic Long Delay (WebUSB)",
+          fn: async function () {
+            return await self.hardResetClassicLongDelayWebUSB();
+          },
+        });
+
+        // WebUSB Strategy: Classic with short delays
+        resetStrategies.push({
+          name: "Classic Short Delay (WebUSB)",
+          fn: async function () {
+            return await self.hardResetClassicShortDelayWebUSB();
+          },
+        });
+
+        // WebUSB Strategy: USB-JTAG/Serial fallback
+        if (!isUSBJTAGSerial && !isEspressifUSB) {
+          resetStrategies.push({
+            name: "USB-JTAG/Serial fallback (WebUSB)",
+            fn: async function () {
+              return await self.hardResetUSBJTAGSerialWebUSB();
+            },
+          });
+        }
+      }
+    } else {
+      // Web Serial (Desktop) strategies
+      // Strategy: USB-JTAG/Serial reset
+      if (isUSBJTAGSerial || isEspressifUSB) {
+        resetStrategies.push({
+          name: "USB-JTAG/Serial",
+          fn: async function () {
+            return await self.hardResetUSBJTAGSerial();
+          },
+        });
+      }
+
+      // Strategy: Classic reset
+      resetStrategies.push({
+        name: "Classic",
+        fn: async function () {
+          return await self.hardResetClassic();
+        },
+      });
+
+      // Strategy: USB-JTAG/Serial fallback
+      if (!isUSBJTAGSerial && !isEspressifUSB) {
+        resetStrategies.push({
+          name: "USB-JTAG/Serial (fallback)",
+          fn: async function () {
+            return await self.hardResetUSBJTAGSerial();
+          },
+        });
+      }
+    }
+
+    let lastError: Error | null = null;
+
+    // Try each reset strategy with timeout
+    for (const strategy of resetStrategies) {
+      try {
+        // Check if port is still open, if not, skip this strategy
+        if (!this.connected || !this.port.writable) {
+          this.logger.log(`Port disconnected, skipping ${strategy.name} reset`);
+          continue;
+        }
+
+        // Clear abandon flag before starting new strategy
+        this._abandonCurrentOperation = false;
+
+        await strategy.fn();
+
+        // Try to sync after reset with internally time-bounded sync (3 seconds per strategy)
+        const syncSuccess = await this.syncWithTimeout(3000);
+
+        if (syncSuccess) {
+          // Sync succeeded
+          this.logger.log(
+            `Connected successfully with ${strategy.name} reset.`,
+          );
+          return;
+        } else {
+          throw new Error("Sync timeout or abandoned");
+        }
+      } catch (error) {
+        lastError = error as Error;
+        this.logger.log(
+          `${strategy.name} reset failed: ${(error as Error).message}`,
+        );
+
+        // Set abandon flag to stop any in-flight operations
+        this._abandonCurrentOperation = true;
+
+        // Wait a bit for in-flight operations to abort
+        await sleep(100);
+
+        // If port got disconnected, we can't try more strategies
+        if (!this.connected || !this.port.writable) {
+          this.logger.log(`Port disconnected during reset attempt`);
+          break;
+        }
+
+        // Clear buffers before trying next strategy
+        this._clearInputBuffer();
+        await this.drainInputBuffer(200);
+        await this.flushSerialBuffers();
+      }
+    }
+
+    // All strategies failed
+    throw new Error(
+      `Couldn't sync to ESP. Try resetting manually. Last error: ${lastError?.message}`,
+    );
+  }
+
   async hardReset(bootloader = false) {
     if (bootloader) {
       // enter flash mode
@@ -488,15 +1219,31 @@ export class ESPLoader extends EventTarget {
         await this.hardResetUSBJTAGSerial();
         this.logger.log("USB-JTAG/Serial reset.");
       } else {
-        await this.hardResetClassic();
-        this.logger.log("Classic reset.");
+        // Use different reset strategy for WebUSB (Android) vs Web Serial (Desktop)
+        if (this.isWebUSB()) {
+          await this.hardResetClassicWebUSB();
+          this.logger.log("Classic reset (WebUSB/Android).");
+        } else {
+          await this.hardResetClassic();
+          this.logger.log("Classic reset.");
+        }
       }
     } else {
-      // just reset
-      await this.setRTS(true); // EN->LOW
-      await this.sleep(100);
-      await this.setRTS(false);
-      this.logger.log("Hard reset.");
+      // just reset (no bootloader mode)
+      if (this.isWebUSB()) {
+        // WebUSB: Use longer delays for better compatibility
+        await this.setRTS(true); // EN->LOW
+        await this.sleep(200);
+        await this.setRTS(false);
+        await this.sleep(200);
+        this.logger.log("Hard reset (WebUSB).");
+      } else {
+        // Web Serial: Standard reset
+        await this.setRTS(true); // EN->LOW
+        await this.sleep(100);
+        await this.setRTS(false);
+        this.logger.log("Hard reset.");
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
@@ -627,6 +1374,13 @@ export class ESPLoader extends EventTarget {
           statusLen = 4;
         } else if ([2, 4].includes(data.length)) {
           statusLen = data.length;
+        } else {
+          // Default to 2-byte status if we can't determine
+          // This prevents silent data corruption when statusLen would be 0
+          statusLen = 2;
+          this.logger.debug(
+            `Unknown chip family, defaulting to 2-byte status (opcode: ${toHex(opcode)}, data.length: ${data.length})`,
+          );
         }
       }
 
@@ -670,6 +1424,7 @@ export class ESPLoader extends EventTarget {
       ...pack("<BBHI", 0x00, opcode, buffer.length, checksum),
       ...buffer,
     ]);
+
     if (this.debug) {
       this.logger.debug(
         `Writing ${packet.length} byte${packet.length == 1 ? "" : "s"}:`,
@@ -683,81 +1438,181 @@ export class ESPLoader extends EventTarget {
    * @name readPacket
    * Generator to read SLIP packets from a serial port.
    * Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
+   *
+   * Two implementations:
+   * - Burst: CDC devices (Native USB) and CH343 - very fast processing
+   * - Byte-by-byte: CH340, CP2102, and other USB-Serial adapters - stable fast processing
    */
-
   async readPacket(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
     let inEscape = false;
-    let readBytes: number[] = [];
-    while (true) {
-      const stamp = Date.now();
-      readBytes = [];
-      while (Date.now() - stamp < timeout) {
-        if (this._inputBuffer.length > 0) {
-          readBytes.push(this._inputBuffer.shift()!);
-          break;
-        } else {
-          // Reduced sleep time for faster response during high-speed transfers
+
+    // CDC devices use burst processing, non-CDC use byte-by-byte
+    if (this._isCDCDevice) {
+      // Burst version: Process all available bytes in one pass for ultra-high-speed transfers
+      // Used for: CDC devices (all platforms) and CH343
+      const startTime = Date.now();
+
+      while (true) {
+        // Check abandon flag (for reset strategy timeout)
+        if (this._abandonCurrentOperation) {
+          throw new SlipReadError(
+            "Operation abandoned (reset strategy timeout)",
+          );
+        }
+
+        // Check timeout
+        if (Date.now() - startTime > timeout) {
+          const waitingFor = partialPacket === null ? "header" : "content";
+          throw new SlipReadError("Timed out waiting for packet " + waitingFor);
+        }
+
+        // If no data available, wait a bit
+        if (this._inputBufferAvailable === 0) {
           await sleep(1);
+          continue;
+        }
+
+        // Process all available bytes without going back to outer loop
+        // This is critical for handling high-speed burst transfers
+        while (this._inputBufferAvailable > 0) {
+          const b = this._readByte()!;
+
+          if (partialPacket === null) {
+            // waiting for packet header
+            if (b == 0xc0) {
+              partialPacket = [];
+            } else {
+              if (this.debug) {
+                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug(
+                  "Remaining data in serial buffer: " +
+                    hexFormatter(this._inputBuffer),
+                );
+              }
+              throw new SlipReadError(
+                "Invalid head of packet (" + toHex(b) + ")",
+              );
+            }
+          } else if (inEscape) {
+            // part-way through escape sequence
+            inEscape = false;
+            if (b == 0xdc) {
+              partialPacket.push(0xc0);
+            } else if (b == 0xdd) {
+              partialPacket.push(0xdb);
+            } else {
+              if (this.debug) {
+                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug(
+                  "Remaining data in serial buffer: " +
+                    hexFormatter(this._inputBuffer),
+                );
+              }
+              throw new SlipReadError(
+                "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
+              );
+            }
+          } else if (b == 0xdb) {
+            // start of escape sequence
+            inEscape = true;
+          } else if (b == 0xc0) {
+            // end of packet
+            if (this.debug)
+              this.logger.debug(
+                "Received full packet: " + hexFormatter(partialPacket),
+              );
+            // Compact buffer periodically to prevent memory growth
+            this._compactInputBuffer();
+            return partialPacket;
+          } else {
+            // normal byte in packet
+            partialPacket.push(b);
+          }
         }
       }
-      if (readBytes.length == 0) {
-        const waitingFor = partialPacket === null ? "header" : "content";
-        throw new SlipReadError("Timed out waiting for packet " + waitingFor);
-      }
-      if (this.debug)
-        this.logger.debug(
-          "Read " + readBytes.length + " bytes: " + hexFormatter(readBytes),
-        );
-      for (const b of readBytes) {
-        if (partialPacket === null) {
-          // waiting for packet header
-          if (b == 0xc0) {
-            partialPacket = [];
+    } else {
+      // Byte-by-byte version: Stable for non CDC USB-Serial adapters (CH340, CP2102, etc.)
+      let readBytes: number[] = [];
+      while (true) {
+        // Check abandon flag (for reset strategy timeout)
+        if (this._abandonCurrentOperation) {
+          throw new SlipReadError(
+            "Operation abandoned (reset strategy timeout)",
+          );
+        }
+
+        const stamp = Date.now();
+        readBytes = [];
+        while (Date.now() - stamp < timeout) {
+          if (this._inputBufferAvailable > 0) {
+            readBytes.push(this._readByte()!);
+            break;
           } else {
-            if (this.debug) {
-              this.logger.debug("Read invalid data: " + toHex(b));
-              this.logger.debug(
-                "Remaining data in serial buffer: " +
-                  hexFormatter(this._inputBuffer),
+            // Reduced sleep time for faster response during high-speed transfers
+            await sleep(1);
+          }
+        }
+        if (readBytes.length == 0) {
+          const waitingFor = partialPacket === null ? "header" : "content";
+          throw new SlipReadError("Timed out waiting for packet " + waitingFor);
+        }
+        if (this.debug)
+          this.logger.debug(
+            "Read " + readBytes.length + " bytes: " + hexFormatter(readBytes),
+          );
+        for (const b of readBytes) {
+          if (partialPacket === null) {
+            // waiting for packet header
+            if (b == 0xc0) {
+              partialPacket = [];
+            } else {
+              if (this.debug) {
+                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug(
+                  "Remaining data in serial buffer: " +
+                    hexFormatter(this._inputBuffer),
+                );
+              }
+              throw new SlipReadError(
+                "Invalid head of packet (" + toHex(b) + ")",
               );
             }
-            throw new SlipReadError(
-              "Invalid head of packet (" + toHex(b) + ")",
-            );
-          }
-        } else if (inEscape) {
-          // part-way through escape sequence
-          inEscape = false;
-          if (b == 0xdc) {
-            partialPacket.push(0xc0);
-          } else if (b == 0xdd) {
-            partialPacket.push(0xdb);
-          } else {
-            if (this.debug) {
-              this.logger.debug("Read invalid data: " + toHex(b));
-              this.logger.debug(
-                "Remaining data in serial buffer: " +
-                  hexFormatter(this._inputBuffer),
+          } else if (inEscape) {
+            // part-way through escape sequence
+            inEscape = false;
+            if (b == 0xdc) {
+              partialPacket.push(0xc0);
+            } else if (b == 0xdd) {
+              partialPacket.push(0xdb);
+            } else {
+              if (this.debug) {
+                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug(
+                  "Remaining data in serial buffer: " +
+                    hexFormatter(this._inputBuffer),
+                );
+              }
+              throw new SlipReadError(
+                "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
               );
             }
-            throw new SlipReadError(
-              "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
-            );
+          } else if (b == 0xdb) {
+            // start of escape sequence
+            inEscape = true;
+          } else if (b == 0xc0) {
+            // end of packet
+            if (this.debug)
+              this.logger.debug(
+                "Received full packet: " + hexFormatter(partialPacket),
+              );
+            // Compact buffer periodically to prevent memory growth
+            this._compactInputBuffer();
+            return partialPacket;
+          } else {
+            // normal byte in packet
+            partialPacket.push(b);
           }
-        } else if (b == 0xdb) {
-          // start of escape sequence
-          inEscape = true;
-        } else if (b == 0xc0) {
-          // end of packet
-          if (this.debug)
-            this.logger.debug(
-              "Received full packet: " + hexFormatter(partialPacket),
-            );
-          return partialPacket;
-        } else {
-          // normal byte in packet
-          partialPacket.push(b);
         }
       }
     }
@@ -781,6 +1636,7 @@ export class ESPLoader extends EventTarget {
       }
 
       const [resp, opRet, , val] = unpack("<BBHI", packet.slice(0, 8));
+
       if (resp != 1) {
         continue;
       }
@@ -795,7 +1651,7 @@ export class ESPLoader extends EventTarget {
         throw new Error(`Invalid (unsupported) command ${toHex(opcode)}`);
       }
     }
-    throw "Response doesn't match request";
+    throw new Error("Response doesn't match request");
   }
 
   /**
@@ -858,6 +1714,9 @@ export class ESPLoader extends EventTarget {
   }
 
   async reconfigurePort(baud: number) {
+    // Block new writes during the entire reconfiguration (all paths)
+    this._isReconfiguring = true;
+
     try {
       // Wait for pending writes to complete
       try {
@@ -866,9 +1725,35 @@ export class ESPLoader extends EventTarget {
         this.logger.debug(`Pending write error during reconfigure: ${err}`);
       }
 
-      // Block new writes during port close/open
-      this._isReconfiguring = true;
+      // WebUSB: Check if we should use setBaudRate() or close/reopen
+      if (this.isWebUSB()) {
+        const portInfo = this.port.getInfo();
+        const isCH343 =
+          portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
 
+        // CH343 is a CDC device and MUST use close/reopen
+        // Other chips (CH340, CP2102, FTDI) MUST use setBaudRate()
+        if (
+          !isCH343 &&
+          typeof (this.port as WebUSBSerialPort).setBaudRate === "function"
+        ) {
+          //          this.logger.log(
+          //            `[WebUSB] Changing baudrate to ${baud} using setBaudRate()...`,
+          //          );
+          await (this.port as WebUSBSerialPort).setBaudRate(baud);
+          //          this.logger.log(`[WebUSB] Baudrate changed to ${baud}`);
+
+          // Give the chip time to adjust to new baudrate
+          await sleep(100);
+          return;
+        } else if (isCH343) {
+          //          this.logger.log(
+          //            `[WebUSB] CH343 detected - using close/reopen for baudrate change`,
+          //          );
+        }
+      }
+
+      // Web Serial or CH343: Close and reopen port
       // Release persistent writer before closing
       if (this._writer) {
         try {
@@ -889,148 +1774,58 @@ export class ESPLoader extends EventTarget {
       // Reopen Port
       await this.port.open({ baudRate: baud });
 
-      // Port is now open - allow writes again
-      this._isReconfiguring = false;
-
       // Clear buffer again
       await this.flushSerialBuffers();
 
       // Restart Readloop
       this.readLoop();
     } catch (e) {
-      this._isReconfiguring = false;
       this.logger.error(`Reconfigure port error: ${e}`);
       throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
+    } finally {
+      // Always reset flag, even on error or early return
+      this._isReconfiguring = false;
     }
   }
 
   /**
-   * @name connectWithResetStrategies
-   * Try different reset strategies to enter bootloader mode
-   * Similar to esptool.py's connect() method with multiple reset strategies
+   * @name syncWithTimeout
+   * Sync with timeout that can be abandoned (for reset strategy loop)
+   * This is internally time-bounded and checks the abandon flag
    */
-  async connectWithResetStrategies() {
-    const portInfo = this.port.getInfo();
-    const isUSBJTAGSerial = portInfo.usbProductId === USB_JTAG_SERIAL_PID;
-    const isEspressifUSB = portInfo.usbVendorId === 0x303a;
+  async syncWithTimeout(timeoutMs: number): Promise<boolean> {
+    const startTime = Date.now();
 
-    this.logger.log(
-      `Detected USB: VID=0x${portInfo.usbVendorId?.toString(16) || "unknown"}, PID=0x${portInfo.usbProductId?.toString(16) || "unknown"}`,
-    );
-
-    // Define reset strategies to try in order
-    const resetStrategies: Array<{ name: string; fn: () => Promise<void> }> =
-      [];
-
-    // Strategy 1: USB-JTAG/Serial reset (for ESP32-C3, C6, S3, etc.)
-    // Try this first if we detect Espressif USB VID or the specific PID
-    if (isUSBJTAGSerial || isEspressifUSB) {
-      resetStrategies.push({
-        name: "USB-JTAG/Serial",
-        fn: async () => await this.hardResetUSBJTAGSerial(),
-      });
-    }
-
-    // Strategy 2: Classic reset (for USB-to-Serial bridges)
-    resetStrategies.push({
-      name: "Classic",
-      fn: async () => await this.hardResetClassic(),
-    });
-
-    // Strategy 3: If USB-JTAG/Serial was not tried yet, try it as fallback
-    if (!isUSBJTAGSerial && !isEspressifUSB) {
-      resetStrategies.push({
-        name: "USB-JTAG/Serial (fallback)",
-        fn: async () => await this.hardResetUSBJTAGSerial(),
-      });
-    }
-
-    let lastError: Error | null = null;
-
-    // Try each reset strategy
-    for (const strategy of resetStrategies) {
-      try {
-        this.logger.log(`Trying ${strategy.name} reset...`);
-
-        // Check if port is still open, if not, skip this strategy
-        if (!this.connected || !this.port.writable) {
-          this.logger.log(`Port disconnected, skipping ${strategy.name} reset`);
-          continue;
-        }
-
-        await strategy.fn();
-
-        // Try to sync after reset
-        await this.sync();
-
-        // If we get here, sync succeeded
-        this.logger.log(`Connected successfully with ${strategy.name} reset.`);
-        return;
-      } catch (error) {
-        lastError = error as Error;
-        this.logger.log(
-          `${strategy.name} reset failed: ${(error as Error).message}`,
-        );
-
-        // If port got disconnected, we can't try more strategies
-        if (!this.connected || !this.port.writable) {
-          this.logger.log(`Port disconnected during reset attempt`);
-          break;
-        }
-
-        // Clear buffers before trying next strategy
-        this._inputBuffer.length = 0;
-        await this.drainInputBuffer(200);
-        await this.flushSerialBuffers();
+    for (let i = 0; i < 5; i++) {
+      // Check if we've exceeded the timeout
+      if (Date.now() - startTime > timeoutMs) {
+        return false;
       }
+
+      // Check abandon flag
+      if (this._abandonCurrentOperation) {
+        return false;
+      }
+
+      this._clearInputBuffer();
+
+      try {
+        const response = await this._sync();
+        if (response) {
+          await sleep(SYNC_TIMEOUT);
+          return true;
+        }
+      } catch (e) {
+        // Check abandon flag after error
+        if (this._abandonCurrentOperation) {
+          return false;
+        }
+      }
+
+      await sleep(SYNC_TIMEOUT);
     }
 
-    // All strategies failed
-    throw new Error(
-      `Couldn't sync to ESP. Try resetting manually. Last error: ${lastError?.message}`,
-    );
-  }
-
-  /**
-   * @name hardResetUSBJTAGSerial
-   * USB-JTAG/Serial reset sequence for ESP32-C3, ESP32-S3, ESP32-C6, etc.
-   */
-  async hardResetUSBJTAGSerial() {
-    await this.setRTS(false);
-    await this.setDTR(false); // Idle
-    await this.sleep(100);
-
-    await this.setDTR(true); // Set IO0
-    await this.setRTS(false);
-    await this.sleep(100);
-
-    await this.setRTS(true); // Reset. Calls inverted to go through (1,1) instead of (0,0)
-    await this.setDTR(false);
-    await this.setRTS(true); // RTS set as Windows only propagates DTR on RTS setting
-    await this.sleep(100);
-
-    await this.setDTR(false);
-    await this.setRTS(false); // Chip out of reset
-
-    // Wait for chip to boot into bootloader
-    await this.sleep(200);
-  }
-
-  /**
-   * @name hardResetClassic
-   * Classic reset sequence for USB-to-Serial bridge chips (CH340, CP2102, etc.)
-   */
-  async hardResetClassic() {
-    await this.setDTR(false); // IO0=HIGH
-    await this.setRTS(true); // EN=LOW, chip in reset
-    await this.sleep(100);
-    await this.setDTR(true); // IO0=LOW
-    await this.setRTS(false); // EN=HIGH, chip out of reset
-    await this.sleep(50);
-    await this.setDTR(false); // IO0=HIGH, done
-
-    // Wait for chip to boot into bootloader
-    await this.sleep(200);
+    return false;
   }
 
   /**
@@ -1040,7 +1835,7 @@ export class ESPLoader extends EventTarget {
    */
   async sync() {
     for (let i = 0; i < 5; i++) {
-      this._inputBuffer.length = 0;
+      this._clearInputBuffer();
       const response = await this._sync();
       if (response) {
         await sleep(SYNC_TIMEOUT);
@@ -1059,14 +1854,17 @@ export class ESPLoader extends EventTarget {
    */
   async _sync() {
     await this.sendCommand(ESP_SYNC, SYNC_PACKET);
+
     for (let i = 0; i < 8; i++) {
       try {
         const [, data] = await this.getResponse(ESP_SYNC, SYNC_TIMEOUT);
         if (data.length > 1 && data[0] == 0 && data[1] == 0) {
           return true;
         }
-      } catch {
-        // If read packet fails.
+      } catch (e) {
+        if (this.debug) {
+          this.logger.debug(`Sync attempt ${i + 1} failed: ${e}`);
+        }
       }
     }
     return false;
@@ -1710,13 +2508,21 @@ export class ESPLoader extends EventTarget {
         },
         async () => {
           // Previous write failed, but still attempt this write
+          this.logger.debug(
+            "Previous write failed, attempting recovery for current write",
+          );
           if (!this.port.writable) {
             throw new Error("Port became unavailable during write");
           }
 
           // Writer was likely cleaned up by previous error, create new one
           if (!this._writer) {
-            this._writer = this.port.writable.getWriter();
+            try {
+              this._writer = this.port.writable.getWriter();
+            } catch (err) {
+              this.logger.debug(`Failed to get writer in recovery: ${err}`);
+              throw new Error("Cannot acquire writer lock");
+            }
           }
 
           await this._writer.write(new Uint8Array(data));
@@ -1728,7 +2534,7 @@ export class ESPLoader extends EventTarget {
         if (this._writer) {
           try {
             this._writer.releaseLock();
-          } catch (e) {
+          } catch {
             // Ignore release errors
           }
           this._writer = undefined;
@@ -1786,6 +2592,7 @@ export class ESPLoader extends EventTarget {
       await new Promise((resolve) => {
         if (!this._reader) {
           resolve(undefined);
+          return;
         }
         this.addEventListener("disconnect", resolve, { once: true });
         this._reader!.cancel();
@@ -1811,6 +2618,7 @@ export class ESPLoader extends EventTarget {
 
       this.connected = false;
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
 
       // Wait for pending writes to complete
       try {
@@ -1881,6 +2689,7 @@ export class ESPLoader extends EventTarget {
 
       if (!this._parent) {
         this.__inputBuffer = [];
+        this.__inputBufferReadIndex = 0;
         this.__totalBytesRead = 0;
         this.readLoop();
       }
@@ -1918,10 +2727,11 @@ export class ESPLoader extends EventTarget {
         }
       }
 
-      // Copy stub state to this instance if we're a stub loader
-      if (this.IS_STUB) {
-        Object.assign(this, stubLoader);
-      }
+      // The stub is now running on the chip
+      // stubLoader has this instance as _parent, so all operations go through this
+      // We just need to mark this instance as running stub code
+      this.IS_STUB = true;
+
       this.logger.debug("Reconnection successful");
     } catch (err) {
       // Ensure flag is reset on error
@@ -1956,8 +2766,8 @@ export class ESPLoader extends EventTarget {
     const drainTimeout = 100; // Short timeout for draining
 
     while (drained < bytesToDrain && Date.now() - drainStart < drainTimeout) {
-      if (this._inputBuffer.length > 0) {
-        const byte = this._inputBuffer.shift();
+      if (this._inputBufferAvailable > 0) {
+        const byte = this._readByte();
         if (byte !== undefined) {
           drained++;
         }
@@ -1974,6 +2784,7 @@ export class ESPLoader extends EventTarget {
     // Final clear of application buffer
     if (!this._parent) {
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
     }
   }
 
@@ -1986,6 +2797,7 @@ export class ESPLoader extends EventTarget {
     // Clear application buffer
     if (!this._parent) {
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
     }
 
     // Wait for any pending data
@@ -1994,6 +2806,7 @@ export class ESPLoader extends EventTarget {
     // Final clear
     if (!this._parent) {
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
     }
 
     this.logger.debug("Serial buffers flushed");
@@ -2029,7 +2842,38 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
-    const CHUNK_SIZE = 0x10000; // 64KB chunks
+    // Initialize adaptive speed multipliers for WebUSB devices
+    if (this.isWebUSB()) {
+      if (this._isCDCDevice) {
+        // CDC devices (CH343): Start with maximum, adaptive adjustment enabled
+        this._adaptiveBlockMultiplier = 8; // blockSize = 248 bytes
+        this._adaptiveMaxInFlightMultiplier = 8; // maxInFlight = 248 bytes
+        this._consecutiveSuccessfulChunks = 0;
+        this.logger.debug(
+          `CDC device - Initialized: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+        );
+      } else {
+        // Non-CDC devices (CH340, CP2102): Fixed values, no adaptive adjustment
+        this._adaptiveBlockMultiplier = 1; // blockSize = 31 bytes (fixed)
+        this._adaptiveMaxInFlightMultiplier = 1; // maxInFlight = 31 bytes (fixed)
+        this._consecutiveSuccessfulChunks = 0;
+        this.logger.debug(
+          `Non-CDC device - Fixed values: blockSize=31, maxInFlight=31`,
+        );
+      }
+    }
+
+    // Chunk size: Amount of data to request from ESP in one command
+    // For WebUSB (Android), use smaller chunks to avoid timeouts and buffer issues
+    // For Web Serial (Desktop), use larger chunks for better performance
+    let CHUNK_SIZE: number;
+    if (this.isWebUSB()) {
+      // WebUSB: Use smaller chunks to avoid SLIP timeout issues
+      CHUNK_SIZE = 0x4 * 0x1000; // 4KB = 16384 bytes
+    } else {
+      // Web Serial: Use larger chunks for better performance
+      CHUNK_SIZE = 0x40 * 0x1000;
+    }
 
     let allData = new Uint8Array(0);
     let currentAddr = addr;
@@ -2045,6 +2889,7 @@ export class ESPLoader extends EventTarget {
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
         let resp = new Uint8Array(0);
+        let lastAckedLength = 0; // Track last acknowledged length
 
         try {
           // Only log on first attempt or retries
@@ -2054,9 +2899,34 @@ export class ESPLoader extends EventTarget {
             );
           }
 
-          // Send read flash command for this chunk
-          // This must be inside the retry loop so we send a fresh command after errors
-          const pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, 1024);
+          let blockSize: number;
+          let maxInFlight: number;
+
+          if (this.isWebUSB()) {
+            // WebUSB (Android): All devices use adaptive speed
+            // All have maxTransferSize=64, baseBlockSize=31
+            const maxTransferSize =
+              (this.port as WebUSBSerialPort).maxTransferSize || 64;
+            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
+
+            // Use current adaptive multipliers (initialized at start of readFlash)
+            blockSize = baseBlockSize * this._adaptiveBlockMultiplier;
+            maxInFlight = baseBlockSize * this._adaptiveMaxInFlightMultiplier;
+          } else {
+            // Web Serial (Desktop): Use multiples of 63 for consistency
+            const base = 63;
+            blockSize = base * 65; // 63 * 65 = 4095 (close to 0x1000)
+            maxInFlight = base * 130; // 63 * 130 = 8190 (close to blockSize * 2)
+          }
+
+          const pkt = pack(
+            "<IIII",
+            currentAddr,
+            chunkSize,
+            blockSize,
+            maxInFlight,
+          );
+
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
           if (res != 0) {
@@ -2108,10 +2978,21 @@ export class ESPLoader extends EventTarget {
               newResp.set(packetData, resp.length);
               resp = newResp;
 
-              // Send acknowledgment
-              const ackData = pack("<I", resp.length);
-              const slipEncodedAck = slipEncode(ackData);
-              await this.writeToStream(slipEncodedAck);
+              // Send acknowledgment after receiving maxInFlight bytes
+              // This unblocks the stub to send the next batch of packets
+              const shouldAck =
+                resp.length >= chunkSize || // End of chunk
+                resp.length >= lastAckedLength + maxInFlight; // Received all packets
+
+              if (shouldAck) {
+                const ackData = pack("<I", resp.length);
+                const slipEncodedAck = slipEncode(ackData);
+                await this.writeToStream(slipEncodedAck);
+
+                // Update lastAckedLength to current response length
+                // This ensures next ACK is sent at the right time
+                lastAckedLength = resp.length;
+              }
             }
           }
 
@@ -2122,8 +3003,92 @@ export class ESPLoader extends EventTarget {
           allData = newAllData;
 
           chunkSuccess = true;
+
+          // ADAPTIVE SPEED ADJUSTMENT: Only for CDC devices
+          // Non-CDC devices (CH340, CP2102) stay at fixed blockSize=31, maxInFlight=31
+          if (this.isWebUSB() && this._isCDCDevice && retryCount === 0) {
+            this._consecutiveSuccessfulChunks++;
+
+            // After 2 consecutive successful chunks, increase speed gradually
+            if (this._consecutiveSuccessfulChunks >= 2) {
+              const maxTransferSize =
+                (this.port as WebUSBSerialPort).maxTransferSize || 64;
+              const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
+
+              // Maximum: blockSize=248 (8 * 31), maxInFlight=248 (8 * 31)
+              const MAX_BLOCK_MULTIPLIER = 8; // 248 bytes - tested stable
+              const MAX_INFLIGHT_MULTIPLIER = 8; // 248 bytes - tested stable
+
+              let adjusted = false;
+
+              // Increase blockSize first (up to 248), then maxInFlight
+              if (this._adaptiveBlockMultiplier < MAX_BLOCK_MULTIPLIER) {
+                this._adaptiveBlockMultiplier = Math.min(
+                  this._adaptiveBlockMultiplier * 2,
+                  MAX_BLOCK_MULTIPLIER,
+                );
+                adjusted = true;
+              }
+              // Once blockSize is at maximum, increase maxInFlight
+              else if (
+                this._adaptiveMaxInFlightMultiplier < MAX_INFLIGHT_MULTIPLIER
+              ) {
+                this._adaptiveMaxInFlightMultiplier = Math.min(
+                  this._adaptiveMaxInFlightMultiplier * 2,
+                  MAX_INFLIGHT_MULTIPLIER,
+                );
+                adjusted = true;
+              }
+
+              if (adjusted) {
+                const newBlockSize =
+                  baseBlockSize * this._adaptiveBlockMultiplier;
+                const newMaxInFlight =
+                  baseBlockSize * this._adaptiveMaxInFlightMultiplier;
+                this.logger.debug(
+                  `Speed increased: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
+                );
+                this._lastAdaptiveAdjustment = Date.now();
+              }
+
+              // Reset counter
+              this._consecutiveSuccessfulChunks = 0;
+            }
+          }
         } catch (err) {
           retryCount++;
+
+          // ADAPTIVE SPEED ADJUSTMENT: Only for CDC devices
+          // Non-CDC devices stay at fixed values
+          if (this.isWebUSB() && this._isCDCDevice && retryCount === 1) {
+            // Only reduce if we're above minimum
+            if (
+              this._adaptiveBlockMultiplier > 1 ||
+              this._adaptiveMaxInFlightMultiplier > 1
+            ) {
+              // Reduce to minimum on error
+              this._adaptiveBlockMultiplier = 1; // 31 bytes (for CH343)
+              this._adaptiveMaxInFlightMultiplier = 1; // 31 bytes
+              this._consecutiveSuccessfulChunks = 0; // Reset success counter
+
+              const maxTransferSize =
+                (this.port as WebUSBSerialPort).maxTransferSize || 64;
+              const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
+              const newBlockSize =
+                baseBlockSize * this._adaptiveBlockMultiplier;
+              const newMaxInFlight =
+                baseBlockSize * this._adaptiveMaxInFlightMultiplier;
+
+              this.logger.debug(
+                `Error at higher speed - reduced to minimum: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
+              );
+            } else {
+              // Already at minimum and still failing - this is a real error
+              this.logger.debug(
+                `Error at minimum speed (blockSize=31, maxInFlight=31) - not a speed issue`,
+              );
+            }
+          }
 
           // Check if it's a timeout error or SLIP error
           if (err instanceof SlipReadError) {
@@ -2146,12 +3111,13 @@ export class ESPLoader extends EventTarget {
                 this.logger.debug(`Buffer drain error: ${drainErr}`);
               }
             } else {
-              // All retries exhausted - attempt deep recovery by reconnecting and reloading stub
+              // All retries exhausted - attempt recovery by reloading stub
+              // IMPORTANT: Do NOT close port to keep ESP32 in bootloader mode
               if (!deepRecoveryAttempted) {
                 deepRecoveryAttempted = true;
 
                 this.logger.log(
-                  `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting deep recovery (reconnect + reload stub)...`,
+                  `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting recovery (close and reopen port)...`,
                 );
 
                 try {
@@ -2165,15 +3131,15 @@ export class ESPLoader extends EventTarget {
                   // Reset retry counter to give it another chance after recovery
                   retryCount = 0;
                   continue;
-                } catch (reconnectErr) {
+                } catch (recoveryErr) {
                   throw new Error(
-                    `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and deep recovery failed: ${reconnectErr}`,
+                    `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and recovery failed: ${recoveryErr}`,
                   );
                 }
               } else {
-                // Deep recovery already attempted, give up
+                // Recovery already attempted, give up
                 throw new Error(
-                  `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and deep recovery attempt`,
+                  `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and recovery attempt`,
                 );
               }
             }
@@ -2197,7 +3163,6 @@ export class ESPLoader extends EventTarget {
       );
     }
 
-    this.logger.debug(`Successfully read ${allData.length} bytes from flash`);
     return allData;
   }
 }
