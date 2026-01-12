@@ -351,18 +351,19 @@ async function clickConnect() {
       
       try {
         // Close the port first
-        await esploader.port.close();
+        await esploader.port?.close();
         
         // For Android WebUSB: ESP32-S2 automatic reconnection doesn't work
         // Show message and let user reconnect manually with BOOT button
         if (isAndroid) {
           logMsg("ESP32-S2 has switched to CDC mode");
           logMsg("Please press and HOLD the BOOT button on your ESP32-S2, then click Connect");
+          toggleUIConnected(false);
           esp32s2ReconnectInProgress = false;
           return;
         }
         // For Desktop Web Serial: Use the modal dialog approach
-        if (!isAndroid && esploader.port.forget) {
+        if (!isAndroid && esploader.port?.forget) {
           await esploader.port.forget();
         }
       } catch (disconnectErr) {
