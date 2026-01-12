@@ -91,3 +91,66 @@ button {
 .progress-bar {
   border-color: #333;
 }
+
+/* LittleFS Manager Light Mode */
+.littlefs-manager {
+  background-color: rgba(113, 174, 30, 0.05);
+  border-color: #71ae1e;
+}
+
+.littlefs-info {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.littlefs-breadcrumb {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.littlefs-breadcrumb span {
+  color: #333;
+}
+
+.file-table {
+  background-color: #fff;
+  color: #000;
+}
+
+.file-table thead {
+  background-color: #f5f5f5;
+}
+
+.file-table th {
+  border-bottom-color: #ccc;
+}
+
+.file-table td {
+  border-bottom-color: #e0e0e0;
+}
+
+.file-table tbody tr:hover {
+  background-color: rgba(113, 174, 30, 0.1);
+}
+
+.littlefs-file-upload input[type="file"] {
+  background-color: white;
+  color: #333;
+  border-color: #ccc;
+}
+
+.partition-table-display th {
+  background-color: #f0f0f0;
+  color: #000;
+}
+
+.partition-table-display td {
+  border-color: #ccc;
+}
+
+.littlefs-fs-button {
+  background-color: #8ec641;
+  color: white;
+}
+
+.littlefs-fs-button:hover {
+  background-color: #71ae1e;
+}

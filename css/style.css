@@ -13,49 +13,51 @@
   margin: 0;
   border-bottom: 5px solid #00a7e9;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   top: 0;
   transition: transform 0.3s ease-in-out;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .header-hidden {
   transform: translateY(-100%);
 }
 
-.header .left {
+.header-content {
   display: flex;
   align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.header-content > label {
+  font-size: 13px;
+  margin-left: 5px;
+  white-space: nowrap;
+}
+
+.header .separator {
+  width: 1px;
+  height: 30px;
+  background-color: #666;
+  margin: 0 15px;
+  flex-shrink: 0;
 }
 
 .header .title {
-  font-size: 24px;
-  font-weight: 500;
-  margin-right: 30px;
+  font-size: 16px;
+  font-weight: 600;
+  margin-left: auto;
+  white-space: nowrap;
+  padding-right: 10px;
 }
 
-.header .right {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.header .controls-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-right: 20px;
-  padding-right: 20px;
-  border-right: 2px solid #ccc;
-}
-
-.header .controls-row label {
-  font-size: 13px;
-  margin-left: 12px;
-}
-
-.header .controls-row label:first-child {
-  margin-left: 0;
+.header select {
+  height: 30px;
 }
 
 .header button {
@@ -88,10 +90,6 @@
   }
 }
 
-.header select {
-  height: 30px;
-}
-
 button,
 .firmware {
   height: 25px;
@@ -103,7 +101,7 @@ button,
 }
 
 body {
-  font-family: proxima-nova, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
   font-style: normal;
   font-weight: 400;
   margin: 0;
@@ -162,8 +160,9 @@ div.clear {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 12px;
-  border-left: 1px solid #ccc;
+  padding-left: 0;
+  border-left: none;
+  white-space: nowrap;
 }
 
 .log-controls.hidden {
@@ -231,7 +230,7 @@ div.clear {
 
 #log {
   max-width: 100%;
-  font-family: pt-mono, monospace;
+  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", monospace;
   font-style: normal;
   font-weight: 400;
   font-size: 16px;
@@ -275,7 +274,7 @@ div.clear {
 .onoffswitch {
   display: inline-block;
   position: relative;
-  width: 70px;
+  width: 50px;
   margin-right: 5px;
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -313,7 +312,7 @@ div.clear {
   line-height: 25px;
   font-size: 14px;
   color: white;
-  font-family: proxima-nova, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
   font-style: normal;
   font-weight: 600;
   box-sizing: border-box;
@@ -342,7 +341,7 @@ div.clear {
   position: absolute;
   top: 0;
   bottom: 0;
-  right: 23px;
+  right: 28px;
   border: 1px solid #900;
   border-radius: 15px;
   transition: all 0.3s ease-in 0s;
@@ -521,6 +520,17 @@ div.clear {
   cursor: pointer;
 }
 
+#commands .partition-table #butOpenFSManager {
+  background-color: #8ec641;
+  color: white;
+  border-color: #8ec641;
+}
+
+#commands .partition-table #butOpenFSManager:hover {
+  background-color: #71ae1e;
+  border-color: #71ae1e;
+}
+
 #commands .partition-table .progress-bar {
   width: 400px;
   margin-bottom: 10px;
@@ -561,12 +571,279 @@ div.clear {
   border-color: #00a7e9;
 }
 
+/* ESP8266 Filesystem Info Box */
+.esp8266-info {
+  width: 100%;
+  margin-top: 15px;
+}
+
+.esp8266-info .info-box {
+  background-color: #f8f9fa;
+  border: 2px solid #00a7e9;
+  border-radius: 8px;
+  padding: 15px 20px;
+  text-align: left;
+}
+
+.esp8266-info .info-box strong {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 10px;
+  color: #00a7e9;
+}
+
+.esp8266-info .info-box p {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+
+.esp8266-info .info-box ul {
+  margin: 10px 0;
+  padding-left: 20px;
+  list-style-type: none;
+}
+
+.esp8266-info .info-box ul li {
+  margin: 5px 0;
+  padding-left: 0;
+}
+
+.esp8266-info .info-box ul li strong {
+  display: inline;
+  font-size: 14px;
+  color: inherit;
+  margin: 0;
+}
+
 .justify {
   display: flex;
   justify-content: space-between;
 }
 .center {
   text-align: center;
+}
+
+/* LittleFS Manager Styles */
+.littlefs-manager {
+  width: 900px;
+  margin: 30px auto;
+  padding: 25px;
+  border: 2px solid #71ae1e;
+  border-radius: 10px;
+  background-color: rgba(113, 174, 30, 0.05);
+}
+
+.littlefs-manager h3 {
+  margin: 0 0 20px 0;
+  color: #71ae1e;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.littlefs-info {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+}
+
+.littlefs-partition-info {
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.littlefs-size {
+  color: #666;
+  margin-left: 8px;
+}
+
+.littlefs-usage {
+  margin-top: 10px;
+}
+
+.usage-bar {
+  width: 100%;
+  height: 20px;
+  background-color: #e0e0e0;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.usage-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #71ae1e 0%, #8ec641 100%);
+  transition: width 0.3s ease;
+}
+
+.usage-text {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #555;
+}
+
+.disk-version {
+  font-size: 12px;
+  padding: 2px 8px;
+  background-color: #71ae1e;
+  color: white;
+  border-radius: 4px;
+}
+
+.littlefs-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.littlefs-controls button {
+  /* Use default button styles from main stylesheet */
+  border-style: solid;
+  cursor: pointer;
+}
+
+.littlefs-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.littlefs-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding: 10px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+}
+
+.littlefs-breadcrumb button {
+  /* Use default button styles */
+  border-style: solid;
+  cursor: pointer;
+}
+
+.littlefs-breadcrumb button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.littlefs-breadcrumb span {
+  font-family: monospace;
+  font-size: 14px;
+  color: #333;
+}
+
+.littlefs-file-upload {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  align-items: center;
+}
+
+.littlefs-file-upload input[type="file"] {
+  flex: 1;
+  padding: 5px;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+}
+
+.littlefs-file-upload button {
+  /* Use default button styles */
+  border-style: solid;
+  cursor: pointer;
+}
+
+.littlefs-file-upload button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.littlefs-files {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.file-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.file-table thead {
+  position: sticky;
+  top: 0;
+  background-color: #f5f5f5;
+  z-index: 10;
+}
+
+.file-table th {
+  padding: 10px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid #ccc;
+}
+
+.file-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.file-table tbody tr:hover {
+  background-color: rgba(113, 174, 30, 0.1);
+}
+
+.file-table .empty-state {
+  text-align: center;
+  color: #999;
+  padding: 30px;
+  font-style: italic;
+}
+
+.file-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.file-name.clickable:hover {
+  color: #71ae1e;
+  text-decoration: underline;
+}
+
+.file-icon {
+  font-size: 16px;
+}
+
+.file-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.file-actions button {
+  padding: 4px 12px;
+  font-size: 12px;
+  height: auto;
+  border-style: solid;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.littlefs-fs-button {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  height: auto;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
 }
 
 /* ESP32-S2 Reconnect Modal */
@@ -644,4 +921,355 @@ div.clear {
   background-color: #71ae1e;
   color: #fff;
   border-color: #71ae1e;
+}
+
+/* File Viewer Modal Styles */
+.file-viewer-content {
+  max-width: 900px;
+  width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+}
+
+.file-viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 30px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.file-viewer-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #333;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.close-button:hover {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.file-viewer-info {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 30px;
+  background-color: #f8f8f8;
+  font-size: 13px;
+  color: #666;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.file-viewer-tabs {
+  display: flex;
+  padding: 0 30px;
+  background-color: #f8f8f8;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.tab-button {
+  background: none;
+  border: none;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s;
+  margin-bottom: -2px;
+}
+
+.tab-button:hover {
+  color: #333;
+  background-color: rgba(113, 174, 30, 0.1);
+}
+
+.tab-button.active {
+  color: #71ae1e;
+  border-bottom-color: #71ae1e;
+}
+
+.file-viewer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 30px;
+  background-color: #fff;
+  min-height: 300px;
+  max-height: calc(90vh - 250px);
+  text-align: left;
+}
+
+.file-viewer-body pre {
+  margin: 0;
+  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  color: #333;
+  tab-size: 4;
+  text-align: left;
+}
+
+.file-viewer-body .hex-view {
+  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.hex-line {
+  display: flex;
+  margin-bottom: 2px;
+}
+
+.hex-offset {
+  color: #999;
+  margin-right: 20px;
+  min-width: 80px;
+}
+
+.hex-bytes {
+  color: #333;
+  margin-right: 20px;
+  min-width: 400px;
+}
+
+.hex-ascii {
+  color: #666;
+}
+
+.file-viewer-footer {
+  padding: 20px 30px;
+  border-top: 2px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Mobile Optimizations */
+@media (max-width: 768px) {
+  .header {
+    height: auto;
+    min-height: 60px;
+    padding: 10px 15px;
+  }
+
+  .header-content {
+    gap: 8px;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+
+  .header-content > label {
+    font-size: 12px;
+    margin-left: 3px;
+    white-space: nowrap;
+  }
+
+  .onoffswitch {
+    width: 50px;
+  }
+
+  .main {
+    padding-top: 80px;
+  }
+
+  #commands {
+    min-width: unset;
+    padding: 0 15px;
+  }
+
+  #commands .upload {
+    max-width: 100%;
+    padding-left: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  #commands .upload label {
+    width: 100%;
+  }
+
+  #commands .upload .firmware {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    justify-content: center;
+  }
+
+  #commands .buttons {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  #commands .partition-table,
+  #commands .read-flash {
+    width: 100%;
+    padding: 15px 0;
+  }
+
+  #commands .partition-table .progress-bar,
+  #commands .read-flash .progress-bar {
+    width: 100%;
+  }
+
+  #commands .read-flash-inputs {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  #commands .read-flash input {
+    width: 80px;
+  }
+
+  #log {
+    padding: 0 15px;
+    border: 10px solid #000;
+    font-size: 14px;
+  }
+
+  .footer {
+    padding: 10px 15px;
+  }
+
+  .littlefs-manager {
+    width: 100%;
+    margin: 15px auto;
+    padding: 15px;
+  }
+
+  .littlefs-controls {
+    flex-direction: column;
+  }
+
+  .littlefs-controls button {
+    width: 100%;
+  }
+
+  .littlefs-file-upload {
+    flex-direction: column;
+  }
+
+  .littlefs-file-upload input[type="file"],
+  .littlefs-file-upload button {
+    width: 100%;
+  }
+
+  .file-table {
+    font-size: 13px;
+  }
+
+  .file-table th,
+  .file-table td {
+    padding: 6px 8px;
+  }
+
+  .file-actions {
+    flex-direction: column;
+  }
+
+  .file-actions button {
+    width: 100%;
+  }
+
+  .modal-content {
+    padding: 25px;
+    max-width: 90%;
+  }
+
+  .file-viewer-content {
+    width: 95vw;
+    max-height: 95vh;
+  }
+
+  .file-viewer-header,
+  .file-viewer-info,
+  .file-viewer-tabs,
+  .file-viewer-body,
+  .file-viewer-footer {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+
+  .file-viewer-body pre {
+    font-size: 11px;
+  }
+
+  .hex-bytes {
+    min-width: 250px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding: 8px 10px;
+  }
+
+  .header-content {
+    gap: 6px;
+  }
+
+  .header-content > label {
+    display: none;
+  }
+
+  .header-content select {
+    min-width: 90px;
+    height: 30px;
+    font-size: 13px;
+  }
+
+  .onoffswitch {
+    width: 50px;
+    margin-left: 2px;
+    margin-right: 2px;
+  }
+
+  .log-controls {
+    padding-left: 8px;
+  }
+
+  .small-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  #commands {
+    padding: 0 10px;
+  }
+
+  #log {
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  button,
+  .firmware {
+    font-size: 14px;
+    padding-left: 15px;
+    padding-right: 15px;
+  }
 }

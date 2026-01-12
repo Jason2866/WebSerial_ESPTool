@@ -91,3 +91,77 @@ input {
 .progress-bar {
   border-color: #fff;
 }
+
+/* LittleFS Manager Dark Mode */
+.littlefs-manager {
+  background-color: rgba(113, 174, 30, 0.1);
+  border-color: #71ae1e;
+}
+
+.littlefs-info {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.littlefs-breadcrumb {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.littlefs-breadcrumb span {
+  color: #fff;
+}
+
+.file-table {
+  background-color: #333;
+  color: #fff;
+}
+
+.file-table thead {
+  background-color: #222;
+}
+
+.file-table th {
+  border-bottom-color: #555;
+}
+
+.file-table td {
+  border-bottom-color: #444;
+}
+
+.file-table tbody tr:hover {
+  background-color: rgba(113, 174, 30, 0.2);
+}
+
+.littlefs-file-upload input[type="file"] {
+  background-color: #444;
+  color: #fff;
+  border-color: #666;
+}
+
+.partition-table-display th {
+  background-color: #222;
+  color: #fff;
+}
+
+.partition-table-display td {
+  border-color: #555;
+}
+
+.littlefs-fs-button {
+  background-color: #8ec641;
+  color: white;
+}
+
+.littlefs-fs-button:hover {
+  background-color: #71ae1e;
+}
+
+/* ESP8266 Info Box - Dark Mode */
+.esp8266-info .info-box {
+  background-color: #2a2a2a;
+  border-color: #00a7e9;
+  color: #e0e0e0;
+}
+
+.esp8266-info .info-box strong {
+  color: #00a7e9;
+}
