@@ -235,6 +235,36 @@ function toHex(value) {
 }
 
 /**
+ * Parse flash size string (e.g., "256KB", "4MB") to bytes
+ * @param {string} sizeStr - Flash size string with unit (KB or MB)
+ * @returns {number} Size in bytes
+ */
+function parseFlashSize(sizeStr) {
+  if (!sizeStr || typeof sizeStr !== 'string') {
+    return 0;
+  }
+  
+  // Extract number and unit
+  const match = sizeStr.match(/^(\d+)(KB|MB)$/i);
+  if (!match) {
+    // If no unit, assume it's already in MB (legacy behavior)
+    const num = parseInt(sizeStr);
+    return isNaN(num) ? 0 : num * 1024 * 1024;
+  }
+  
+  const value = parseInt(match[1]);
+  const unit = match[2].toUpperCase();
+  
+  if (unit === 'KB') {
+    return value * 1024; // KB to bytes
+  } else if (unit === 'MB') {
+    return value * 1024 * 1024; // MB to bytes
+  }
+  
+  return 0;
+}
+
+/**
  * Toggle the connection state: connect to an ESP device (using WebUSB on Android or Web Serial on desktop) or disconnect if already connected.
  *
  * On connect, detect platform and transport, initialize the esploader, handle ESP32-S2 native USB reconnection flow when required (showing a modal on desktop or guidance on Android), run the device stub, update UI state, set the detected flash size and selected baud rate, and install a disconnect handler. On disconnect, remove the handler, close the port, clear the stub, and update the UI.
@@ -399,7 +429,7 @@ async function clickConnect() {
   
   // Set detected flash size in the read size field
   if (espStub.flashSize) {
-    const flashSizeBytes = parseInt(espStub.flashSize) * 1024 * 1024; // Convert MB to bytes
+    const flashSizeBytes = parseFlashSize(espStub.flashSize);
     readSize.value = "0x" + flashSizeBytes.toString(16);
   }
   
