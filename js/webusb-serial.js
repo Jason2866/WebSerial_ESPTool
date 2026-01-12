@@ -1026,3 +1026,10 @@ async function requestSerialPort(forceNew = false) {
 
 // Export as ES modules
 export { WebUSBSerial, requestSerialPort };
+
+// Also set on globalThis for non-module usage (e.g., dynamic script loading)
+if (typeof globalThis !== 'undefined') {
+    globalThis.WebUSBSerial = WebUSBSerial;
+    globalThis.requestSerialPort = requestSerialPort;
+}
+export { WebUSBSerial, requestSerialPort };
