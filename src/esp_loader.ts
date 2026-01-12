@@ -894,6 +894,7 @@ export class ESPLoader extends EventTarget {
     const resetStrategies: Array<{ name: string; fn: () => Promise<void> }> =
       [];
 
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
 
     // WebUSB (Android) uses different reset methods than Web Serial (Desktop)
@@ -1815,6 +1816,7 @@ export class ESPLoader extends EventTarget {
           await sleep(SYNC_TIMEOUT);
           return true;
         }
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (e) {
         // Check abandon flag after error
         if (this._abandonCurrentOperation) {
