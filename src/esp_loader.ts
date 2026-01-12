@@ -2978,9 +2978,8 @@ export class ESPLoader extends EventTarget {
               newResp.set(packetData, resp.length);
               resp = newResp;
 
-              // Send acknowledgment when we've received maxInFlight bytes
-              // The stub sends packets until (num_sent - num_acked) >= max_in_flight
-              // We MUST wait for all packets before sending ACK
+              // Send acknowledgment after receiving maxInFlight bytes
+              // This unblocks the stub to send the next batch of packets
               const shouldAck =
                 resp.length >= chunkSize || // End of chunk
                 resp.length >= lastAckedLength + maxInFlight; // Received all packets

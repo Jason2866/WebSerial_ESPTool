@@ -391,7 +391,7 @@ async function clickConnect() {
   // Store disconnect handler so we can remove it later
   const handleDisconnect = () => {
     toggleUIConnected(false);
-    espStub = false;
+    espStub = undefined;
   };
   espStub.handleDisconnect = handleDisconnect; // Store reference on espStub
   espStub.addEventListener("disconnect", handleDisconnect);
