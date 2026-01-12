@@ -732,9 +732,16 @@ class WebUSBSerial {
         const vid = this.device.vendorId;
         const pid = this.device.productId;
 
+//        this._log(`[WebUSB] Changing baudrate to ${baudRate}...`);
+
         // FTDI (VID: 0x0403)
         if (vid === 0x0403) {
             // FTDI baudrate calculation
+            // Modern FTDI chips (FT232R, FT2232, etc.): BaseClock = 48MHz
+            // BaudDivisor = (48000000 / 16) / BaudRate = 3000000 / BaudRate
+            // Divisor encoding: 16-bit value with sub-integer divisor support
+            // Sub-integer divisor: 0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875
+            
             const baseClock = 3000000; // 48MHz / 16
             let divisor = baseClock / baudRate;
             
@@ -742,19 +749,24 @@ class WebUSBSerial {
             const integerPart = Math.floor(divisor);
             const fractionalPart = divisor - integerPart;
             
-            // Encode sub-integer divisor
+            // Encode sub-integer divisor (0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875)
             let subInteger;
-            if (fractionalPart < 0.0625) subInteger = 0;
-            else if (fractionalPart < 0.1875) subInteger = 1;
-            else if (fractionalPart < 0.3125) subInteger = 2;
-            else if (fractionalPart < 0.4375) subInteger = 3;
-            else if (fractionalPart < 0.5625) subInteger = 4;
-            else if (fractionalPart < 0.6875) subInteger = 5;
-            else if (fractionalPart < 0.8125) subInteger = 6;
-            else subInteger = 7;
+            if (fractionalPart < 0.0625) subInteger = 0;      // 0.0
+            else if (fractionalPart < 0.1875) subInteger = 1; // 0.125
+            else if (fractionalPart < 0.3125) subInteger = 2; // 0.25
+            else if (fractionalPart < 0.4375) subInteger = 3; // 0.375
+            else if (fractionalPart < 0.5625) subInteger = 4; // 0.5
+            else if (fractionalPart < 0.6875) subInteger = 5; // 0.625
+            else if (fractionalPart < 0.8125) subInteger = 6; // 0.75
+            else subInteger = 7;                               // 0.875
             
+            // Encode divisor value for FTDI
+            // Low byte: integer part (bits 0-7)
+            // High byte: (integer part >> 8) | (sub-integer << 6)
             const value = (integerPart & 0xFF) | ((subInteger & 0x07) << 14) | (((integerPart >> 8) & 0x3F) << 8);
-            const index = (integerPart >> 14) & 0x03;
+            const index = (integerPart >> 14) & 0x03; // Upper 2 bits of integer part
+
+//            this._log(`[WebUSB FTDI] Setting baudrate ${baudRate} (divisor=${divisor.toFixed(3)}, value=0x${value.toString(16)}, index=0x${index.toString(16)})...`);
             
             await this.device.controlTransferOut({
                 requestType: 'vendor',
@@ -763,6 +775,8 @@ class WebUSBSerial {
                 value: value,
                 index: index
             });
+            
+//            this._log('[WebUSB FTDI] Baudrate changed successfully');
         }
         // CP2102 (Silicon Labs VID: 0x10c4)
         else if (vid === 0x10c4) {
@@ -785,13 +799,16 @@ class WebUSBSerial {
         }
         // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
         else if (vid === 0x1a86 && pid !== 0x55d3) {
-            // CH340 baudrate calculation
+            // CH340 baudrate calculation (from Linux kernel driver)
+            // CH341_BAUDBASE_FACTOR = 1532620800
+            // CH341_BAUDBASE_DIVMAX = 3
             const CH341_BAUDBASE_FACTOR = 1532620800;
             const CH341_BAUDBASE_DIVMAX = 3;
             
             let factor = Math.floor(CH341_BAUDBASE_FACTOR / baudRate);
             let divisor = CH341_BAUDBASE_DIVMAX;
             
+            // Reduce factor if too large
             while (factor > 0xfff0 && divisor > 0) {
                 factor >>= 3;
                 divisor--;
@@ -805,22 +822,27 @@ class WebUSBSerial {
             const a = (factor & 0xff00) | divisor;
             const b = factor & 0xff;
 
+            // CH340 uses request 0x9A to set baudrate
             await this.device.controlTransferOut({
                 requestType: 'vendor',
                 recipient: 'device',
                 request: 0x9A, // CH340 SET_BAUDRATE
-                value: 0x1312,
+                value: 0x1312, // Fixed value for baudrate setting
                 index: a
             });
             
+            // Second control transfer with b value
             await this.device.controlTransferOut({
                 requestType: 'vendor',
                 recipient: 'device',
                 request: 0x9A,
-                value: 0x0f2c,
+                value: 0x0f2c, // Fixed value
                 index: b
             });
+
         }
+        // CDC devices (CH343, ESP32 Native USB) - no action needed in setBaudRate()
+        // They are handled by close/reopen in esp_loader.ts
 
         // Wait for baudrate change to take effect
         await new Promise(resolve => setTimeout(resolve, 50));
