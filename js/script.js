@@ -363,7 +363,7 @@ async function clickConnect() {
           return;
         }
         // For Desktop Web Serial: Use the modal dialog approach
-        if (!isAndroid && esploader.port?.forget) {
+        if (esploader.port?.forget) {
           await esploader.port.forget();
         }
       } catch (disconnectErr) {
