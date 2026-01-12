@@ -1024,12 +1024,11 @@ async function requestSerialPort(forceNew = false) {
     throw new Error('Neither Web Serial API nor WebUSB is supported in this browser');
 }
 
-// Export as ES modules
-export { WebUSBSerial, requestSerialPort };
-
 // Also set on globalThis for non-module usage (e.g., dynamic script loading)
 if (typeof globalThis !== 'undefined') {
     globalThis.WebUSBSerial = WebUSBSerial;
     globalThis.requestSerialPort = requestSerialPort;
 }
+
+// Export as ES modules
 export { WebUSBSerial, requestSerialPort };

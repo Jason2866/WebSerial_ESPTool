@@ -267,9 +267,10 @@ async function loadWebUSBSerial() {
     return;
   }
 
-  // Dynamically load the WebUSB serial script
+  // Dynamically load the WebUSB serial script as ES6 module
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    script.type = "module";  // CRITICAL: Load as ES6 module to support export statements
     script.src = "js/webusb-serial.js";
     script.onload = () => {
       // Verify it loaded correctly
