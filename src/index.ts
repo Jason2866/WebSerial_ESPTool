@@ -24,27 +24,30 @@ export {
 } from "./const";
 
 export const connect = async (logger: Logger) => {
-  // - Request a port and open a connection.
-  // Try to use requestSerialPort if available (supports WebUSB for Android)
   let port: SerialPort;
+  
+  // Check if a custom requestSerialPort function is available (e.g., from WebUSB wrapper)
   const customRequestPort = (
     globalThis as { requestSerialPort?: () => Promise<SerialPort> }
   ).requestSerialPort;
+  
   if (typeof customRequestPort === "function") {
+    // Use custom port request function (handles Android/WebUSB automatically)
+    logger.log("Using custom port request function");
     port = await customRequestPort();
   } else {
-    // Check if Web Serial API is available
+    // Fallback to standard Web Serial API
     if (!navigator.serial) {
       throw new Error(
         "Web Serial API is not supported in this browser. " +
-          "Please use Chrome, Edge, or Opera on desktop, or Chrome on Android. " +
-          "Note: The page must be served over HTTPS or localhost.",
+        "Please use Chrome 89+, Edge 89+, or Opera on desktop, or Chrome 61+ on Android with USB OTG. " +
+        "Note: The page must be served over HTTPS or localhost."
       );
     }
     port = await navigator.serial.requestPort();
   }
 
-  // Only open if not already open (requestSerialPort may return an opened port)
+  // Only open if not already open (WebUSB may return an opened port)
   if (!port.readable || !port.writable) {
     await port.open({ baudRate: ESP_ROM_BAUD });
   }

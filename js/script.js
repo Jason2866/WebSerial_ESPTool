@@ -1,11 +1,4 @@
-// Import WebUSB serial support for Android compatibility
-import { WebUSBSerial, requestSerialPort } from './webusb-serial.js';
-
-// Make requestSerialPort available globally for esptool.js
-// Use defensive assignment to avoid accidental overwrites
-if (!globalThis.requestSerialPort) {
-  globalThis.requestSerialPort = requestSerialPort;
-}
+// WebUSB serial support will be loaded dynamically when needed on Android
 
 let espStub;
 let esp32s2ReconnectInProgress = false;
@@ -265,6 +258,32 @@ function parseFlashSize(sizeStr) {
 }
 
 /**
+ * Load WebUSB serial wrapper for Android
+ */
+async function loadWebUSBSerial() {
+  // Check if already loaded
+  if (globalThis.requestSerialPort) {
+    return;
+  }
+
+  // Dynamically load the WebUSB serial script
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "js/webusb-serial.js";
+    script.onload = () => {
+      // Verify it loaded correctly
+      if (globalThis.requestSerialPort) {
+        resolve();
+      } else {
+        reject(new Error("WebUSB serial script loaded but requestSerialPort not found"));
+      }
+    };
+    script.onerror = () => reject(new Error("Failed to load WebUSB serial script"));
+    document.head.appendChild(script);
+  });
+}
+
+/**
  * Toggle the connection state: connect to an ESP device (using WebUSB on Android or Web Serial on desktop) or disconnect if already connected.
  *
  * On connect, detect platform and transport, initialize the esploader, handle ESP32-S2 native USB reconnection flow when required (showing a modal on desktop or guidance on Android), run the device stub, update UI state, set the detected flash size and selected baud rate, and install a disconnect handler. On disconnect, remove the handler, close the port, clear the stub, and update the UI.
@@ -296,39 +315,37 @@ async function clickConnect() {
 
   // Platform detection: Android always uses WebUSB, Desktop uses Web Serial
   const userAgent = navigator.userAgent || '';
-  const isAndroid = /Android/i.test(userAgent);
+  isAndroidPlatform = /Android/i.test(userAgent);
+  
+  // Load WebUSB support for Android
+  if (isAndroidPlatform && "usb" in navigator) {
+    try {
+      await loadWebUSBSerial();
+      logMsg("WebUSB support loaded");
+    } catch (err) {
+      errorMsg(`Failed to load WebUSB support: ${err.message}`);
+      throw err;
+    }
+  }
   
   // Only log platform details to UI in debug mode (avoid fingerprinting surface)
   if (debugMode.checked) {
-    const platformMsg = `Platform: ${isAndroid ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
+    const platformMsg = `Platform: ${isAndroidPlatform ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
     logMsg(platformMsg);
   }
-  logMsg(`Using: ${isAndroid ? 'WebUSB' : 'Web Serial'}`);
+  logMsg(`Using: ${isAndroidPlatform ? 'WebUSB' : 'Web Serial'}`);
   
+  // Use esploaderMod.connect() which will automatically use globalThis.requestSerialPort if available
   let esploader;
-  
-  if (isAndroid) {
-    // Android: Use WebUSB directly
-    console.log('[Connect] Using WebUSB for Android');
-    try {
-      const port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
-      esploader = await esploaderMod.connectWithPort(port, {
-        log: (...args) => logMsg(...args),
-        debug: (...args) => debugMsg(...args),
-        error: (...args) => errorMsg(...args),
-      });
-    } catch (err) {
-      logMsg(`WebUSB connection failed: ${err.message || err}`);
-      throw err;
-    }
-  } else {
-    // Desktop: Use Web Serial (standard esptool connect)
-    console.log('[Connect] Using Web Serial for Desktop');
+  try {
     esploader = await esploaderMod.connect({
       log: (...args) => logMsg(...args),
       debug: (...args) => debugMsg(...args),
       error: (...args) => errorMsg(...args),
     });
+  } catch (err) {
+    logMsg(`Connection failed: ${err.message || err}`);
+    throw err;
   }
   
   // Store port info for ESP32-S2 detection
@@ -355,7 +372,7 @@ async function clickConnect() {
         
         // For Android WebUSB: ESP32-S2 automatic reconnection doesn't work
         // Show message and let user reconnect manually with BOOT button
-        if (isAndroid) {
+        if (isAndroidPlatform) {
           logMsg("ESP32-S2 has switched to CDC mode");
           logMsg("Please press and HOLD the BOOT button on your ESP32-S2, then click Connect");
           toggleUIConnected(false);
@@ -372,7 +389,7 @@ async function clickConnect() {
       }
       
       // Show modal dialog ONLY for Desktop
-      if (!isAndroid) {
+      if (!isAndroidPlatform) {
         const modal = document.getElementById("esp32s2Modal");
         const reconnectBtn = document.getElementById("butReconnectS2");
         
