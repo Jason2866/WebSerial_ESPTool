@@ -3,6 +3,7 @@
 let espStub;
 let esp32s2ReconnectInProgress = false;
 let isConnected = false; // Track connection state
+let isAndroidPlatform = false; // Track if running on Android
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 const bufferSize = 512;

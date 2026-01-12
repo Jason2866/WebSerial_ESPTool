@@ -25,12 +25,12 @@ export {
 
 export const connect = async (logger: Logger) => {
   let port: SerialPort;
-  
+
   // Check if a custom requestSerialPort function is available (e.g., from WebUSB wrapper)
   const customRequestPort = (
     globalThis as { requestSerialPort?: () => Promise<SerialPort> }
   ).requestSerialPort;
-  
+
   if (typeof customRequestPort === "function") {
     // Use custom port request function (handles Android/WebUSB automatically)
     logger.log("Using custom port request function");
@@ -40,8 +40,8 @@ export const connect = async (logger: Logger) => {
     if (!navigator.serial) {
       throw new Error(
         "Web Serial API is not supported in this browser. " +
-        "Please use Chrome 89+, Edge 89+, or Opera on desktop, or Chrome 61+ on Android with USB OTG. " +
-        "Note: The page must be served over HTTPS or localhost."
+          "Please use Chrome 89+, Edge 89+, or Opera on desktop, or Chrome 61+ on Android with USB OTG. " +
+          "Note: The page must be served over HTTPS or localhost.",
       );
     }
     port = await navigator.serial.requestPort();
