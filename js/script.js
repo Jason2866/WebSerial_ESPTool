@@ -140,6 +140,16 @@ function logMsg(text) {
   }
 }
 
+/**
+ * Append one or more debug-formatted values to the application log when debug mode is enabled.
+ *
+ * Formats primitive values (strings, numbers, booleans), `null`, and `undefined` as readable text;
+ * formats Array and `Uint8Array` elements as hex bytes (e.g., `0x1a`) inside brackets; logs other
+ * object types to the browser console and records a message indicating an unhandled type.
+ *
+ * @param {...any} args - Values to format and append to the debug log. The first argument is written
+ *   without a leading prefix; subsequent arguments are appended without additional prefixes.
+ */
 function debugMsg(...args) {
   if (!debugMode.checked) {
     return;
@@ -204,19 +214,30 @@ function enableStyleSheet(node, enabled) {
   node.disabled = !enabled;
 }
 
+/**
+ * Format a MAC address byte array as colon-separated uppercase hexadecimal octets.
+ * @param {Array<number>|Uint8Array} macAddr - Array of bytes representing the MAC address (each 0–255).
+ * @returns {string} Colon-separated uppercase hex octets, e.g. "AA:BB:CC:DD:EE:FF".
+ */
 function formatMacAddr(macAddr) {
   return macAddr
     .map((value) => value.toString(16).toUpperCase().padStart(2, "0"))
     .join(":");
 }
 
+/**
+ * Format a byte value as a two-digit hexadecimal string prefixed with `0x`.
+ * @param {number} value - Numeric value to format (treated as a byte).
+ * @returns {string} Hex string in the form `0xNN` with lowercase letters and at least two digits.
+ */
 function toHex(value) {
   return "0x" + value.toString(16).padStart(2, "0");
 }
 
 /**
- * @name clickConnect
- * Click handler for the connect/disconnect button.
+ * Toggle the connection state: connect to an ESP device (using WebUSB on Android or Web Serial on desktop) or disconnect if already connected.
+ *
+ * On connect, detect platform and transport, initialize the esploader, handle ESP32-S2 native USB reconnection flow when required (showing a modal on desktop or guidance on Android), run the device stub, update UI state, set the detected flash size and selected baud rate, and install a disconnect handler. On disconnect, remove the handler, close the port, clear the stub, and update the UI.
  */
 async function clickConnect() {
   console.log('[clickConnect] Function called');
