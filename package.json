@@ -21,7 +21,7 @@
     "lintAndFix": "eslint src/ --fix"
   },
   "devDependencies": {
-    "@types/node": "^25.0.2",
+    "@types/node": "^25.0.7",
     "@eslint/js": "^9.39.2",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.0",
