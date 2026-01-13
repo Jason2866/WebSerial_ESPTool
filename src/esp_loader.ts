@@ -93,7 +93,7 @@ export class ESPLoader extends EventTarget {
   __totalBytesRead?: number;
   private _currentBaudRate: number = ESP_ROM_BAUD;
   private _maxUSBSerialBaudrate?: number;
-  private _reader?: ReadableStreamDefaultReader<Uint8Array>;
+  public _reader?: ReadableStreamDefaultReader<Uint8Array>;
   private _isESP32S2NativeUSB: boolean = false;
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
