@@ -77,10 +77,10 @@ interface WebUSBSerialPort extends SerialPort {
 }
 
 export class ESPLoader extends EventTarget {
-  chipFamily!: ChipFamily;
-  chipName: string | null = null;
-  chipRevision: number | null = null;
-  chipVariant: string | null = null;
+  __chipFamily?: ChipFamily;
+  __chipName: string | null = null;
+  __chipRevision: number | null = null;
+  __chipVariant: string | null = null;
   _efuses = new Array(4).fill(0);
   _flashsize = 4 * 1024 * 1024;
   debug = false;
@@ -114,6 +114,55 @@ export class ESPLoader extends EventTarget {
     private _parent?: ESPLoader,
   ) {
     super();
+  }
+
+  // Chip properties with parent delegation
+  get chipFamily(): ChipFamily {
+    return this._parent ? this._parent.chipFamily : this.__chipFamily!;
+  }
+
+  set chipFamily(value: ChipFamily) {
+    if (this._parent) {
+      this._parent.chipFamily = value;
+    } else {
+      this.__chipFamily = value;
+    }
+  }
+
+  get chipName(): string | null {
+    return this._parent ? this._parent.chipName : this.__chipName;
+  }
+
+  set chipName(value: string | null) {
+    if (this._parent) {
+      this._parent.chipName = value;
+    } else {
+      this.__chipName = value;
+    }
+  }
+
+  get chipRevision(): number | null {
+    return this._parent ? this._parent.chipRevision : this.__chipRevision;
+  }
+
+  set chipRevision(value: number | null) {
+    if (this._parent) {
+      this._parent.chipRevision = value;
+    } else {
+      this.__chipRevision = value;
+    }
+  }
+
+  get chipVariant(): string | null {
+    return this._parent ? this._parent.chipVariant : this.__chipVariant;
+  }
+
+  set chipVariant(value: string | null) {
+    if (this._parent) {
+      this._parent.chipVariant = value;
+    } else {
+      this.__chipVariant = value;
+    }
   }
 
   private get _inputBuffer(): number[] {
