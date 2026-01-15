@@ -1280,7 +1280,7 @@ export class ESPLoader extends EventTarget {
 
     // All strategies failed - reset abandon flag before throwing
     this._abandonCurrentOperation = false;
-    
+
     throw new Error(
       `Couldn't sync to ESP. Try resetting manually. Last error: ${lastError?.message}`,
     );
@@ -2666,7 +2666,7 @@ export class ESPLoader extends EventTarget {
         return;
       }
       this.addEventListener("disconnect", resolve, { once: true });
-      
+
       // Only cancel if reader is still active
       try {
         this._reader.cancel();
