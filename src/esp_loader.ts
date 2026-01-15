@@ -1278,7 +1278,9 @@ export class ESPLoader extends EventTarget {
       }
     }
 
-    // All strategies failed
+    // All strategies failed - reset abandon flag before throwing
+    this._abandonCurrentOperation = false;
+    
     throw new Error(
       `Couldn't sync to ESP. Try resetting manually. Last error: ${lastError?.message}`,
     );
@@ -2664,7 +2666,15 @@ export class ESPLoader extends EventTarget {
         return;
       }
       this.addEventListener("disconnect", resolve, { once: true });
-      this._reader!.cancel();
+      
+      // Only cancel if reader is still active
+      try {
+        this._reader.cancel();
+      } catch (err) {
+        this.logger.debug(`Reader cancel error: ${err}`);
+        // Reader already released, resolve immediately
+        resolve(undefined);
+      }
     });
     this.connected = false;
   }
