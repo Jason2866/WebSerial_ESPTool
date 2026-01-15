@@ -2624,50 +2624,43 @@ export class ESPLoader extends EventTarget {
       return;
     }
 
+    // Wait for pending writes to complete
     try {
-      // Wait for pending writes to complete
-      try {
-        await this._writeChain;
-      } catch (err) {
-        this.logger.debug(`Pending write error during disconnect: ${err}`);
-      }
-
-      // Block new writes during disconnect
-      this._isReconfiguring = true;
-
-      // Release persistent writer before closing
-      if (this._writer) {
-        try {
-          await this._writer.close();
-          this._writer.releaseLock();
-        } catch (err) {
-          this.logger.debug(`Writer close/release error: ${err}`);
-        }
-        this._writer = undefined;
-      } else {
-        // No persistent writer exists, close stream directly
-        // This path is taken when no writes have been queued
-        try {
-          const writer = this.port.writable.getWriter();
-          await writer.close();
-          writer.releaseLock();
-        } catch (err) {
-          this.logger.debug(`Direct writer close error: ${err}`);
-        }
-      }
-
-      await new Promise((resolve) => {
-        if (!this._reader) {
-          resolve(undefined);
-          return;
-        }
-        this.addEventListener("disconnect", resolve, { once: true });
-        this._reader!.cancel();
-      });
-      this.connected = false;
-    } finally {
-      this._isReconfiguring = false;
+      await this._writeChain;
+    } catch (err) {
+      this.logger.debug(`Pending write error during disconnect: ${err}`);
     }
+
+    // Release persistent writer before closing
+    if (this._writer) {
+      try {
+        await this._writer.close();
+        this._writer.releaseLock();
+      } catch (err) {
+        this.logger.debug(`Writer close/release error: ${err}`);
+      }
+      this._writer = undefined;
+    } else {
+      // No persistent writer exists, close stream directly
+      // This path is taken when no writes have been queued
+      try {
+        const writer = this.port.writable.getWriter();
+        await writer.close();
+        writer.releaseLock();
+      } catch (err) {
+        this.logger.debug(`Direct writer close error: ${err}`);
+      }
+    }
+
+    await new Promise((resolve) => {
+      if (!this._reader) {
+        resolve(undefined);
+        return;
+      }
+      this.addEventListener("disconnect", resolve, { once: true });
+      this._reader!.cancel();
+    });
+    this.connected = false;
   }
 
   /**
