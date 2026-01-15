@@ -21,38 +21,67 @@ export {
   CHIP_FAMILY_ESP32H21,
   CHIP_FAMILY_ESP32P4,
   CHIP_FAMILY_ESP32S31,
+  // Command constants
+  ESP_FLASH_BEGIN,
+  ESP_FLASH_DATA,
+  ESP_FLASH_END,
+  ESP_MEM_BEGIN,
+  ESP_MEM_END,
+  ESP_MEM_DATA,
+  ESP_SYNC,
+  ESP_WRITE_REG,
+  ESP_READ_REG,
+  ESP_ERASE_FLASH,
+  ESP_ERASE_REGION,
+  ESP_READ_FLASH,
+  ESP_SPI_SET_PARAMS,
+  ESP_SPI_ATTACH,
+  ESP_CHANGE_BAUDRATE,
+  ESP_SPI_FLASH_MD5,
+  ESP_GET_SECURITY_INFO,
+  ESP_CHECKSUM_MAGIC,
+  ESP_FLASH_DEFL_BEGIN,
+  ESP_FLASH_DEFL_DATA,
+  ESP_FLASH_DEFL_END,
+  ROM_INVALID_RECV_MSG,
+  // Block size constants
+  USB_RAM_BLOCK,
+  ESP_RAM_BLOCK,
+  // Timeout constants
+  DEFAULT_TIMEOUT,
+  CHIP_ERASE_TIMEOUT,
+  MAX_TIMEOUT,
+  SYNC_TIMEOUT,
+  ERASE_REGION_TIMEOUT_PER_MB,
+  MEM_END_ROM_TIMEOUT,
+  FLASH_READ_TIMEOUT,
 } from "./const";
 
 export const connect = async (logger: Logger) => {
+  // - Request a port and open a connection.
+  // Try to use requestSerialPort if available (supports WebUSB for Android)
   let port: SerialPort;
-
-  // Check if a custom requestSerialPort function is available (e.g., from WebUSB wrapper)
   const customRequestPort = (
     globalThis as { requestSerialPort?: () => Promise<SerialPort> }
   ).requestSerialPort;
-
   if (typeof customRequestPort === "function") {
-    // Use custom port request function (handles Android/WebUSB automatically)
-    logger.log("Using custom port request function");
     port = await customRequestPort();
   } else {
-    // Fallback to standard Web Serial API
+    // Check if Web Serial API is available
     if (!navigator.serial) {
       throw new Error(
         "Web Serial API is not supported in this browser. " +
-          "Please use Chrome 89+, Edge 89+, or Opera on desktop, or Chrome 61+ on Android with USB OTG. " +
+          "Please use Chrome, Edge, or Opera on desktop, or Chrome on Android. " +
           "Note: The page must be served over HTTPS or localhost.",
       );
     }
     port = await navigator.serial.requestPort();
   }
 
-  // Only open if not already open (WebUSB may return an opened port)
+  // Only open if not already open (requestSerialPort may return an opened port)
   if (!port.readable || !port.writable) {
     await port.open({ baudRate: ESP_ROM_BAUD });
   }
-
-  logger.log("Connected successfully.");
 
   return new ESPLoader(port, logger);
 };
@@ -63,12 +92,10 @@ export const connectWithPort = async (port: SerialPort, logger: Logger) => {
     throw new Error("Port is required");
   }
 
-  // Only open if not already open
+  // Check if port is already open, if not open it
   if (!port.readable || !port.writable) {
     await port.open({ baudRate: ESP_ROM_BAUD });
   }
-
-  logger.log("Connected successfully.");
 
   return new ESPLoader(port, logger);
 };
