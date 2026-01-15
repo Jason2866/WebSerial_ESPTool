@@ -42,6 +42,7 @@ import {
   USB_RAM_BLOCK,
   ChipFamily,
   ESP_ERASE_FLASH,
+  ESP_ERASE_REGION,
   ESP_READ_FLASH,
   CHIP_ERASE_TIMEOUT,
   FLASH_READ_TIMEOUT,
@@ -611,6 +612,21 @@ export class ESPLoader extends EventTarget {
       chipId,
       apiVersion,
     };
+  }
+
+  /**
+   * Get MAC address from efuses
+   */
+  async getMacAddress(): Promise<string> {
+    if (!this._initializationSucceeded) {
+      throw new Error(
+        "getMacAddress() requires initialize() to have completed successfully",
+      );
+    }
+    const macBytes = this.macAddr(); // chip-family-aware
+    return macBytes
+      .map((b) => b.toString(16).padStart(2, "0").toUpperCase())
+      .join(":");
   }
 
   /**
@@ -3029,8 +3045,9 @@ export class ESPLoader extends EventTarget {
               newResp.set(packetData, resp.length);
               resp = newResp;
 
-              // Send acknowledgment after receiving maxInFlight bytes
-              // This unblocks the stub to send the next batch of packets
+              // Send acknowledgment when we've received maxInFlight bytes
+              // The stub sends packets until (num_sent - num_acked) >= max_in_flight
+              // We MUST wait for all packets before sending ACK
               const shouldAck =
                 resp.length >= chunkSize || // End of chunk
                 resp.length >= lastAckedLength + maxInFlight; // Received all packets
@@ -3274,10 +3291,55 @@ class EspStubLoader extends ESPLoader {
   }
 
   /**
-   * @name getEraseSize
-   * depending on flash chip model the erase may take this long (maybe longer!)
+   * @name eraseFlash
+   * Erase entire flash chip
    */
   async eraseFlash() {
     await this.checkCommand(ESP_ERASE_FLASH, [], 0, CHIP_ERASE_TIMEOUT);
+  }
+
+  /**
+   * @name eraseRegion
+   * Erase a specific region of flash
+   */
+  async eraseRegion(offset: number, size: number) {
+    // Validate inputs
+    if (offset < 0) {
+      throw new Error(`Invalid offset: ${offset} (must be non-negative)`);
+    }
+    if (size < 0) {
+      throw new Error(`Invalid size: ${size} (must be non-negative)`);
+    }
+
+    // No-op for zero size
+    if (size === 0) {
+      this.logger.log("eraseRegion: size is 0, skipping erase");
+      return;
+    }
+
+    // Check for sector alignment
+    if (offset % FLASH_SECTOR_SIZE !== 0) {
+      throw new Error(
+        `Offset ${offset} (0x${offset.toString(16)}) is not aligned to flash sector size ${FLASH_SECTOR_SIZE} (0x${FLASH_SECTOR_SIZE.toString(16)})`,
+      );
+    }
+    if (size % FLASH_SECTOR_SIZE !== 0) {
+      throw new Error(
+        `Size ${size} (0x${size.toString(16)}) is not aligned to flash sector size ${FLASH_SECTOR_SIZE} (0x${FLASH_SECTOR_SIZE.toString(16)})`,
+      );
+    }
+
+    // Check for reasonable bounds (prevent wrapping in pack)
+    const maxValue = 0xffffffff; // 32-bit unsigned max
+    if (offset > maxValue) {
+      throw new Error(`Offset ${offset} exceeds maximum value ${maxValue}`);
+    }
+    if (size > maxValue) {
+      throw new Error(`Size ${size} exceeds maximum value ${maxValue}`);
+    }
+
+    const timeout = timeoutPerMb(ERASE_REGION_TIMEOUT_PER_MB, size);
+    const buffer = pack("<II", offset, size);
+    await this.checkCommand(ESP_ERASE_REGION, buffer, 0, timeout);
   }
 }
