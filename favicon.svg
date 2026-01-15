@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Background -->
+  <rect width="32" height="32" rx="4" fill="#1a1a1a"/>
+  
+  <!-- ESP chip representation -->
+  <rect x="8" y="8" width="16" height="16" rx="2" fill="#4a90e2" stroke="#ffffff" stroke-width="1"/>
+  
+  <!-- Pins on sides -->
+  <rect x="4" y="10" width="3" height="2" fill="#ffffff"/>
+  <rect x="4" y="14" width="3" height="2" fill="#ffffff"/>
+  <rect x="4" y="18" width="3" height="2" fill="#ffffff"/>
+  <rect x="25" y="10" width="3" height="2" fill="#ffffff"/>
+  <rect x="25" y="14" width="3" height="2" fill="#ffffff"/>
+  <rect x="25" y="18" width="3" height="2" fill="#ffffff"/>
+  
+  <!-- ESP text -->
+  <text x="16" y="18" font-family="Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff" text-anchor="middle">ESP</text>
+</svg>
