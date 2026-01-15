@@ -3,8 +3,9 @@
 !README.md
 !license.md
 
-# Exclude all example html pages
+# Exclude all example html pages and graphics
 *.html
+*.svg
 
 # Exclude Docker, VSC and CI folders
 .devcontainer/
