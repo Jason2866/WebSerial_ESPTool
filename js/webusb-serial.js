@@ -2,10 +2,10 @@
  * WebUSBSerial - Web Serial API-like wrapper for WebUSB
  * Provides a familiar interface for serial communication over USB on Android
  * 
- * This enables ESP32Tool to work on Android devices where Web Serial API
+ * This enables to work on Android devices where Web Serial API
  * is not available but WebUSB is supported.
  * 
- * IMPORTANT: For Android/Xiaomi compatibility, this class uses smaller transfer sizes
+ * IMPORTANT: For Android compatibility, this class uses smaller transfer sizes
  * to prevent SLIP synchronization errors. The maxTransferSize is set to 64 bytes
  * (or endpoint packetSize if smaller) to ensure SLIP frames don't get split.
  */
@@ -24,7 +24,7 @@ class WebUSBSerial {
             'close': [],
             'disconnect': []
         };
-        // Transfer size optimized for WebUSB on Android/Xiaomi
+        // Transfer size optimized for WebUSB on Android
         // CRITICAL: blockSize = (maxTransferSize - 2) / 2
         // Set to 64 bytes for maximum compatibility with all USB-Serial adapters
         // With 64 bytes: blockSize = (64-2)/2 = 31 bytes per SLIP packet
@@ -109,8 +109,7 @@ class WebUSBSerial {
         const baudRate = options.baudRate || 115200;
 
         // If device is already opened, we need to close and reopen it
-        // This is critical for ESP32-S2 which changes interfaces when switching modes
-        if (this.device.opened) {
+        // This is critical for ESP32-S2
             
             try {
                 // Release all interfaces
@@ -148,7 +147,7 @@ class WebUSBSerial {
                 await this.device.reset(); 
             } 
         } catch (e) { 
-//            this._log('[WebUSB] Device reset failed:', e.message);
+            this._log('[WebUSB] Device reset failed:', e.message);
         }
 
         const attemptOpenAndClaim = async () => {
@@ -595,7 +594,7 @@ class WebUSBSerial {
      */
     async setSignals(signals) {
         // Serialize all control transfers through a queue
-        // This is CRITICAL for CP2102 on Android - parallel commands cause hangs
+        // This is CRITICAL for CP2102 - parallel commands cause hangs
         this._commandQueue = this._commandQueue.then(async () => {
             if (!this.device) {
                 throw new Error('Device not open');
@@ -811,8 +810,6 @@ class WebUSBSerial {
         // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
         else if (vid === 0x1a86 && pid !== 0x55d3) {
             // CH340 baudrate calculation (from Linux kernel driver)
-            // CH341_BAUDBASE_FACTOR = 1532620800
-            // CH341_BAUDBASE_DIVMAX = 3
             const CH341_BAUDBASE_FACTOR = 1532620800;
             const CH341_BAUDBASE_DIVMAX = 3;
             
@@ -979,7 +976,7 @@ class WebUSBSerial {
 /**
  * Selects and returns a serial port using the most appropriate browser API for the current platform.
  *
- * Attempts WebUSB on Android (where Web Serial is unreliable) and prefers the Web Serial API on desktop,
+ * Attempts WebUSB on Android and prefers the Web Serial API on desktop,
  * falling back between APIs as needed.
  * @param {boolean} forceNew - When true, prefer requesting a new device (ignore previously authorized devices) for WebUSB.
  * @returns {SerialPort|WebUSBSerial} A serial port obtained from the Web Serial API or a WebUSBSerial instance wrapping a USB device.
