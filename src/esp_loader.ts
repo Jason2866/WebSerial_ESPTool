@@ -695,6 +695,7 @@ export class ESPLoader extends EventTarget {
   }
 
   state_DTR = false;
+  state_RTS = false;
 
   // ============================================================================
   // Web Serial (Desktop) - DTR/RTS Signal Handling & Reset Strategies
@@ -759,6 +760,7 @@ export class ESPLoader extends EventTarget {
   // ============================================================================
 
   async setRTSWebUSB(state: boolean) {
+    this.state_RTS = state;
     // Always specify both signals to avoid flipping the other line
     // The WebUSB setSignals() now preserves unspecified signals, but being explicit is safer
     await (this.port as WebUSBSerialPort).setSignals({
@@ -772,12 +774,13 @@ export class ESPLoader extends EventTarget {
     // Always specify both signals to avoid flipping the other line
     await (this.port as WebUSBSerialPort).setSignals({
       dataTerminalReady: state,
-      requestToSend: undefined, // Let setSignals preserve current RTS state
+      requestToSend: this.state_RTS, // Explicitly preserve current RTS state
     });
   }
 
   async setDTRandRTSWebUSB(dtr: boolean, rts: boolean) {
     this.state_DTR = dtr;
+    this.state_RTS = rts;
     await (this.port as WebUSBSerialPort).setSignals({
       dataTerminalReady: dtr,
       requestToSend: rts,
@@ -1550,6 +1553,14 @@ export class ESPLoader extends EventTarget {
         // Process all available bytes without going back to outer loop
         // This is critical for handling high-speed burst transfers
         while (this._inputBufferAvailable > 0) {
+          // Periodic timeout check to prevent hang on slow data
+          if (Date.now() - startTime > timeout) {
+            const waitingFor = partialPacket === null ? "header" : "content";
+            throw new SlipReadError(
+              "Timed out waiting for packet " + waitingFor,
+            );
+          }
+
           const b = this._readByte()!;
 
           if (partialPacket === null) {
