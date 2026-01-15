@@ -663,7 +663,13 @@ export class ESPLoader extends EventTarget {
       }
     } catch {
       this.logger.error("Read loop got disconnected");
+    } finally {
+      // Always reset reconfiguring flag when read loop ends
+      // This prevents "Cannot write during port reconfiguration" errors
+      // when the read loop dies unexpectedly
+      this._isReconfiguring = false;
     }
+
     // Disconnected!
     this.connected = false;
 
