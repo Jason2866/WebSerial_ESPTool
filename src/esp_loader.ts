@@ -1028,23 +1028,12 @@ export class ESPLoader extends EventTarget {
             },
           });
         } else {
-          // Other USB-JTAG chips: Try Inverted DTR first - works best for ESP32-H2 and other JTAG chips
+          // Other USB-JTAG chips: Use only Inverted DTR (like Desktop uses only one strategy)
+          // Multiple strategies interfere with switching and connecting
           resetStrategies.push({
             name: "USB-JTAG/Serial Inverted DTR (WebUSB)",
             fn: async () => {
               return await self.hardResetUSBJTAGSerialInvertedDTRWebUSB();
-            },
-          });
-          resetStrategies.push({
-            name: "USB-JTAG/Serial (WebUSB)",
-            fn: async () => {
-              return await self.hardResetUSBJTAGSerialWebUSB();
-            },
-          });
-          resetStrategies.push({
-            name: "Inverted DTR Classic (WebUSB)",
-            fn: async () => {
-              return await self.hardResetInvertedDTRWebUSB();
             },
           });
         }
