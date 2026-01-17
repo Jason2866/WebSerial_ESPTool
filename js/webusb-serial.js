@@ -110,6 +110,7 @@ class WebUSBSerial {
 
         // If device is already opened, we need to close and reopen it
         // This is critical for ESP32-S2
+        if (this.device.opened) {
             
             try {
                 // Release all interfaces
@@ -208,11 +209,6 @@ class WebUSBSerial {
                         await this.device.selectAlternateInterface(cand.iface.interfaceNumber, cand.altIndex); 
                     } catch (e) {
                         this._log(`[WebUSB] selectAlternateInterface failed: ${e.message}`);
-                       // If we can't select a non-default alternate, endpoints may not match; try next candidate.
-                       if (cand.altIndex !== 0) {
-                           try { await this.device.releaseInterface(cand.iface.interfaceNumber); } catch (_) {}
-                           continue;
-                       }
                     }
                     this.interfaceNumber = cand.iface.interfaceNumber;
 
@@ -517,12 +513,6 @@ class WebUSBSerial {
                 if (event.device === this.device) {
                     this._fireEvent('disconnect');
                     this._cleanup();
-                    // Mark instance unusable until a new requestPort/open cycle
-                    this.device = null;
-                    this.interfaceNumber = null;
-                    this.controlInterface = null;
-                    this.endpointIn = null;
-                    this.endpointOut = null;
                 }
             };
             navigator.usb.addEventListener('disconnect', this._usbDisconnectHandler);
@@ -742,8 +732,6 @@ class WebUSBSerial {
         const vid = this.device.vendorId;
         const pid = this.device.productId;
 
-//        this._log(`[WebUSB] Changing baudrate to ${baudRate}...`);
-
         // FTDI (VID: 0x0403)
         if (vid === 0x0403) {
             // FTDI baudrate calculation
@@ -785,8 +773,6 @@ class WebUSBSerial {
                 value: value,
                 index: index
             });
-            
-//            this._log('[WebUSB FTDI] Baudrate changed successfully');
         }
         // CP2102 (Silicon Labs VID: 0x10c4)
         else if (vid === 0x10c4) {
@@ -809,14 +795,13 @@ class WebUSBSerial {
         }
         // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
         else if (vid === 0x1a86 && pid !== 0x55d3) {
-            // CH340 baudrate calculation (from Linux kernel driver)
+            // CH340 baudrate calculation
             const CH341_BAUDBASE_FACTOR = 1532620800;
             const CH341_BAUDBASE_DIVMAX = 3;
             
             let factor = Math.floor(CH341_BAUDBASE_FACTOR / baudRate);
             let divisor = CH341_BAUDBASE_DIVMAX;
             
-            // Reduce factor if too large
             while (factor > 0xfff0 && divisor > 0) {
                 factor >>= 3;
                 divisor--;
@@ -839,12 +824,11 @@ class WebUSBSerial {
                 index: a
             });
             
-            // Second control transfer with b value
             await this.device.controlTransferOut({
                 requestType: 'vendor',
                 recipient: 'device',
                 request: 0x9A,
-                value: 0x0f2c, // Fixed value
+                value: 0x0f2c,
                 index: b
             });
 
@@ -1019,12 +1003,6 @@ async function requestSerialPort(forceNew = false) {
     }
     
     throw new Error('Neither Web Serial API nor WebUSB is supported in this browser');
-}
-
-// Also set on globalThis for non-module usage (e.g., dynamic script loading)
-if (typeof globalThis !== 'undefined') {
-    globalThis.WebUSBSerial = WebUSBSerial;
-    globalThis.requestSerialPort = requestSerialPort;
 }
 
 // Export as ES modules
