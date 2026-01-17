@@ -80,7 +80,7 @@ class WebUSBSerial {
                 );
                 
                 if (device) {
-                    // Device already authorized, will reuse it
+                    log('[WebUSB] Reusing previously authorized device');
                 }
             } catch (err) {
                 // Can't use this._log in static method, use console as fallback
@@ -90,6 +90,9 @@ class WebUSBSerial {
 
         // If no device found or forceNew is true, request a new device
         if (!device) {
+            if (!navigator.usb) {
+                throw new Error('WebUSB not available');
+            }
             device = await navigator.usb.requestDevice({ filters });
         }
 
@@ -110,6 +113,7 @@ class WebUSBSerial {
 
         // If device is already opened, we need to close and reopen it
         // This is critical for ESP32-S2
+        if (this.device.opened) {
             
             try {
                 // Release all interfaces
@@ -147,7 +151,7 @@ class WebUSBSerial {
                 await this.device.reset(); 
             } 
         } catch (e) { 
-            this._log('[WebUSB] Device reset failed:', e.message);
+//            this._log('[WebUSB] Device reset failed:', e.message);
         }
 
         const attemptOpenAndClaim = async () => {
@@ -208,11 +212,6 @@ class WebUSBSerial {
                         await this.device.selectAlternateInterface(cand.iface.interfaceNumber, cand.altIndex); 
                     } catch (e) {
                         this._log(`[WebUSB] selectAlternateInterface failed: ${e.message}`);
-                       // If we can't select a non-default alternate, endpoints may not match; try next candidate.
-                       if (cand.altIndex !== 0) {
-                           try { await this.device.releaseInterface(cand.iface.interfaceNumber); } catch (_) {}
-                           continue;
-                       }
                     }
                     this.interfaceNumber = cand.iface.interfaceNumber;
 
@@ -517,12 +516,6 @@ class WebUSBSerial {
                 if (event.device === this.device) {
                     this._fireEvent('disconnect');
                     this._cleanup();
-                    // Mark instance unusable until a new requestPort/open cycle
-                    this.device = null;
-                    this.interfaceNumber = null;
-                    this.controlInterface = null;
-                    this.endpointIn = null;
-                    this.endpointOut = null;
                 }
             };
             navigator.usb.addEventListener('disconnect', this._usbDisconnectHandler);
@@ -974,12 +967,9 @@ class WebUSBSerial {
 }
 
 /**
- * Selects and returns a serial port using the most appropriate browser API for the current platform.
- *
- * Attempts WebUSB on Android and prefers the Web Serial API on desktop,
- * falling back between APIs as needed.
- * @param {boolean} forceNew - When true, prefer requesting a new device (ignore previously authorized devices) for WebUSB.
- * @returns {SerialPort|WebUSBSerial} A serial port obtained from the Web Serial API or a WebUSBSerial instance wrapping a USB device.
+ * Unified port request function that tries WebUSB first on Android, Web Serial on Desktop
+ * This provides seamless support for both desktop (Web Serial) and Android (WebUSB)
+ * @param {boolean} forceNew - If true, forces selection of a new device (ignores already paired devices)
  */
 async function requestSerialPort(forceNew = false) {
     // Detect if we're on Android
