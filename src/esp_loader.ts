@@ -1042,7 +1042,7 @@ export class ESPLoader extends EventTarget {
       // For USB-Serial chips (CP2102, CH34x, etc.), use same strategies
       if (isUSBSerialChip) {
         const chipName = isCP2102 ? "CP2102" : isCH34x ? "CH34x" : "USB-Serial";
-        
+
         // UnixTight works best (tested and confirmed)
         resetStrategies.push({
           name: `UnixTight (WebUSB) - ${chipName}`,
