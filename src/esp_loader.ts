@@ -1249,18 +1249,18 @@ export class ESPLoader extends EventTarget {
 
         await strategy.fn();
 
-        // Try to sync after reset with internally time-bounded sync (3 seconds per strategy)
-        const syncSuccess = await this.syncWithTimeout(3000);
+        // Try to sync after reset with timeout (1 second per strategy)
+        const syncPromise = this.sync();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Sync timeout")), 1000),
+        );
 
-        if (syncSuccess) {
-          // Sync succeeded
-          this.logger.log(
-            `Connected successfully with ${strategy.name} reset.`,
-          );
-          return;
-        } else {
-          throw new Error("Sync timeout or abandoned");
-        }
+        await Promise.race([syncPromise, timeoutPromise]);
+
+        // If we get here, sync succeeded
+        this.logger.log(`Connected successfully with ${strategy.name} reset.`);
+
+        return;
       } catch (error) {
         lastError = error as Error;
         this.logger.log(
@@ -1875,47 +1875,6 @@ export class ESPLoader extends EventTarget {
       // Always reset flag, even on error or early return
       this._isReconfiguring = false;
     }
-  }
-
-  /**
-   * @name syncWithTimeout
-   * Sync with timeout that can be abandoned (for reset strategy loop)
-   * This is internally time-bounded and checks the abandon flag
-   */
-  async syncWithTimeout(timeoutMs: number): Promise<boolean> {
-    const startTime = Date.now();
-
-    for (let i = 0; i < 5; i++) {
-      // Check if we've exceeded the timeout
-      if (Date.now() - startTime > timeoutMs) {
-        return false;
-      }
-
-      // Check abandon flag
-      if (this._abandonCurrentOperation) {
-        return false;
-      }
-
-      this._clearInputBuffer();
-
-      try {
-        const response = await this._sync();
-        if (response) {
-          await sleep(SYNC_TIMEOUT);
-          return true;
-        }
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (e) {
-        // Check abandon flag after error
-        if (this._abandonCurrentOperation) {
-          return false;
-        }
-      }
-
-      await sleep(SYNC_TIMEOUT);
-    }
-
-    return false;
   }
 
   /**
