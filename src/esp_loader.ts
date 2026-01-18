@@ -1255,9 +1255,9 @@ export class ESPLoader extends EventTarget {
         // USB-Serial / native USB chips needs different sync approaches
 
         if (isUSBSerialChip) {
-          // USB-Serial chips: Use timeout strategy (1 second)
+          // USB-Serial chips: Use timeout strategy (2 seconds)
           //          this.logger.log(`USB-Serial chip detected, using sync with timeout.`);
-          const syncSuccess = await this.syncWithTimeout(1000);
+          const syncSuccess = await this.syncWithTimeout(2000);
 
           if (syncSuccess) {
             // Sync succeeded
