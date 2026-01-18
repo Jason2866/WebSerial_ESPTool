@@ -2885,7 +2885,11 @@ export class ESPLoader extends EventTarget {
       this.logger.debug("Stub loaded");
 
       // Restore baudrate if it was changed
-      if (this._currentBaudRate !== ESP_ROM_BAUD) {
+      // Skip for ESP8266 as it only supports 115200 baud in stub mode
+      if (
+        this._currentBaudRate !== ESP_ROM_BAUD &&
+        this.chipFamily !== CHIP_FAMILY_ESP8266
+      ) {
         await stubLoader.setBaudrate(this._currentBaudRate);
 
         // Verify port is still ready after baudrate change
