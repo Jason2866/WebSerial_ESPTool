@@ -977,10 +977,12 @@ export class ESPLoader extends EventTarget {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
 
+    // Detect if this is a USB-Serial chip (needs different sync approach)
+    const isUSBSerialChip = !isUSBJTAGSerial && !isEspressifUSB;
+
     // WebUSB (Android) uses different reset methods than Web Serial (Desktop)
     if (this.isWebUSB()) {
       // For USB-Serial chips (CP2102, CH340, etc.), try inverted strategies first
-      const isUSBSerialChip = !isUSBJTAGSerial && !isEspressifUSB;
 
       // Detect specific chip types once
       const isCP2102 = portInfo.usbVendorId === 0x10c4;
@@ -1249,18 +1251,42 @@ export class ESPLoader extends EventTarget {
 
         await strategy.fn();
 
-        // Try to sync after reset with timeout (1 second per strategy)
-        const syncPromise = this.sync();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Sync timeout")), 1000),
-        );
+        // Try to sync after reset
+        // USB-Serial / native USB chips needs different sync approaches
 
-        await Promise.race([syncPromise, timeoutPromise]);
+        if (isUSBSerialChip) {
+          // USB-Serial chips: Use timeout strategy (1 second)
+          //          this.logger.log(`USB-Serial chip detected, using sync with timeout.`);
+          const syncSuccess = await this.syncWithTimeout(1000);
 
-        // If we get here, sync succeeded
-        this.logger.log(`Connected successfully with ${strategy.name} reset.`);
+          if (syncSuccess) {
+            // Sync succeeded
+            this.logger.log(
+              `Connected USB Serial successfully with ${strategy.name} reset.`,
+            );
+            return;
+          } else {
+            throw new Error("Sync timeout or abandoned");
+          }
+        } else {
+          // Native USB chips
+          //          this.logger.log(`Native USB chip detected, using CDC/JTAG sync.`);
+          const syncPromise = this.sync();
+          const timeoutPromise = new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error("Sync timeout")), 1000),
+          );
 
-        return;
+          try {
+            await Promise.race([syncPromise, timeoutPromise]);
+            // Sync succeeded
+            this.logger.log(
+              `Connected CDC/JTAG successfully with ${strategy.name} reset.`,
+            );
+            return;
+          } catch (error) {
+            throw new Error("Sync timeout or abandoned");
+          }
+        }
       } catch (error) {
         lastError = error as Error;
         this.logger.log(
@@ -1875,6 +1901,47 @@ export class ESPLoader extends EventTarget {
       // Always reset flag, even on error or early return
       this._isReconfiguring = false;
     }
+  }
+
+  /**
+   * @name syncWithTimeout
+   * Sync with timeout that can be abandoned (for reset strategy loop)
+   * This is internally time-bounded and checks the abandon flag
+   */
+  async syncWithTimeout(timeoutMs: number): Promise<boolean> {
+    const startTime = Date.now();
+
+    for (let i = 0; i < 5; i++) {
+      // Check if we've exceeded the timeout
+      if (Date.now() - startTime > timeoutMs) {
+        return false;
+      }
+
+      // Check abandon flag
+      if (this._abandonCurrentOperation) {
+        return false;
+      }
+
+      this._clearInputBuffer();
+
+      try {
+        const response = await this._sync();
+        if (response) {
+          await sleep(SYNC_TIMEOUT);
+          return true;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (e) {
+        // Check abandon flag after error
+        if (this._abandonCurrentOperation) {
+          return false;
+        }
+      }
+
+      await sleep(SYNC_TIMEOUT);
+    }
+
+    return false;
   }
 
   /**
