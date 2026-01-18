@@ -1270,6 +1270,9 @@ export class ESPLoader extends EventTarget {
           }
         } else {
           // Native USB chips
+          // Note: We use Promise.race with sync() directly instead of syncWithTimeout()
+          // because syncWithTimeout causes CDC/JTAG devices to hang for unknown reasons.
+          // The abandon flag in readPacket() prevents overlapping I/O.
           //          this.logger.log(`Native USB chip detected, using CDC/JTAG sync.`);
           const syncPromise = this.sync();
           const timeoutPromise = new Promise<void>((_, reject) =>
