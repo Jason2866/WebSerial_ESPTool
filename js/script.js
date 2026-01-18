@@ -12,6 +12,25 @@ let esp32s2ReconnectInProgress = false;
 let isConnected = false; // Track connection state
 let isAndroidPlatform = false; // Track if running on Android
 
+/**
+ * Clear all cached data and state on disconnect
+ */
+function clearAllCachedData() {
+
+  // Clear partition list
+  partitionList.innerHTML = '';
+  partitionList.classList.add('hidden');
+  
+  // Show the Read Partition Table button again
+  butReadPartitions.classList.remove('hidden');
+  
+  // Hide ESP8266 info (if it exists)
+  const esp8266Info = document.getElementById('esp8266Info');
+  if (esp8266Info) {
+    esp8266Info.classList.add('hidden');
+  }
+}
+
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 const bufferSize = 512;
 const colors = ["#00a7e9", "#f89521", "#be1e2d"];
@@ -315,7 +334,10 @@ async function clickConnect() {
     }
     toggleUIConnected(false);
     espStub = undefined;
-    
+
+    // Clear all cached data and state
+    clearAllCachedData();
+
     return;
   }
 

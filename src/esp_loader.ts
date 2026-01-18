@@ -721,6 +721,15 @@ export class ESPLoader extends EventTarget {
     await this.port.setSignals({ dataTerminalReady: state });
   }
 
+  async setDTRandRTS(dtr: boolean, rts: boolean) {
+    this.state_DTR = dtr;
+    this.state_RTS = rts;
+    await this.port.setSignals({
+      dataTerminalReady: dtr,
+      requestToSend: rts,
+    });
+  }
+
   /**
    * @name hardResetUSBJTAGSerial
    * USB-JTAG/Serial reset for Web Serial (Desktop)
@@ -747,7 +756,7 @@ export class ESPLoader extends EventTarget {
 
   /**
    * @name hardResetClassic
-   * Classic reset for Web Serial (Desktop)
+   * Classic reset for Web Serial (Desktop) DTR = IO0, RTS = EN
    */
   async hardResetClassic() {
     await this.setDTR(false); // IO0=HIGH
@@ -757,6 +766,23 @@ export class ESPLoader extends EventTarget {
     await this.setRTS(false); // EN=HIGH, chip out of reset
     await this.sleep(50);
     await this.setDTR(false); // IO0=HIGH, done
+
+    await this.sleep(200);
+  }
+
+  /**
+   * @name hardResetUnixTight
+   * Unix Tight reset for Web Serial (Desktop) - sets DTR and RTS simultaneously
+   */
+  async hardResetUnixTight() {
+    await this.setDTRandRTS(true, true);
+    await this.setDTRandRTS(false, false);
+    await this.setDTRandRTS(false, true); // IO0=HIGH & EN=LOW, chip in reset
+    await this.sleep(100);
+    await this.setDTRandRTS(true, false); // IO0=LOW & EN=HIGH, chip out of reset
+    await this.sleep(50);
+    await this.setDTRandRTS(false, false); // IO0=HIGH, done
+    await this.setDTR(false); // Needed in some environments to ensure IO0=HIGH
 
     await this.sleep(200);
   }
@@ -1216,11 +1242,11 @@ export class ESPLoader extends EventTarget {
         });
       }
 
-      // Strategy: Classic reset
+      // Strategy: UnixTight reset
       resetStrategies.push({
-        name: "Classic",
+        name: "UnixTight",
         fn: async function () {
-          return await self.hardResetClassic();
+          return await self.hardResetUnixTight();
         },
       });
 
