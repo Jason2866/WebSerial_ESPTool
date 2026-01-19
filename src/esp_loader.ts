@@ -2634,7 +2634,9 @@ export class ESPLoader extends EventTarget {
   }
 
   private get _currentBaudRate(): number {
-    return this._parent ? this._parent._currentBaudRate : this.__currentBaudRate;
+    return this._parent
+      ? this._parent._currentBaudRate
+      : this.__currentBaudRate;
   }
 
   private set _currentBaudRate(value: number) {
@@ -2932,6 +2934,111 @@ export class ESPLoader extends EventTarget {
       this.IS_STUB = true;
 
       this.logger.debug("Reconnection successful");
+    } catch (err) {
+      // Ensure flag is reset on error
+      this._isReconfiguring = false;
+      throw err;
+    }
+  }
+
+  /**
+   * @name reconnectToBootloader
+   * Close and reopen the port, then reset ESP to bootloader mode
+   * This is needed after Improv or other operations that leave ESP in firmware mode
+   */
+  async reconnectToBootloader(): Promise<void> {
+    if (this._parent) {
+      await this._parent.reconnectToBootloader();
+      return;
+    }
+
+    try {
+      this.logger.log("Reconnecting to bootloader mode...");
+
+      this.connected = false;
+      this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
+
+      // Wait for pending writes to complete
+      try {
+        await this._writeChain;
+      } catch (err) {
+        this.logger.debug(`Pending write error during reconnect: ${err}`);
+      }
+
+      // Block new writes during port close/open
+      this._isReconfiguring = true;
+
+      // Release persistent writer
+      if (this._writer) {
+        try {
+          this._writer.releaseLock();
+        } catch (err) {
+          this.logger.debug(`Writer release error during reconnect: ${err}`);
+        }
+        this._writer = undefined;
+      }
+
+      // Cancel reader
+      if (this._reader) {
+        try {
+          await this._reader.cancel();
+        } catch (err) {
+          this.logger.debug(`Reader cancel error: ${err}`);
+        }
+        this._reader = undefined;
+      }
+
+      // Close port
+      try {
+        await this.port.close();
+        this.logger.log("Port closed");
+      } catch (err) {
+        this.logger.debug(`Port close error: ${err}`);
+      }
+
+      // Open the port
+      this.logger.debug("Opening port...");
+      try {
+        await this.port.open({ baudRate: ESP_ROM_BAUD });
+        this.connected = true;
+      } catch (err) {
+        throw new Error(`Failed to open port: ${err}`);
+      }
+
+      // Verify port streams are available
+      if (!this.port.readable || !this.port.writable) {
+        throw new Error(
+          `Port streams not available after open (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
+        );
+      }
+
+      // Port is now open and ready - allow writes for initialization
+      this._isReconfiguring = false;
+
+      // Reset chip info and stub state
+      this.__chipFamily = undefined;
+      this.chipName = "Unknown Chip";
+      this.IS_STUB = false;
+
+      // Start read loop
+      if (!this._parent) {
+        this.__inputBuffer = [];
+        this.__inputBufferReadIndex = 0;
+        this.__totalBytesRead = 0;
+        this.readLoop();
+      }
+
+      // Wait for readLoop to start
+      await sleep(100);
+
+      // Reset to bootloader mode using multiple strategies
+      await this.connectWithResetStrategies();
+
+      // Detect chip type
+      await this.detectChip();
+
+      this.logger.log(`Reconnected to bootloader: ${this.chipName}`);
     } catch (err) {
       // Ensure flag is reset on error
       this._isReconfiguring = false;
