@@ -92,7 +92,7 @@ export class ESPLoader extends EventTarget {
   __inputBuffer?: number[];
   __inputBufferReadIndex?: number;
   __totalBytesRead?: number;
-  private _currentBaudRate: number = ESP_ROM_BAUD;
+  private __currentBaudRate: number = ESP_ROM_BAUD;
   private _maxUSBSerialBaudrate?: number;
   public __reader?: ReadableStreamDefaultReader<Uint8Array>;
   private _isESP32S2NativeUSB: boolean = false;
@@ -2630,6 +2630,18 @@ export class ESPLoader extends EventTarget {
       this._parent._writeChain = value;
     } else {
       this.__writeChain = value;
+    }
+  }
+
+  private get _currentBaudRate(): number {
+    return this._parent ? this._parent._currentBaudRate : this.__currentBaudRate;
+  }
+
+  private set _currentBaudRate(value: number) {
+    if (this._parent) {
+      this._parent._currentBaudRate = value;
+    } else {
+      this.__currentBaudRate = value;
     }
   }
 
