@@ -94,7 +94,7 @@ export class ESPLoader extends EventTarget {
   __totalBytesRead?: number;
   private _currentBaudRate: number = ESP_ROM_BAUD;
   private _maxUSBSerialBaudrate?: number;
-  public _reader?: ReadableStreamDefaultReader<Uint8Array>;
+  public __reader?: ReadableStreamDefaultReader<Uint8Array>;
   private _isESP32S2NativeUSB: boolean = false;
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
@@ -2592,6 +2592,20 @@ export class ESPLoader extends EventTarget {
 
   __writer?: WritableStreamDefaultWriter<Uint8Array>;
   __writeChain: Promise<void> = Promise.resolve();
+
+  private get _reader(): ReadableStreamDefaultReader<Uint8Array> | undefined {
+    return this._parent ? this._parent._reader : this.__reader;
+  }
+
+  private set _reader(
+    value: ReadableStreamDefaultReader<Uint8Array> | undefined,
+  ) {
+    if (this._parent) {
+      this._parent._reader = value;
+    } else {
+      this.__reader = value;
+    }
+  }
 
   private get _writer(): WritableStreamDefaultWriter<Uint8Array> | undefined {
     return this._parent ? this._parent._writer : this.__writer;
