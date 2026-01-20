@@ -60,6 +60,14 @@ import {
   CHIP_ID_TO_INFO,
   ESP32P4_EFUSE_BLOCK1_ADDR,
   SlipReadError,
+  ESP32S2_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32S2_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32S2_RTC_CNTL_WDTCONFIG1_REG,
+  ESP32S2_RTC_CNTL_WDT_WKEY,
+  ESP32S3_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32S3_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32S3_RTC_CNTL_WDTCONFIG1_REG,
+  ESP32S3_RTC_CNTL_WDT_WKEY,
 } from "./const";
 import { getStubCode } from "./stubs";
 import { hexFormatter, sleep, slipEncode, toHex } from "./util";
@@ -1349,6 +1357,53 @@ export class ESPLoader extends EventTarget {
     );
   }
 
+  /**
+   * @name watchdogReset
+   * Watchdog reset for ESP32-S2/S3 with USB-OTG
+   * Uses RTC watchdog timer to reset the chip - works when DTR/RTS signals are not available
+   */
+  async watchdogReset() {
+    this.logger.log("Hard resetting with watchdog timer...");
+
+    // Select correct register addresses based on chip family
+    let WDTWPROTECT_REG: number;
+    let WDTCONFIG0_REG: number;
+    let WDTCONFIG1_REG: number;
+    let WDT_WKEY: number;
+
+    if (this.chipFamily === CHIP_FAMILY_ESP32S2) {
+      WDTWPROTECT_REG = ESP32S2_RTC_CNTL_WDTWPROTECT_REG;
+      WDTCONFIG0_REG = ESP32S2_RTC_CNTL_WDTCONFIG0_REG;
+      WDTCONFIG1_REG = ESP32S2_RTC_CNTL_WDTCONFIG1_REG;
+      WDT_WKEY = ESP32S2_RTC_CNTL_WDT_WKEY;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32S3) {
+      WDTWPROTECT_REG = ESP32S3_RTC_CNTL_WDTWPROTECT_REG;
+      WDTCONFIG0_REG = ESP32S3_RTC_CNTL_WDTCONFIG0_REG;
+      WDTCONFIG1_REG = ESP32S3_RTC_CNTL_WDTCONFIG1_REG;
+      WDT_WKEY = ESP32S3_RTC_CNTL_WDT_WKEY;
+    } else {
+      throw new Error(
+        `watchdogReset() is only supported for ESP32-S2 and ESP32-S3, not ${this.chipFamily}`,
+      );
+    }
+
+    // Unlock watchdog registers
+    await this.writeRegister(WDTWPROTECT_REG, WDT_WKEY, undefined, 0);
+
+    // Set WDT timeout to 2000ms
+    await this.writeRegister(WDTCONFIG1_REG, 2000, undefined, 0);
+
+    // Enable WDT: bit 31 = enable, bits 28-30 = stage, bit 8 = sys reset, bits 0-2 = prescaler
+    const wdtConfig = (1 << 31) | (5 << 28) | (1 << 8) | 2;
+    await this.writeRegister(WDTCONFIG0_REG, wdtConfig, undefined, 0);
+
+    // Lock watchdog registers
+    await this.writeRegister(WDTWPROTECT_REG, 0, undefined, 0);
+
+    // Wait for reset to take effect
+    await this.sleep(500);
+  }
+
   async hardReset(bootloader = false) {
     if (bootloader) {
       // enter flash mode
@@ -1367,7 +1422,15 @@ export class ESPLoader extends EventTarget {
       }
     } else {
       // just reset (no bootloader mode)
-      if (this.isWebUSB()) {
+      // For ESP32-S2/S3 with USB-OTG, use watchdog reset instead of DTR/RTS
+      if (
+        this.port.getInfo().usbProductId === USB_JTAG_SERIAL_PID &&
+        (this.chipFamily === CHIP_FAMILY_ESP32S2 ||
+          this.chipFamily === CHIP_FAMILY_ESP32S3)
+      ) {
+        await this.watchdogReset();
+        this.logger.log("Watchdog reset (USB-OTG).");
+      } else if (this.isWebUSB()) {
         // WebUSB: Use longer delays for better compatibility
         await this.setRTSWebUSB(true); // EN->LOW
         await this.sleep(200);
