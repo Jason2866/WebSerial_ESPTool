@@ -483,9 +483,8 @@ async function clickConnect() {
   }
   
   // Set the selected baud rate
-  // Skip for ESP8266 as it only supports 115200 baud in stub mode
   let baud = parseInt(baudRate.value);
-  if (baudRates.includes(baud) && esploader.chipName !== "ESP8266") {
+  if (baudRates.includes(baud)) {
     await espStub.setBaudrate(baud);
   }
   
@@ -505,11 +504,6 @@ async function clickConnect() {
 async function changeBaudRate() {
   saveSetting("baudrate", baudRate.value);
   if (espStub) {
-    // Skip for ESP8266 as it only supports 115200 baud in stub mode
-    if (espStub.chipName === "ESP8266") {
-      logMsg("ESP8266 stub only supports 115200 baud");
-      return;
-    }
     let baud = parseInt(baudRate.value);
     if (baudRates.includes(baud)) {
       await espStub.setBaudrate(baud);

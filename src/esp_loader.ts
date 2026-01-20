@@ -1873,10 +1873,6 @@ export class ESPLoader extends EventTarget {
   }
 
   async setBaudrate(baud: number) {
-    if (this.chipFamily == CHIP_FAMILY_ESP8266) {
-      throw new Error("Changing baud rate is not supported on the ESP8266");
-    }
-
     try {
       // Send ESP_ROM_BAUD(115200) as the old one if running STUB otherwise 0
       const buffer = pack("<II", baud, this.IS_STUB ? ESP_ROM_BAUD : 0);
@@ -1908,7 +1904,7 @@ export class ESPLoader extends EventTarget {
     const maxBaud = this._parent
       ? this._parent._maxUSBSerialBaudrate
       : this._maxUSBSerialBaudrate;
-    if (maxBaud && baud > maxBaud) {
+    if (maxBaud && baud >= maxBaud) {
       this.logger.log(
         `⚠️  WARNING: Baudrate ${baud} exceeds USB-Serial chip limit (${maxBaud})!`,
       );
