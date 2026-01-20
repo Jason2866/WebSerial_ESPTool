@@ -1904,7 +1904,7 @@ export class ESPLoader extends EventTarget {
     const maxBaud = this._parent
       ? this._parent._maxUSBSerialBaudrate
       : this._maxUSBSerialBaudrate;
-    if (maxBaud && baud >= maxBaud) {
+    if (maxBaud && baud > maxBaud) {
       this.logger.log(
         `⚠️  WARNING: Baudrate ${baud} exceeds USB-Serial chip limit (${maxBaud})!`,
       );
