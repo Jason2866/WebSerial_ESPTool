@@ -112,6 +112,12 @@ export const ESP32S2_RTC_CNTL_WDTCONFIG0_REG = 0x3f408094;
 export const ESP32S2_RTC_CNTL_WDTCONFIG1_REG = 0x3f408098;
 export const ESP32S2_RTC_CNTL_WDT_WKEY = 0x50d83aa1;
 
+// ESP32-S2 GPIO strap register and boot mode control
+export const ESP32S2_GPIO_STRAP_REG = 0x3f404038;
+export const ESP32S2_GPIO_STRAP_SPI_BOOT_MASK = 1 << 3; // Not download mode
+export const ESP32S2_RTC_CNTL_OPTION1_REG = 0x3f408128;
+export const ESP32S2_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK = 0x1; // Is download mode forced over USB?
+
 export const ESP32S3_SPI_REG_BASE = 0x60002000;
 export const ESP32S3_BASEFUSEADDR = 0x60007000;
 export const ESP32S3_MACFUSEADDR = 0x60007000 + 0x044;
@@ -129,6 +135,12 @@ export const ESP32S3_RTC_CNTL_WDTWPROTECT_REG = 0x600080b0;
 export const ESP32S3_RTC_CNTL_WDTCONFIG0_REG = 0x60008098;
 export const ESP32S3_RTC_CNTL_WDTCONFIG1_REG = 0x6000809c;
 export const ESP32S3_RTC_CNTL_WDT_WKEY = 0x50d83aa1;
+
+// ESP32-S3 GPIO strap register and boot mode control
+export const ESP32S3_GPIO_STRAP_REG = 0x60004038;
+export const ESP32S3_GPIO_STRAP_SPI_BOOT_MASK = 1 << 3; // Not download mode
+export const ESP32S3_RTC_CNTL_OPTION1_REG = 0x6000812c;
+export const ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK = 0x1; // Is download mode forced over USB?
 
 export const ESP32C2_SPI_REG_BASE = 0x60002000;
 export const ESP32C2_BASEFUSEADDR = 0x60008800;
