@@ -64,10 +64,18 @@ import {
   ESP32S2_RTC_CNTL_WDTCONFIG0_REG,
   ESP32S2_RTC_CNTL_WDTCONFIG1_REG,
   ESP32S2_RTC_CNTL_WDT_WKEY,
+  ESP32S2_GPIO_STRAP_REG,
+  ESP32S2_GPIO_STRAP_SPI_BOOT_MASK,
+  ESP32S2_RTC_CNTL_OPTION1_REG,
+  ESP32S2_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
   ESP32S3_RTC_CNTL_WDTWPROTECT_REG,
   ESP32S3_RTC_CNTL_WDTCONFIG0_REG,
   ESP32S3_RTC_CNTL_WDTCONFIG1_REG,
   ESP32S3_RTC_CNTL_WDT_WKEY,
+  ESP32S3_GPIO_STRAP_REG,
+  ESP32S3_GPIO_STRAP_SPI_BOOT_MASK,
+  ESP32S3_RTC_CNTL_OPTION1_REG,
+  ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
 } from "./const";
 import { getStubCode } from "./stubs";
 import { hexFormatter, sleep, slipEncode, toHex } from "./util";
@@ -1422,14 +1430,89 @@ export class ESPLoader extends EventTarget {
       }
     } else {
       // just reset (no bootloader mode)
-      // For ESP32-S2/S3 with USB-OTG, use watchdog reset instead of DTR/RTS
+      // For ESP32-S2/S3 with USB-OTG, check if watchdog reset is needed
       if (
         this.port.getInfo().usbProductId === USB_JTAG_SERIAL_PID &&
         (this.chipFamily === CHIP_FAMILY_ESP32S2 ||
           this.chipFamily === CHIP_FAMILY_ESP32S3)
       ) {
-        await this.watchdogReset();
-        this.logger.log("Watchdog reset (USB-OTG).");
+        // ESP32-S2/S3: Clear force download boot mode first
+        try {
+          // Clear force download boot mode to avoid chip being stuck in download mode
+          // after reset. Workaround for issue:
+          // https://github.com/espressif/arduino-esp32/issues/6762
+          const RTC_CNTL_OPTION1_REG =
+            this.chipFamily === CHIP_FAMILY_ESP32S2
+              ? ESP32S2_RTC_CNTL_OPTION1_REG
+              : ESP32S3_RTC_CNTL_OPTION1_REG;
+          const RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK =
+            this.chipFamily === CHIP_FAMILY_ESP32S2
+              ? ESP32S2_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK
+              : ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK;
+
+          await this.writeRegister(
+            RTC_CNTL_OPTION1_REG,
+            0,
+            RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+            0,
+          );
+        } catch (e) {
+          // Skip invalid response and continue reset (can happen when monitoring during reset)
+          this.logger.log(
+            "Warning: Could not clear force download boot mode:",
+            e,
+          );
+        }
+
+        // Check the strapping register to see if we can perform a watchdog reset
+        // Only use watchdog reset if GPIO0 is low AND force download boot mode is not set
+        let useWatchdogReset = false;
+        try {
+          const GPIO_STRAP_REG =
+            this.chipFamily === CHIP_FAMILY_ESP32S2
+              ? ESP32S2_GPIO_STRAP_REG
+              : ESP32S3_GPIO_STRAP_REG;
+          const GPIO_STRAP_SPI_BOOT_MASK =
+            this.chipFamily === CHIP_FAMILY_ESP32S2
+              ? ESP32S2_GPIO_STRAP_SPI_BOOT_MASK
+              : ESP32S3_GPIO_STRAP_SPI_BOOT_MASK;
+          const RTC_CNTL_OPTION1_REG =
+            this.chipFamily === CHIP_FAMILY_ESP32S2
+              ? ESP32S2_RTC_CNTL_OPTION1_REG
+              : ESP32S3_RTC_CNTL_OPTION1_REG;
+          const RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK =
+            this.chipFamily === CHIP_FAMILY_ESP32S2
+              ? ESP32S2_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK
+              : ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK;
+
+          const strapReg = await this.readRegister(GPIO_STRAP_REG);
+          const forceDlReg = await this.readRegister(RTC_CNTL_OPTION1_REG);
+
+          // GPIO0 low (download mode) AND force download boot not set
+          if (
+            (strapReg & GPIO_STRAP_SPI_BOOT_MASK) === 0 &&
+            (forceDlReg & RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK) === 0
+          ) {
+            useWatchdogReset = true;
+          }
+        } catch (e) {
+          // If we can't read the registers, use watchdog reset as fallback
+          this.logger.log(
+            "Warning: Could not read strap/option registers, using watchdog reset:",
+            e,
+          );
+          useWatchdogReset = true;
+        }
+
+        if (useWatchdogReset) {
+          await this.watchdogReset();
+          this.logger.log("Watchdog reset (USB-OTG).");
+        } else {
+          // Not in download mode, can use DTR/RTS reset
+          // But USB-OTG doesn't have DTR/RTS, so fall back to watchdog
+          await this.watchdogReset();
+          this.logger.log("Watchdog reset (USB-OTG, normal boot).");
+        }
       } else if (this.isWebUSB()) {
         // WebUSB: Use longer delays for better compatibility
         await this.setRTSWebUSB(true); // EN->LOW
