@@ -76,6 +76,39 @@ import {
   ESP32S3_GPIO_STRAP_SPI_BOOT_MASK,
   ESP32S3_RTC_CNTL_OPTION1_REG,
   ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+  ESP32S2_UARTDEV_BUF_NO,
+  ESP32S2_UARTDEV_BUF_NO_USB_OTG,
+  ESP32S3_UARTDEV_BUF_NO,
+  ESP32S3_UARTDEV_BUF_NO_USB_OTG,
+  ESP32S3_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32C3_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32C3_BUF_UART_NO_OFFSET,
+  ESP32C3_EFUSE_RD_MAC_SPI_SYS_3_REG,
+  ESP32C3_EFUSE_RD_MAC_SPI_SYS_5_REG,
+  ESP32C3_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32C3_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32C3_RTC_CNTL_WDTCONFIG1_REG,
+  ESP32C3_RTC_CNTL_WDT_WKEY,
+  ESP32C5_C6_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32C5_C6_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32C5_C6_RTC_CNTL_WDTCONFIG1_REG,
+  ESP32C5_C6_RTC_CNTL_WDT_WKEY,
+  ESP32C5_UARTDEV_BUF_NO,
+  ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32C6_UARTDEV_BUF_NO,
+  ESP32C6_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32P4_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32P4_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32P4_RTC_CNTL_WDTCONFIG1_REG,
+  ESP32P4_RTC_CNTL_WDT_WKEY,
+  ESP32P4_UARTDEV_BUF_NO_REV0,
+  ESP32P4_UARTDEV_BUF_NO_REV300,
+  ESP32P4_UARTDEV_BUF_NO_USB_OTG,
+  ESP32P4_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32P4_RTC_CNTL_OPTION1_REG,
+  ESP32P4_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+  ESP32H2_UARTDEV_BUF_NO,
+  ESP32H2_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
 } from "./const";
 import { getStubCode } from "./stubs";
 import { hexFormatter, sleep, slipEncode, toHex } from "./util";
@@ -116,6 +149,17 @@ export class ESPLoader extends EventTarget {
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
   private __isReconfiguring: boolean = false;
   private __abandonCurrentOperation: boolean = false;
+  private _suppressDisconnect: boolean = false;
+  private __consoleMode: boolean = false;
+  public _isUsbJtagOrOtg: boolean | undefined = undefined;
+
+  /**
+   * Check if device is using USB-JTAG or USB-OTG (not external serial chip)
+   * Returns undefined if not yet determined
+   */
+  public get isUsbJtagOrOtg(): boolean | undefined {
+    return this._parent ? this._parent._isUsbJtagOrOtg : this._isUsbJtagOrOtg;
+  }
 
   // Adaptive speed adjustment for flash read operations
   private __adaptiveBlockMultiplier: number = 1;
@@ -180,6 +224,24 @@ export class ESPLoader extends EventTarget {
     } else {
       this.__chipVariant = value;
     }
+  }
+
+  // Console mode with parent delegation
+  private get _consoleMode(): boolean {
+    return this._parent ? this._parent._consoleMode : this.__consoleMode;
+  }
+
+  private set _consoleMode(value: boolean) {
+    if (this._parent) {
+      this._parent._consoleMode = value;
+    } else {
+      this.__consoleMode = value;
+    }
+  }
+
+  // Public setter for console mode (used by script.js)
+  public setConsoleMode(value: boolean): void {
+    this._consoleMode = value;
   }
 
   private get _inputBuffer(): number[] {
@@ -457,6 +519,39 @@ export class ESPLoader extends EventTarget {
     // Detect chip type
     await this.detectChip();
 
+    // Detect if device is using USB-JTAG/Serial or USB-OTG (not external serial chip)
+    // This is needed to determine the correct reset strategy for console mode
+    try {
+      if (
+        this.chipFamily === CHIP_FAMILY_ESP32S2 ||
+        this.chipFamily === CHIP_FAMILY_ESP32S3
+      ) {
+        const isUsingUsbOtg = await this.usingUsbOtg();
+        const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
+        this._isUsbJtagOrOtg = isUsingUsbOtg || isUsingUsbJtagSerial;
+      } else if (
+        this.chipFamily === CHIP_FAMILY_ESP32C3 ||
+        this.chipFamily === CHIP_FAMILY_ESP32C5 ||
+        this.chipFamily === CHIP_FAMILY_ESP32C6
+      ) {
+        const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
+        this._isUsbJtagOrOtg = isUsingUsbJtagSerial;
+      } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+        const isUsingUsbOtg = await this.usingUsbOtg();
+        const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
+        this._isUsbJtagOrOtg = isUsingUsbOtg || isUsingUsbJtagSerial;
+      } else {
+        // Other chips don't have USB-JTAG/OTG
+        this._isUsbJtagOrOtg = false;
+      }
+      this.logger.debug(
+        `USB connection type: ${this._isUsbJtagOrOtg ? "USB-JTAG/OTG" : "External Serial Chip"}`,
+      );
+    } catch (err) {
+      this.logger.debug(`Could not detect USB connection type: ${err}`);
+      // Leave as undefined if detection fails
+    }
+
     // Read the OTP data for this chip and store into this.efuses array
     const FlAddr = getSpiFlashAddresses(this.getChipFamily());
     const AddrMAC = FlAddr.macFuse;
@@ -486,7 +581,7 @@ export class ESPLoader extends EventTarget {
         this.chipName = chipInfo.name;
         this.chipFamily = chipInfo.family;
 
-        // Get chip revision for ESP32-P4
+        // Get chip revision for ESP32-P4 and ESP32-C3
         if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
           this.chipRevision = await this.getChipRevision();
           this.logger.debug(`ESP32-P4 revision: ${this.chipRevision}`);
@@ -498,6 +593,9 @@ export class ESPLoader extends EventTarget {
             this.chipVariant = "rev0";
           }
           this.logger.debug(`ESP32-P4 variant: ${this.chipVariant}`);
+        } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
+          this.chipRevision = await this.getChipRevision();
+          this.logger.debug(`ESP32-C3 revision: ${this.chipRevision}`);
         }
 
         this.logger.debug(
@@ -549,7 +647,6 @@ export class ESPLoader extends EventTarget {
 
     if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
       this.chipRevision = await this.getChipRevision();
-      this.logger.debug(`ESP32-P4 revision: ${this.chipRevision}`);
 
       if (this.chipRevision >= 300) {
         this.chipVariant = "rev300";
@@ -557,6 +654,8 @@ export class ESPLoader extends EventTarget {
         this.chipVariant = "rev0";
       }
       this.logger.debug(`ESP32-P4 variant: ${this.chipVariant}`);
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
+      this.chipRevision = await this.getChipRevision();
     }
 
     this.logger.debug(
@@ -568,22 +667,24 @@ export class ESPLoader extends EventTarget {
    * Get chip revision for ESP32-P4
    */
   async getChipRevision(): Promise<number> {
-    if (this.chipFamily !== CHIP_FAMILY_ESP32P4) {
-      return 0;
+    if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+      // Read from EFUSE_BLOCK1 to get chip revision
+      // Word 2 contains revision info for ESP32-P4
+      const word2 = await this.readRegister(ESP32P4_EFUSE_BLOCK1_ADDR + 8);
+
+      // Minor revision: bits [3:0]
+      const minorRev = word2 & 0x0f;
+
+      // Major revision: bits [23] << 2 | bits [5:4]
+      const majorRev = (((word2 >> 23) & 1) << 2) | ((word2 >> 4) & 0x03);
+
+      // Revision is major * 100 + minor
+      return majorRev * 100 + minorRev;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
+      return await this.getChipRevisionC3();
     }
 
-    // Read from EFUSE_BLOCK1 to get chip revision
-    // Word 2 contains revision info for ESP32-P4
-    const word2 = await this.readRegister(ESP32P4_EFUSE_BLOCK1_ADDR + 8);
-
-    // Minor revision: bits [3:0]
-    const minorRev = word2 & 0x0f;
-
-    // Major revision: bits [23] << 2 | bits [5:4]
-    const majorRev = (((word2 >> 23) & 1) << 2) | ((word2 >> 4) & 0x03);
-
-    // Revision is major * 100 + minor
-    return majorRev * 100 + minorRev;
+    return 0;
   }
 
   /**
@@ -684,12 +785,26 @@ export class ESPLoader extends EventTarget {
         this._totalBytesRead += value.length;
       }
     } catch {
-      this.logger.error("Read loop got disconnected");
+      // Don't log error if this is an expected disconnect during console mode transition
+      if (!this._consoleMode) {
+        this.logger.error("Read loop got disconnected");
+      }
     } finally {
       // Always reset reconfiguring flag when read loop ends
       // This prevents "Cannot write during port reconfiguration" errors
       // when the read loop dies unexpectedly
       this._isReconfiguring = false;
+
+      // Release reader if still locked
+      if (this._reader) {
+        try {
+          this._reader.releaseLock();
+          this.logger.debug("Reader released in readLoop cleanup");
+        } catch (err) {
+          this.logger.debug(`Reader release error in readLoop: ${err}`);
+        }
+        this._reader = undefined;
+      }
     }
 
     // Disconnected!
@@ -708,7 +823,11 @@ export class ESPLoader extends EventTarget {
       );
     }
 
-    this.dispatchEvent(new Event("disconnect"));
+    // Only dispatch disconnect event if not suppressed
+    if (!this._suppressDisconnect) {
+      this.dispatchEvent(new Event("disconnect"));
+    }
+    this._suppressDisconnect = false;
     this.logger.debug("Finished read loop");
   }
 
@@ -782,6 +901,34 @@ export class ESPLoader extends EventTarget {
     await this.setRTS(false); // EN=HIGH, chip out of reset
     await this.sleep(50);
     await this.setDTR(false); // IO0=HIGH, done
+
+    await this.sleep(200);
+  }
+
+  /**
+   * Reset to firmware mode (not bootloader) for Web Serial
+   * Keeps IO0=HIGH during reset so chip boots into firmware
+   */
+  async hardResetToFirmware() {
+    await this.setDTR(false); // IO0=HIGH
+    await this.setRTS(true); // EN=LOW, chip in reset
+    await this.sleep(100);
+    await this.setRTS(false); // EN=HIGH, chip out of reset (IO0 stays HIGH)
+    await this.sleep(50);
+
+    await this.sleep(200);
+  }
+
+  /**
+   * Reset to firmware mode (not bootloader) for WebUSB
+   * Keeps IO0=HIGH during reset so chip boots into firmware
+   */
+  async hardResetToFirmwareWebUSB() {
+    await this.setDTRWebUSB(false); // IO0=HIGH
+    await this.setRTSWebUSB(true); // EN=LOW, chip in reset
+    await this.sleep(100);
+    await this.setRTSWebUSB(false); // EN=HIGH, chip out of reset (IO0 stays HIGH)
+    await this.sleep(50);
 
     await this.sleep(200);
   }
@@ -1284,7 +1431,9 @@ export class ESPLoader extends EventTarget {
       try {
         // Check if port is still open, if not, skip this strategy
         if (!this.connected || !this.port.writable) {
-          this.logger.log(`Port disconnected, skipping ${strategy.name} reset`);
+          this.logger.debug(
+            `Port disconnected, skipping ${strategy.name} reset`,
+          );
           continue;
         }
 
@@ -1334,7 +1483,7 @@ export class ESPLoader extends EventTarget {
         }
       } catch (error) {
         lastError = error as Error;
-        this.logger.log(
+        this.logger.debug(
           `${strategy.name} reset failed: ${(error as Error).message}`,
         );
 
@@ -1367,13 +1516,140 @@ export class ESPLoader extends EventTarget {
 
   /**
    * @name watchdogReset
-   * Watchdog reset for ESP32-S2/S3 with USB-OTG
+   * Watchdog reset for ESP32-S2/S3/C3 with USB-OTG or USB-JTAG/Serial
    * Uses RTC watchdog timer to reset the chip - works when DTR/RTS signals are not available
+   * This is an alias for rtcWdtResetChipSpecific() for backwards compatibility
    */
   async watchdogReset() {
-    this.logger.log("Hard resetting with watchdog timer...");
+    await this.rtcWdtResetChipSpecific();
+  }
 
-    // Select correct register addresses based on chip family
+  /**
+   * Check if current chip is using USB-OTG
+   * Supports ESP32-S2 and ESP32-S3
+   */
+  public async usingUsbOtg(): Promise<boolean> {
+    let uartDevBufNo: number;
+    let usbOtgValue: number;
+
+    if (this.chipFamily === CHIP_FAMILY_ESP32S2) {
+      uartDevBufNo = ESP32S2_UARTDEV_BUF_NO;
+      usbOtgValue = ESP32S2_UARTDEV_BUF_NO_USB_OTG;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32S3) {
+      uartDevBufNo = ESP32S3_UARTDEV_BUF_NO;
+      usbOtgValue = ESP32S3_UARTDEV_BUF_NO_USB_OTG;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+      // P4: UARTDEV_BUF_NO depends on chip revision
+      if (this.chipRevision === null) {
+        this.chipRevision = await this.getChipRevision();
+      }
+
+      if (this.chipRevision < 300) {
+        uartDevBufNo = ESP32P4_UARTDEV_BUF_NO_REV0;
+      } else {
+        uartDevBufNo = ESP32P4_UARTDEV_BUF_NO_REV300;
+      }
+      usbOtgValue = ESP32P4_UARTDEV_BUF_NO_USB_OTG;
+    } else {
+      return false;
+    }
+
+    const uartNo = (await this.readRegister(uartDevBufNo)) & 0xff;
+    return uartNo === usbOtgValue;
+  }
+
+  /**
+   * Check if current chip is using USB-JTAG/Serial
+   * Supports ESP32-S3 and ESP32-C3
+   */
+  public async usingUsbJtagSerial(): Promise<boolean> {
+    let uartDevBufNo: number;
+    let usbJtagSerialValue: number;
+
+    if (this.chipFamily === CHIP_FAMILY_ESP32S3) {
+      uartDevBufNo = ESP32S3_UARTDEV_BUF_NO;
+      usbJtagSerialValue = ESP32S3_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
+      // ESP32-C3: BSS_UART_DEV_ADDR depends on chip revision
+      // Revision < 101: 0x3FCDF064
+      // Revision >= 101: 0x3FCDF060
+      let bssUartDevAddr: number;
+
+      // Get chip revision if not already set
+      if (this.chipRevision === null) {
+        this.chipRevision = await this.getChipRevisionC3();
+      }
+
+      if (this.chipRevision < 101) {
+        bssUartDevAddr = 0x3fcdf064;
+      } else {
+        bssUartDevAddr = 0x3fcdf060;
+      }
+
+      uartDevBufNo = bssUartDevAddr + ESP32C3_BUF_UART_NO_OFFSET;
+      usbJtagSerialValue = ESP32C3_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32C5) {
+      uartDevBufNo = ESP32C5_UARTDEV_BUF_NO;
+      usbJtagSerialValue = ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32C6) {
+      uartDevBufNo = ESP32C6_UARTDEV_BUF_NO;
+      usbJtagSerialValue = ESP32C6_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+      // P4: UARTDEV_BUF_NO depends on chip revision
+      // Revision < 300: 0x4FF3FEC8
+      // Revision >= 300: 0x4FFBFEC8
+      if (this.chipRevision === null) {
+        this.chipRevision = await this.getChipRevision();
+      }
+
+      if (this.chipRevision < 300) {
+        uartDevBufNo = ESP32P4_UARTDEV_BUF_NO_REV0;
+      } else {
+        uartDevBufNo = ESP32P4_UARTDEV_BUF_NO_REV300;
+      }
+      usbJtagSerialValue = ESP32P4_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32H2) {
+      uartDevBufNo = ESP32H2_UARTDEV_BUF_NO;
+      usbJtagSerialValue = ESP32H2_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+    } else {
+      return false;
+    }
+
+    const uartNo = (await this.readRegister(uartDevBufNo)) & 0xff;
+    return uartNo === usbJtagSerialValue;
+  }
+
+  /**
+   * Get chip revision for ESP32-C3
+   * Reads from EFUSE registers and calculates revision
+   */
+  async getChipRevisionC3(): Promise<number> {
+    if (this.chipFamily !== CHIP_FAMILY_ESP32C3) {
+      return 0;
+    }
+
+    // Read EFUSE_RD_MAC_SPI_SYS_3_REG (bits [20:18] = lower 3 bits of revision)
+    const word3 = await this.readRegister(ESP32C3_EFUSE_RD_MAC_SPI_SYS_3_REG);
+    const low = (word3 >> 18) & 0x07;
+
+    // Read EFUSE_RD_MAC_SPI_SYS_5_REG (bits [25:23] = upper 3 bits of revision)
+    const word5 = await this.readRegister(ESP32C3_EFUSE_RD_MAC_SPI_SYS_5_REG);
+    const hi = (word5 >> 23) & 0x07;
+
+    // Combine: upper 3 bits from word5, lower 3 bits from word3
+    const revision = (hi << 3) | low;
+
+    return revision;
+  }
+
+  /**
+   * RTC watchdog timer reset for ESP32-S2, ESP32-S3, ESP32-C3, ESP32-C5, ESP32-C6, and ESP32-P4
+   * Uses specific registers for each chip family
+   * Note: ESP32-H2 does NOT support WDT reset
+   */
+  public async rtcWdtResetChipSpecific(): Promise<void> {
+    this.logger.debug("Hard resetting with watchdog timer...");
+
     let WDTWPROTECT_REG: number;
     let WDTCONFIG0_REG: number;
     let WDTCONFIG1_REG: number;
@@ -1389,16 +1665,82 @@ export class ESPLoader extends EventTarget {
       WDTCONFIG0_REG = ESP32S3_RTC_CNTL_WDTCONFIG0_REG;
       WDTCONFIG1_REG = ESP32S3_RTC_CNTL_WDTCONFIG1_REG;
       WDT_WKEY = ESP32S3_RTC_CNTL_WDT_WKEY;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
+      WDTWPROTECT_REG = ESP32C3_RTC_CNTL_WDTWPROTECT_REG;
+      WDTCONFIG0_REG = ESP32C3_RTC_CNTL_WDTCONFIG0_REG;
+      WDTCONFIG1_REG = ESP32C3_RTC_CNTL_WDTCONFIG1_REG;
+      WDT_WKEY = ESP32C3_RTC_CNTL_WDT_WKEY;
+    } else if (
+      this.chipFamily === CHIP_FAMILY_ESP32C5 ||
+      this.chipFamily === CHIP_FAMILY_ESP32C6
+    ) {
+      // C5 and C6 use LP_WDT (Low Power Watchdog Timer)
+      WDTWPROTECT_REG = ESP32C5_C6_RTC_CNTL_WDTWPROTECT_REG;
+      WDTCONFIG0_REG = ESP32C5_C6_RTC_CNTL_WDTCONFIG0_REG;
+      WDTCONFIG1_REG = ESP32C5_C6_RTC_CNTL_WDTCONFIG1_REG;
+      WDT_WKEY = ESP32C5_C6_RTC_CNTL_WDT_WKEY;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+      // P4 uses LP_WDT (Low Power Watchdog Timer)
+      WDTWPROTECT_REG = ESP32P4_RTC_CNTL_WDTWPROTECT_REG;
+      WDTCONFIG0_REG = ESP32P4_RTC_CNTL_WDTCONFIG0_REG;
+      WDTCONFIG1_REG = ESP32P4_RTC_CNTL_WDTCONFIG1_REG;
+      WDT_WKEY = ESP32P4_RTC_CNTL_WDT_WKEY;
     } else {
       throw new Error(
-        `watchdogReset() is only supported for ESP32-S2 and ESP32-S3, not ${this.chipFamily}`,
+        `rtcWdtResetChipSpecific() is not supported for ${this.chipFamily}`,
       );
     }
 
     // Unlock watchdog registers
     await this.writeRegister(WDTWPROTECT_REG, WDT_WKEY, undefined, 0);
 
-    // Set WDT timeout to 2000ms
+    // Clear force download boot register (if applicable) BEFORE triggering WDT reset
+    // This ensures the chip boots into firmware mode after reset
+    if (this.chipFamily === CHIP_FAMILY_ESP32S2) {
+      try {
+        await this.writeRegister(
+          ESP32S2_RTC_CNTL_OPTION1_REG,
+          0,
+          ESP32S2_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+          0,
+        );
+        this.logger.debug("Cleared force download boot mask");
+      } catch (err) {
+        this.logger.debug(
+          `Expected error clearing force download boot mask: ${err}`,
+        );
+      }
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32S3) {
+      try {
+        await this.writeRegister(
+          ESP32S3_RTC_CNTL_OPTION1_REG,
+          0,
+          ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+          0,
+        );
+        this.logger.debug("Cleared force download boot mask");
+      } catch (err) {
+        this.logger.debug(
+          `Expected error clearing force download boot mask: ${err}`,
+        );
+      }
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+      try {
+        await this.writeRegister(
+          ESP32P4_RTC_CNTL_OPTION1_REG,
+          0,
+          ESP32P4_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+          0,
+        );
+        this.logger.debug("Cleared force download boot mask");
+      } catch (err) {
+        this.logger.debug(
+          `Expected error clearing force download boot mask: ${err}`,
+        );
+      }
+    }
+
+    // Set WDT timeout to 2000ms (matches Python esptool)
     await this.writeRegister(WDTCONFIG1_REG, 2000, undefined, 0);
 
     // Enable WDT: bit 31 = enable, bits 28-30 = stage, bit 8 = sys reset, bits 0-2 = prescaler
@@ -1412,120 +1754,162 @@ export class ESPLoader extends EventTarget {
     await this.sleep(500);
   }
 
+  /**
+   * Helper: Check if USB-based WDT reset should be used for S2/S3
+   * Returns true if WDT reset was performed, false otherwise
+   */
+  private async tryUsbWdtReset(
+    chipName: string,
+    GPIO_STRAP_REG: number,
+    GPIO_STRAP_SPI_BOOT_MASK: number,
+    RTC_CNTL_OPTION1_REG: number,
+    RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK: number,
+  ): Promise<boolean> {
+    const isUsingUsbOtg = await this.usingUsbOtg();
+    const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
+
+    if (isUsingUsbOtg || isUsingUsbJtagSerial) {
+      const strapReg = await this.readRegister(GPIO_STRAP_REG);
+      const forceDlReg = await this.readRegister(RTC_CNTL_OPTION1_REG);
+
+      // Only use watchdog reset if GPIO0 is low AND force download boot mode is not set
+      if (
+        (strapReg & GPIO_STRAP_SPI_BOOT_MASK) === 0 &&
+        (forceDlReg & RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK) === 0
+      ) {
+        await this.rtcWdtResetChipSpecific();
+        this.logger.debug(
+          `${chipName}: RTC WDT reset (USB detected, GPIO0 low)`,
+        );
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Chip-specific hard reset for ESP32-S2
+   * Checks if using USB-JTAG/Serial and uses watchdog reset if necessary
+   */
+  public async hardResetS2(): Promise<void> {
+    const isUsingUsbOtg = await this.usingUsbOtg();
+    if (isUsingUsbOtg) {
+      await this.rtcWdtResetChipSpecific();
+      this.logger.debug("ESP32-S2: RTC WDT reset (USB-OTG detected)");
+    } else {
+      // Use standard hardware reset
+      await this.hardResetClassic();
+      this.logger.debug("ESP32-S2: Classic reset");
+    }
+  }
+
+  /**
+   * Chip-specific hard reset for ESP32-S3
+   * Checks if using USB-JTAG/Serial and uses watchdog reset if necessary
+   */
+  public async hardResetS3(): Promise<void> {
+    const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
+    if (isUsingUsbJtagSerial) {
+      await this.rtcWdtResetChipSpecific();
+      this.logger.debug("ESP32-S3: RTC WDT reset (USB-JTAG/Serial detected)");
+    } else {
+      // Use standard hardware reset
+      await this.hardResetClassic();
+      this.logger.debug("ESP32-S3: Classic reset");
+    }
+  }
+
+  /**
+   * Chip-specific hard reset for ESP32-C3
+   * Checks if using USB-JTAG/Serial and uses watchdog reset if necessary
+   */
+  public async hardResetC3(): Promise<void> {
+    const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
+    if (isUsingUsbJtagSerial) {
+      await this.rtcWdtResetChipSpecific();
+      this.logger.debug("ESP32-C3: RTC WDT reset (USB-JTAG/Serial detected)");
+    } else {
+      // Use standard hardware reset
+      await this.hardResetClassic();
+      this.logger.debug("ESP32-C3: Classic reset");
+    }
+  }
+
   async hardReset(bootloader = false) {
+    // In console mode, only allow simple hardware reset (no bootloader entry)
+    if (this._consoleMode) {
+      if (bootloader) {
+        this.logger.debug(
+          "Skipping bootloader reset - device is in console mode",
+        );
+        return;
+      }
+      // Simple hardware reset to restart firmware (IO0=HIGH)
+      this.logger.debug("Performing hardware reset (console mode)...");
+      if (this.isWebUSB()) {
+        await this.hardResetToFirmwareWebUSB();
+      } else {
+        await this.hardResetToFirmware();
+      }
+      this.logger.debug("Hardware reset complete");
+      return;
+    }
+
     if (bootloader) {
       // enter flash mode
       if (this.port.getInfo().usbProductId === USB_JTAG_SERIAL_PID) {
         await this.hardResetUSBJTAGSerial();
-        this.logger.log("USB-JTAG/Serial reset.");
+        this.logger.debug("USB-JTAG/Serial reset.");
       } else {
         // Use different reset strategy for WebUSB (Android) vs Web Serial (Desktop)
         if (this.isWebUSB()) {
           await this.hardResetClassicWebUSB();
-          this.logger.log("Classic reset (WebUSB/Android).");
+          this.logger.debug("Classic reset (WebUSB/Android).");
         } else {
           await this.hardResetClassic();
-          this.logger.log("Classic reset.");
+          this.logger.debug("Classic reset.");
         }
       }
     } else {
       // just reset (no bootloader mode)
-      // For ESP32-S2/S3 with USB-OTG, check if watchdog reset is needed
-      if (
-        this.port.getInfo().usbProductId === USB_JTAG_SERIAL_PID &&
-        (this.chipFamily === CHIP_FAMILY_ESP32S2 ||
-          this.chipFamily === CHIP_FAMILY_ESP32S3)
+      // For ESP32-S2/S3 with USB-OTG or USB-JTAG/Serial, check if watchdog reset is needed
+      if (this.chipFamily === CHIP_FAMILY_ESP32S2 && !this._consoleMode) {
+        const wdtResetUsed = await this.tryUsbWdtReset(
+          "ESP32-S2",
+          ESP32S2_GPIO_STRAP_REG,
+          ESP32S2_GPIO_STRAP_SPI_BOOT_MASK,
+          ESP32S2_RTC_CNTL_OPTION1_REG,
+          ESP32S2_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+        );
+        if (wdtResetUsed) return;
+      } else if (
+        this.chipFamily === CHIP_FAMILY_ESP32S3 &&
+        !this._consoleMode
       ) {
-        // ESP32-S2/S3: Clear force download boot mode first
-        try {
-          // Clear force download boot mode to avoid chip being stuck in download mode
-          // after reset. Workaround for issue:
-          // https://github.com/espressif/arduino-esp32/issues/6762
-          const RTC_CNTL_OPTION1_REG =
-            this.chipFamily === CHIP_FAMILY_ESP32S2
-              ? ESP32S2_RTC_CNTL_OPTION1_REG
-              : ESP32S3_RTC_CNTL_OPTION1_REG;
-          const RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK =
-            this.chipFamily === CHIP_FAMILY_ESP32S2
-              ? ESP32S2_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK
-              : ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK;
+        const wdtResetUsed = await this.tryUsbWdtReset(
+          "ESP32-S3",
+          ESP32S3_GPIO_STRAP_REG,
+          ESP32S3_GPIO_STRAP_SPI_BOOT_MASK,
+          ESP32S3_RTC_CNTL_OPTION1_REG,
+          ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+        );
+        if (wdtResetUsed) return;
+      }
 
-          await this.writeRegister(
-            RTC_CNTL_OPTION1_REG,
-            0,
-            RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
-            0,
-          );
-        } catch (e) {
-          // Skip invalid response and continue reset (can happen when monitoring during reset)
-          this.logger.log(
-            "Warning: Could not clear force download boot mode:",
-            e,
-          );
-        }
-
-        // Check the strapping register to see if we can perform a watchdog reset
-        // Only use watchdog reset if GPIO0 is low AND force download boot mode is not set
-        let useWatchdogReset = false;
-        try {
-          const GPIO_STRAP_REG =
-            this.chipFamily === CHIP_FAMILY_ESP32S2
-              ? ESP32S2_GPIO_STRAP_REG
-              : ESP32S3_GPIO_STRAP_REG;
-          const GPIO_STRAP_SPI_BOOT_MASK =
-            this.chipFamily === CHIP_FAMILY_ESP32S2
-              ? ESP32S2_GPIO_STRAP_SPI_BOOT_MASK
-              : ESP32S3_GPIO_STRAP_SPI_BOOT_MASK;
-          const RTC_CNTL_OPTION1_REG =
-            this.chipFamily === CHIP_FAMILY_ESP32S2
-              ? ESP32S2_RTC_CNTL_OPTION1_REG
-              : ESP32S3_RTC_CNTL_OPTION1_REG;
-          const RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK =
-            this.chipFamily === CHIP_FAMILY_ESP32S2
-              ? ESP32S2_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK
-              : ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK;
-
-          const strapReg = await this.readRegister(GPIO_STRAP_REG);
-          const forceDlReg = await this.readRegister(RTC_CNTL_OPTION1_REG);
-
-          // GPIO0 low (download mode) AND force download boot not set
-          if (
-            (strapReg & GPIO_STRAP_SPI_BOOT_MASK) === 0 &&
-            (forceDlReg & RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK) === 0
-          ) {
-            useWatchdogReset = true;
-          }
-        } catch (e) {
-          // If we can't read the registers, use watchdog reset as fallback
-          this.logger.log(
-            "Warning: Could not read strap/option registers, using watchdog reset:",
-            e,
-          );
-          useWatchdogReset = true;
-        }
-
-        if (useWatchdogReset) {
-          await this.watchdogReset();
-          this.logger.log("Watchdog reset (USB-OTG).");
-        } else {
-          // Not in download mode, can use DTR/RTS reset
-          // But USB-OTG doesn't have DTR/RTS, so fall back to watchdog
-          await this.watchdogReset();
-          this.logger.log("Watchdog reset (USB-OTG, normal boot).");
-        }
-      } else if (this.isWebUSB()) {
+      // Standard reset for all other cases
+      if (this.isWebUSB()) {
         // WebUSB: Use longer delays for better compatibility
         await this.setRTSWebUSB(true); // EN->LOW
         await this.sleep(200);
         await this.setRTSWebUSB(false);
         await this.sleep(200);
-        this.logger.log("Hard reset (WebUSB).");
+        this.logger.debug("Hard reset (WebUSB).");
       } else {
         // Web Serial: Standard reset
         await this.setRTS(true); // EN->LOW
         await this.sleep(100);
         await this.setRTS(false);
-        this.logger.log("Hard reset.");
+        this.logger.debug("Hard reset.");
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -2943,6 +3327,202 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
+   * @name releaseReaderWriter
+   * Release reader and writer locks without closing the port
+   * Used when switching to console mode
+   */
+  async releaseReaderWriter() {
+    if (this._parent) {
+      await this._parent.releaseReaderWriter();
+      return;
+    }
+
+    // Check if device is in JTAG mode and needs reset to boot into firmware
+    const didReconnect = await this._resetToFirmwareIfNeeded();
+
+    // If we reconnected for console, the reader/writer are already released and restarted
+    if (didReconnect) {
+      return;
+    }
+
+    // Wait for pending writes to complete
+    try {
+      await this._writeChain;
+    } catch (err) {
+      this.logger.debug(`Pending write error during release: ${err}`);
+    }
+
+    // Release writer
+    if (this._writer) {
+      try {
+        this._writer.releaseLock();
+        this.logger.debug("Writer released");
+      } catch (err) {
+        this.logger.debug(`Writer release error: ${err}`);
+      }
+      this._writer = undefined;
+    }
+
+    // Cancel and release reader
+    if (this._reader) {
+      const reader = this._reader;
+      try {
+        // Suppress disconnect event during console mode switching
+        this._suppressDisconnect = true;
+        await reader.cancel();
+        this.logger.debug("Reader cancelled");
+      } catch (err) {
+        this.logger.debug(`Reader cancel error: ${err}`);
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch (err) {
+          this.logger.debug(`Reader release error: ${err}`);
+        }
+      }
+      if (this._reader === reader) {
+        this._reader = undefined;
+      }
+    }
+  }
+
+  /**
+   * @name resetToFirmware
+   * Public method to reset device from bootloader to firmware for console mode
+   * Automatically detects USB-JTAG/Serial and USB-OTG devices and performs appropriate reset
+   * @returns true if reset was performed, false if not needed
+   */
+  public async resetToFirmware(): Promise<boolean> {
+    return await this._resetToFirmwareIfNeeded();
+  }
+
+  /**
+   * @name enterConsoleMode
+   * Prepare device for console mode by resetting to firmware
+   * Handles both USB-JTAG/OTG devices (closes port) and external serial chips (keeps port open)
+   * @returns true if port was closed (USB-JTAG), false if port stays open (serial chip)
+   */
+  public async enterConsoleMode(): Promise<boolean> {
+    // Set console mode flag
+    this._consoleMode = true;
+
+    // Check device type
+    const isUsbJtag = this.isUsbJtagOrOtg === true;
+
+    if (isUsbJtag) {
+      // USB-JTAG/OTG devices: Use watchdog reset which closes port
+      const wasReset = await this._resetToFirmwareIfNeeded();
+      return wasReset; // true = port closed, caller must reopen
+    } else {
+      // External serial chip devices: Release locks and do simple reset
+      try {
+        await this.releaseReaderWriter();
+        await this.sleep(100);
+      } catch (err) {
+        this.logger.debug(`Failed to release locks: ${err}`);
+      }
+
+      // Hardware reset to firmware mode (IO0=HIGH)
+      try {
+        await this.hardReset(false);
+        this.logger.log("Device reset to firmware mode");
+      } catch (err) {
+        this.logger.debug(`Could not reset device: ${err}`);
+      }
+
+      return false; // Port stays open
+    }
+  }
+
+  /**
+   * @name _resetToFirmwareIfNeeded
+   * Reset device from bootloader to firmware when switching to console mode
+   * Detects USB-JTAG/Serial and USB-OTG devices and performs appropriate reset
+   * @returns true if reconnect was performed, false otherwise
+   */
+  private async _resetToFirmwareIfNeeded(): Promise<boolean> {
+    try {
+      // Check if device is using USB-JTAG/Serial or USB-OTG
+      // Value should already be set during main() connection
+      // Use getter to access parent's value if this is a stub
+      const needsReset = this.isUsbJtagOrOtg === true;
+
+      if (needsReset) {
+        const resetMethod =
+          this.chipFamily === CHIP_FAMILY_ESP32S2 ||
+          this.chipFamily === CHIP_FAMILY_ESP32S3
+            ? "USB-JTAG/Serial or USB-OTG"
+            : "USB-JTAG/Serial";
+
+        this.logger.log(
+          `Resetting ${this.chipFamily} (${resetMethod}) to boot into firmware...`,
+        );
+
+        // Set console mode flag before reset to prevent subsequent hardReset calls
+        this._consoleMode = true;
+
+        // For S2/S3: Clear force download boot mask before WDT reset
+        if (
+          this.chipFamily === CHIP_FAMILY_ESP32S2 ||
+          this.chipFamily === CHIP_FAMILY_ESP32S3
+        ) {
+          const OPTION1_REG =
+            this.chipFamily === CHIP_FAMILY_ESP32S2
+              ? ESP32S2_RTC_CNTL_OPTION1_REG
+              : ESP32S3_RTC_CNTL_OPTION1_REG;
+          const FORCE_DOWNLOAD_BOOT_MASK =
+            this.chipFamily === CHIP_FAMILY_ESP32S2
+              ? ESP32S2_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK
+              : ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK;
+
+          try {
+            // Clear force download boot mode to avoid chip being stuck in download mode
+            await this.writeRegister(
+              OPTION1_REG,
+              0,
+              FORCE_DOWNLOAD_BOOT_MASK,
+              0,
+            );
+            this.logger.debug("Cleared force download boot mask");
+          } catch (err) {
+            this.logger.debug(
+              `Expected error clearing force download boot mask: ${err}`,
+            );
+          }
+        }
+
+        // Perform watchdog reset to reboot into firmware
+        try {
+          await this.rtcWdtResetChipSpecific();
+          this.logger.debug("Watchdog reset triggered successfully");
+        } catch (err) {
+          // Error is expected - device resets before responding
+          this.logger.debug(
+            `Watchdog reset initiated (connection lost as expected: ${err})`,
+          );
+        }
+
+        // Wait for device to fully boot into firmware
+        this.logger.log("Waiting for device to boot into firmware...");
+        await this.sleep(1000);
+
+        // After WDT reset, streams are dead/locked - don't try to manipulate them
+        // Just mark everything as disconnected and let browser clean up
+        this.connected = false;
+        this._writer = undefined;
+        this._reader = undefined;
+
+        this.logger.debug("Device reset to firmware mode (port closed)");
+        return true;
+      }
+    } catch (err) {
+      this.logger.debug(`Could not reset device to firmware mode: ${err}`);
+      // Continue anyway - console mode might still work
+    }
+    return false;
+  }
+
+  /**
    * @name reconnectAndResume
    * Reconnect the serial port to flush browser buffers and reload stub
    */
@@ -2954,6 +3534,7 @@ export class ESPLoader extends EventTarget {
 
     try {
       this.logger.log("Reconnecting serial port...");
+      const savedBaudRate = this._currentBaudRate;
 
       this.connected = false;
       this.__inputBuffer = [];
@@ -2992,7 +3573,7 @@ export class ESPLoader extends EventTarget {
       // Close port
       try {
         await this.port.close();
-        this.logger.log("Port closed");
+        this.logger.debug("Port closed");
       } catch (err) {
         this.logger.debug(`Port close error: ${err}`);
       }
@@ -3002,6 +3583,7 @@ export class ESPLoader extends EventTarget {
       try {
         await this.port.open({ baudRate: ESP_ROM_BAUD });
         this.connected = true;
+        this._currentBaudRate = ESP_ROM_BAUD;
       } catch (err) {
         throw new Error(`Failed to open port: ${err}`);
       }
@@ -3055,8 +3637,8 @@ export class ESPLoader extends EventTarget {
       this.logger.debug("Stub loaded");
 
       // Restore baudrate if it was changed
-      if (this._currentBaudRate !== ESP_ROM_BAUD) {
-        await stubLoader.setBaudrate(this._currentBaudRate);
+      if (savedBaudRate !== ESP_ROM_BAUD) {
+        await stubLoader.setBaudrate(savedBaudRate);
 
         // Verify port is still ready after baudrate change
         if (!this.port.writable || !this.port.readable) {
@@ -3092,6 +3674,9 @@ export class ESPLoader extends EventTarget {
 
     try {
       this.logger.log("Reconnecting to bootloader mode...");
+
+      // Clear console mode flag when reconnecting to bootloader
+      this._consoleMode = false;
 
       this.connected = false;
       this.__inputBuffer = [];
@@ -3130,7 +3715,7 @@ export class ESPLoader extends EventTarget {
       // Close port
       try {
         await this.port.close();
-        this.logger.log("Port closed");
+        this.logger.debug("Port closed");
       } catch (err) {
         this.logger.debug(`Port close error: ${err}`);
       }
@@ -3140,6 +3725,7 @@ export class ESPLoader extends EventTarget {
       try {
         await this.port.open({ baudRate: ESP_ROM_BAUD });
         this.connected = true;
+        this._currentBaudRate = ESP_ROM_BAUD;
       } catch (err) {
         throw new Error(`Failed to open port: ${err}`);
       }
@@ -3157,6 +3743,8 @@ export class ESPLoader extends EventTarget {
       // Reset chip info and stub state
       this.__chipFamily = undefined;
       this.chipName = "Unknown Chip";
+      this.chipRevision = null;
+      this.chipVariant = null;
       this.IS_STUB = false;
 
       // Start read loop
@@ -3262,6 +3850,10 @@ export class ESPLoader extends EventTarget {
    * @param addr - Address to read from
    * @param size - Number of bytes to read
    * @param onPacketReceived - Optional callback function called when packet is received
+   * @param options - Optional parameters for advanced control
+   *   - chunkSize: Amount of data to request from ESP in one command (bytes)
+   *   - blockSize: Size of each data block sent by ESP (bytes)
+   *   - maxInFlight: Maximum unacknowledged bytes (bytes)
    * @returns Uint8Array containing the flash data
    */
   async readFlash(
@@ -3272,6 +3864,11 @@ export class ESPLoader extends EventTarget {
       progress: number,
       totalSize: number,
     ) => void,
+    options?: {
+      chunkSize?: number;
+      blockSize?: number;
+      maxInFlight?: number;
+    },
   ): Promise<Uint8Array> {
     if (!this.IS_STUB) {
       throw new Error(
@@ -3311,7 +3908,13 @@ export class ESPLoader extends EventTarget {
     // For WebUSB (Android), use smaller chunks to avoid timeouts and buffer issues
     // For Web Serial (Desktop), use larger chunks for better performance
     let CHUNK_SIZE: number;
-    if (this.isWebUSB()) {
+    if (options?.chunkSize !== undefined) {
+      // Use user-provided chunkSize if in advanced mode
+      CHUNK_SIZE = options.chunkSize;
+      this.logger.log(
+        `Using custom chunk size: 0x${CHUNK_SIZE.toString(16)} bytes`,
+      );
+    } else if (this.isWebUSB()) {
       // WebUSB: Use smaller chunks to avoid SLIP timeout issues
       CHUNK_SIZE = 0x4 * 0x1000; // 4KB = 16384 bytes
     } else {
@@ -3346,7 +3949,19 @@ export class ESPLoader extends EventTarget {
           let blockSize: number;
           let maxInFlight: number;
 
-          if (this.isWebUSB()) {
+          if (
+            options?.blockSize !== undefined &&
+            options?.maxInFlight !== undefined
+          ) {
+            // Use user-provided values if in advanced mode
+            blockSize = options.blockSize;
+            maxInFlight = options.maxInFlight;
+            if (retryCount === 0) {
+              this.logger.debug(
+                `Using custom parameters: blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
+              );
+            }
+          } else if (this.isWebUSB()) {
             // WebUSB (Android): All devices use adaptive speed
             // All have maxTransferSize=64, baseBlockSize=31
             const maxTransferSize =
@@ -3538,7 +4153,7 @@ export class ESPLoader extends EventTarget {
           // Check if it's a timeout error or SLIP error
           if (err instanceof SlipReadError) {
             if (retryCount <= MAX_RETRIES) {
-              this.logger.log(
+              this.logger.debug(
                 `${err.message} at 0x${currentAddr.toString(16)}. Draining buffer and retrying (attempt ${retryCount}/${MAX_RETRIES})...`,
               );
 
