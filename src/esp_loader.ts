@@ -3397,6 +3397,42 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
+   * @name detectUsbConnectionType
+   * Detect if device is using USB-JTAG/Serial or USB-OTG (not external serial chip)
+   * This helper extracts the detection logic from initialize() for reuse
+   * @returns true if USB-JTAG or USB-OTG, false if external serial chip
+   * @throws Error if detection fails and chipFamily is not set
+   */
+  private async detectUsbConnectionType(): Promise<boolean> {
+    if (!this.chipFamily) {
+      throw new Error("Cannot detect USB connection type: chipFamily not set");
+    }
+
+    if (
+      this.chipFamily === CHIP_FAMILY_ESP32S2 ||
+      this.chipFamily === CHIP_FAMILY_ESP32S3
+    ) {
+      const isUsingUsbOtg = await this.usingUsbOtg();
+      const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
+      return isUsingUsbOtg || isUsingUsbJtagSerial;
+    } else if (
+      this.chipFamily === CHIP_FAMILY_ESP32C3 ||
+      this.chipFamily === CHIP_FAMILY_ESP32C5 ||
+      this.chipFamily === CHIP_FAMILY_ESP32C6
+    ) {
+      const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
+      return isUsingUsbJtagSerial;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+      const isUsingUsbOtg = await this.usingUsbOtg();
+      const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
+      return isUsingUsbOtg || isUsingUsbJtagSerial;
+    } else {
+      // Other chips don't have USB-JTAG/OTG
+      return false;
+    }
+  }
+
+  /**
    * @name enterConsoleMode
    * Prepare device for console mode by resetting to firmware
    * Handles both USB-JTAG/OTG devices (closes port) and external serial chips (keeps port open)
@@ -3406,8 +3442,26 @@ export class ESPLoader extends EventTarget {
     // Set console mode flag
     this._consoleMode = true;
 
-    // Check device type
-    const isUsbJtag = this.isUsbJtagOrOtg === true;
+    // Re-detect USB connection type to ensure we have a definitive value
+    // This handles cases where isUsbJtagOrOtg might be undefined
+    let isUsbJtag: boolean;
+    try {
+      isUsbJtag = await this.detectUsbConnectionType();
+      this.logger.debug(
+        `USB connection type detected: ${isUsbJtag ? "USB-JTAG/OTG" : "External Serial Chip"}`,
+      );
+    } catch (err) {
+      // If detection fails, fall back to cached value or fail-fast
+      if (this.isUsbJtagOrOtg === undefined) {
+        throw new Error(
+          `Cannot enter console mode: USB connection type unknown and detection failed: ${err}`,
+        );
+      }
+      this.logger.debug(
+        `USB detection failed, using cached value: ${this.isUsbJtagOrOtg}`,
+      );
+      isUsbJtag = this.isUsbJtagOrOtg;
+    }
 
     if (isUsbJtag) {
       // USB-JTAG/OTG devices: Use watchdog reset which closes port
