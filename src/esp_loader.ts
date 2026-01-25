@@ -522,28 +522,7 @@ export class ESPLoader extends EventTarget {
     // Detect if device is using USB-JTAG/Serial or USB-OTG (not external serial chip)
     // This is needed to determine the correct reset strategy for console mode
     try {
-      if (
-        this.chipFamily === CHIP_FAMILY_ESP32S2 ||
-        this.chipFamily === CHIP_FAMILY_ESP32S3
-      ) {
-        const isUsingUsbOtg = await this.usingUsbOtg();
-        const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
-        this._isUsbJtagOrOtg = isUsingUsbOtg || isUsingUsbJtagSerial;
-      } else if (
-        this.chipFamily === CHIP_FAMILY_ESP32C3 ||
-        this.chipFamily === CHIP_FAMILY_ESP32C5 ||
-        this.chipFamily === CHIP_FAMILY_ESP32C6
-      ) {
-        const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
-        this._isUsbJtagOrOtg = isUsingUsbJtagSerial;
-      } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
-        const isUsingUsbOtg = await this.usingUsbOtg();
-        const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
-        this._isUsbJtagOrOtg = isUsingUsbOtg || isUsingUsbJtagSerial;
-      } else {
-        // Other chips don't have USB-JTAG/OTG
-        this._isUsbJtagOrOtg = false;
-      }
+      this._isUsbJtagOrOtg = await this.detectUsbConnectionType();
       this.logger.debug(
         `USB connection type: ${this._isUsbJtagOrOtg ? "USB-JTAG/OTG" : "External Serial Chip"}`,
       );
