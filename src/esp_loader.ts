@@ -810,10 +810,6 @@ export class ESPLoader extends EventTarget {
   }
 
   async setBaudrate(baud: number) {
-    if (this.chipFamily == CHIP_FAMILY_ESP8266) {
-      throw new Error("Changing baud rate is not supported on the ESP8266");
-    }
-
     try {
       // Send ESP_ROM_BAUD(115200) as the old one if running STUB otherwise 0
       const buffer = pack("<II", baud, this.IS_STUB ? ESP_ROM_BAUD : 0);
@@ -1250,7 +1246,7 @@ export class ESPLoader extends EventTarget {
       await this.checkCommand(ESP_SPI_ATTACH, new Array(8).fill(0));
     }
     const numBlocks = Math.floor((size + flashWriteSize - 1) / flashWriteSize);
-    if (this.chipFamily == CHIP_FAMILY_ESP8266) {
+    if (this.chipFamily == CHIP_FAMILY_ESP8266 && !this.IS_STUB) {
       eraseSize = this.getEraseSize(offset, size);
     } else {
       eraseSize = size;
