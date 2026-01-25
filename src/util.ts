@@ -45,5 +45,14 @@ export const toHex = (value: number, size = 2) => {
   }
 };
 
+/**
+ * Format MAC address array to string (e.g., [0xAA, 0xBB, 0xCC] -> "AA:BB:CC:DD:EE:FF")
+ */
+export const formatMacAddr = (macAddr: number[]): string => {
+  return macAddr
+    .map((value) => value.toString(16).toUpperCase().padStart(2, "0"))
+    .join(":");
+};
+
 export const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));

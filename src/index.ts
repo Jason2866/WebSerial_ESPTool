@@ -99,3 +99,6 @@ export const connectWithPort = async (port: SerialPort, logger: Logger) => {
 
   return new ESPLoader(port, logger);
 };
+
+// Export utility functions for use in UI code
+export { toHex, sleep, hexFormatter, formatMacAddr } from "./util";

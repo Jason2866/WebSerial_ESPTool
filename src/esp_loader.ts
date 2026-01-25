@@ -3806,6 +3806,47 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
+   * @name exitConsoleMode
+   * Exit console mode and return to bootloader
+   * For ESP32-S2, this triggers the esp32s2-usb-reconnect event for UI handling
+   * @returns true if manual reconnection is needed (ESP32-S2), false otherwise
+   */
+  async exitConsoleMode(): Promise<boolean> {
+    if (this._parent) {
+      return await this._parent.exitConsoleMode();
+    }
+
+    // Clear console mode flag
+    this._consoleMode = false;
+
+    // Check if this is ESP32-S2 with USB-JTAG/OTG
+    const isESP32S2 = this.chipFamily === CHIP_FAMILY_ESP32S2;
+    const isUsbJtagOrOtg = this._isUsbJtagOrOtg === true;
+
+    if (isESP32S2 && isUsbJtagOrOtg) {
+      // ESP32-S2 USB: Device is in firmware mode, port will change when entering bootloader
+      // Trigger the same event that's used during initial connection
+      this.logger.log(
+        "ESP32-S2 USB detected - triggering reconnection event",
+      );
+      
+      // Dispatch the esp32s2-usb-reconnect event
+      // This will be handled by the existing event listener in script.js
+      this.dispatchEvent(
+        new CustomEvent("esp32s2-usb-reconnect", {
+          detail: { message: "ESP32-S2 requires port reselection after console exit" },
+        }),
+      );
+      
+      return true; // Indicates manual reconnection needed
+    }
+
+    // For other devices, use standard reconnectToBootloader
+    await this.reconnectToBootloader();
+    return false; // No manual reconnection needed
+  }
+
+  /**
    * @name drainInputBuffer
    * Actively drain the input buffer by reading data for a specified time.
    * Simple approach for some drivers (especially CP210x on Windows) that have
