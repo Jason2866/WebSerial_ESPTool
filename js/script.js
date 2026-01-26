@@ -1,22 +1,11 @@
 // Import WebUSB serial support for Android compatibility
 import { WebUSBSerial, requestSerialPort } from './webusb-serial.js';
-import { ESP32ToolConsole } from './console.js';
 
 // Make requestSerialPort available globally for esptool.js
 // Use defensive assignment to avoid accidental overwrites
 if (!globalThis.requestSerialPort) {
   globalThis.requestSerialPort = requestSerialPort;
 }
-
-// Utility functions imported from esptool module
-let toHex, formatMacAddr, sleep;
-
-// Load utilities from esptool package
-window.esptoolPackage.then((esptoolMod) => {
-  toHex = esptoolMod.toHex;
-  formatMacAddr = esptoolMod.formatMacAddr;
-  sleep = esptoolMod.sleep;
-});
 
 let espStub;
 let esp32s2ReconnectInProgress = false;
@@ -25,9 +14,7 @@ let isAndroidPlatform = false; // Track if running on Android
 let consoleInstance = null; // ESP32ToolConsole instance
 let baudRateBeforeConsole = null; // Store baudrate before opening console
 let espLoaderBeforeConsole = null; // Store original ESPLoader before console
-let chipFamilyBeforeConsole = null; // Store chipFamily before opening console
-let consoleResetHandler = null;
-let consoleCloseHandler = null;
+
 
 /**
  * Clear all cached data and state on disconnect
@@ -49,9 +36,6 @@ function clearAllCachedData() {
 }
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
-const bufferSize = 512;
-const colors = ["#00a7e9", "#f89521", "#be1e2d"];
-const measurementPeriodId = "0001";
 
 const maxLogLength = 100;
 const log = document.getElementById("log");
@@ -66,8 +50,6 @@ const readSize = document.getElementById("readSize");
 const readProgress = document.getElementById("readProgress");
 const butReadPartitions = document.getElementById("butReadPartitions");
 const partitionList = document.getElementById("partitionList");
-const consoleContainer = document.getElementById("console-container");
-const consoleSwitch = document.getElementById("console");
 const autoscroll = document.getElementById("autoscroll");
 const lightSS = document.getElementById("light");
 const darkSS = document.getElementById("dark");
@@ -253,22 +235,12 @@ function enableStyleSheet(node, enabled) {
   node.disabled = !enabled;
 }
 
-/**
- * Format a MAC address byte array as colon-separated uppercase hexadecimal octets.
- * @param {Array<number>|Uint8Array} macAddr - Array of bytes representing the MAC address (each 0–255).
- * @returns {string} Colon-separated uppercase hex octets, e.g. "AA:BB:CC:DD:EE:FF".
- */
 function formatMacAddr(macAddr) {
   return macAddr
     .map((value) => value.toString(16).toUpperCase().padStart(2, "0"))
     .join(":");
 }
 
-/**
- * Format a byte value as a two-digit hexadecimal string prefixed with `0x`.
- * @param {number} value - Numeric value to format (treated as a byte).
- * @returns {string} Hex string in the form `0xNN` with lowercase letters and at least two digits.
- */
 function toHex(value) {
   return "0x" + value.toString(16).padStart(2, "0");
 }
@@ -397,10 +369,6 @@ async function clickConnect() {
     logMsg(`Connection failed: ${err.message || err}`);
     throw err;
   }
-  
-  // Store port info for ESP32-S2 detection
-  let portInfo = esploader.port?.getInfo ? esploader.port.getInfo() : {};
-  let isESP32S2 = portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x0002;
   
   // Handle ESP32-S2 Native USB reconnection requirement for BROWSER
   // Only add listener if not already in reconnect mode
