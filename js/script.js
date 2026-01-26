@@ -7,14 +7,27 @@ if (!globalThis.requestSerialPort) {
   globalThis.requestSerialPort = requestSerialPort;
 }
 
+// Utility functions imported from esptool module
+let toHex, formatMacAddr, sleep;
+
+// Load utilities from esptool package
+window.esptoolPackage.then((esptoolMod) => {
+  toHex = esptoolMod.toHex;
+  formatMacAddr = esptoolMod.formatMacAddr;
+  sleep = esptoolMod.sleep;
+});
+
 let espStub;
 let esp32s2ReconnectInProgress = false;
+let currentChipName = null; // Store chip name globally
+let currentMacAddr = null; // Store MAC address globally
 let isConnected = false; // Track connection state
-let isAndroidPlatform = false; // Track if running on Android
 let consoleInstance = null; // ESP32ToolConsole instance
 let baudRateBeforeConsole = null; // Store baudrate before opening console
 let espLoaderBeforeConsole = null; // Store original ESPLoader before console
-
+let chipFamilyBeforeConsole = null; // Store chipFamily before opening console
+let consoleResetHandler = null;
+let consoleCloseHandler = null;
 
 /**
  * Clear all cached data and state on disconnect
@@ -37,10 +50,65 @@ function clearAllCachedData() {
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 
+// Advanced read flash parameters
+// chunkSize: Amount of data to request from ESP in one command (in KB)
+const chunkSizes = [
+  { label: "4 KB", value: 0x1000 },
+  { label: "8 KB", value: 0x2000 },
+  { label: "16 KB (WebUSB)", value: 0x4000 },
+  { label: "64 KB", value: 0x10000 },
+  { label: "128 KB (Desktop)", value: 0x20000 },
+  { label: "256 KB", value: 0x40000 }
+];
+
+// blockSize: Size of each data block sent by ESP (in bytes)
+const blockSizes = [
+  { label: "31 B (Android)", value: 31 },
+  { label: "62 B", value: 62 },
+  { label: "124 B", value: 124 },
+  { label: "248 B (CDC)", value: 248 },
+  { label: "256 B", value: 256 },
+  { label: "496 B", value: 496 },
+  { label: "512 B", value: 512 },
+  { label: "992 B", value: 992 },
+  { label: "1024 B", value: 1024 },
+  { label: "1984 B", value: 1984 },
+  { label: "2024 B", value: 2024 },
+  { label: "3968 B (Desktop)", value: 3968 }
+];
+
+// maxInFlight: Maximum unacknowledged bytes (in bytes)
+const maxInFlights = [
+  { label: "31 B (Android)", value: 31 },
+  { label: "62 B", value: 62 },
+  { label: "124 B", value: 124 },
+  { label: "248 B (Android CDC)", value: 248 },
+  { label: "512 B", value: 512 },
+  { label: "992 B", value: 992 },
+  { label: "1024 B", value: 1024 },
+  { label: "1984 B", value: 1984 },
+  { label: "2024 B", value: 2024 },
+  { label: "3968 B", value: 3968 },
+  { label: "4096 B", value: 4096 },
+  { label: "7936 B", value: 7936 },
+  { label: "8192 B", value: 8192 },
+  { label: "15872 B (Desktop)", value: 15872 },
+  { label: "31744 B", value: 31744 },
+  { label: "63488 B", value: 63488 },
+  { label: "126976 B", value: 126976 },
+  { label: "253952 B", value: 253952 }
+];
+
 const maxLogLength = 100;
 const log = document.getElementById("log");
 const butConnect = document.getElementById("butConnect");
-const baudRate = document.getElementById("baudRate");
+const baudRateSelect = document.getElementById("baudRate");
+const advancedMode = document.getElementById("advanced");
+const advancedRow = document.querySelector(".advanced-row");
+const main = document.querySelector(".main");
+const chunkSizeSelect = document.getElementById("chunkSize");
+const blockSizeSelect = document.getElementById("blockSize");
+const maxInFlightSelect = document.getElementById("maxInFlight");
 const butClear = document.getElementById("butClear");
 const butErase = document.getElementById("butErase");
 const butProgram = document.getElementById("butProgram");
@@ -51,6 +119,7 @@ const readProgress = document.getElementById("readProgress");
 const butReadPartitions = document.getElementById("butReadPartitions");
 const partitionList = document.getElementById("partitionList");
 const autoscroll = document.getElementById("autoscroll");
+const consoleSwitch = document.getElementById("console");
 const lightSS = document.getElementById("light");
 const darkSS = document.getElementById("dark");
 const darkMode = document.getElementById("darkmode");
@@ -60,11 +129,117 @@ const firmware = document.querySelectorAll(".upload .firmware input");
 const progress = document.querySelectorAll(".upload .progress-bar");
 const offsets = document.querySelectorAll(".upload .offset");
 const appDiv = document.getElementById("app");
+const fileViewerModal = document.getElementById("fileViewerModal");
+const fileViewerTitle = document.getElementById("fileViewerTitle");
+const fileViewerPath = document.getElementById("fileViewerPath");
+const fileViewerSize = document.getElementById("fileViewerSize");
+const fileViewerText = document.getElementById("fileViewerText");
+const tabText = document.getElementById("tabText");
+const tabHex = document.getElementById("tabHex");
+
+let currentViewedFile = null;
+let currentViewedFileData = null;
+
+// Mobile detection
+function isMobileDevice() {
+  const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+  
+  // Check for mobile user agents
+  const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+  const isMobileUA = mobileRegex.test(userAgent);
+  
+  // Check for touch support
+  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  
+  // Check screen size
+  const isSmallScreen = window.innerWidth <= 768;
+  
+  return isMobileUA || (hasTouch && isSmallScreen);
+}
+
+/**
+ * Detect if we're using WebUSB (mobile/Android) or Web Serial (desktop)
+ * WebUSB is typically used on Android devices
+ * Web Serial is used on desktop browsers
+ */
+function isUsingWebUSB() {
+  // If we have an active connection, check the port's isWebUSB property
+  if (espStub && espStub.port && typeof espStub.port.isWebUSB !== 'undefined') {
+    return espStub.port.isWebUSB === true;
+  }
+  
+  // Fallback: Check if we're on a mobile device (likely using WebUSB)
+  if (isMobileDevice()) {
+    return true;
+  }
+  
+  // Check if Web Serial is NOT available but USB is (WebUSB only)
+  if (!("serial" in navigator) && "usb" in navigator) {
+    return true;
+  }
+  
+  // Default to Web Serial (desktop)
+  return false;
+}
+
+/**
+ * Get default advanced parameters based on environment
+ * Desktop (Web Serial): Higher values for better performance
+ * Mobile/WebUSB: Lower values for compatibility
+ */
+function getDefaultAdvancedParams() {
+  const isWebUSB = isUsingWebUSB();
+  
+  return {
+    chunkSize: isWebUSB ? 0x4000 : 0x20000,  // 16 KB for WebUSB, 128 KB for Desktop
+    blockSize: isWebUSB ? 248 : 3968,         // 248 B for WebUSB, 3968 B for Desktop
+    maxInFlight: isWebUSB ? 248 : 15872       // 248 B for WebUSB, 15872 B for Desktop
+  };
+}
+
+// Update mobile classes and padding
+function updateMobileClasses() {
+  const isMobile = isMobileDevice();
+  
+  if (isMobile) {
+    document.body.classList.add('mobile-device');
+    document.body.classList.add('no-hover');
+  } else {
+    document.body.classList.remove('mobile-device');
+    document.body.classList.remove('no-hover');
+  }
+  
+  // Update main padding to match header height
+  updateMainPadding();
+}
+
+// Debounce helper
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Debounced resize handler
+const debouncedUpdateMobileClasses = debounce(updateMobileClasses, 250);
+
+// Apply mobile class on load
+updateMobileClasses();
+
+// Update on resize and orientation change
+window.addEventListener('resize', debouncedUpdateMobileClasses);
+window.addEventListener('orientationchange', debouncedUpdateMobileClasses);
 
 document.addEventListener("DOMContentLoaded", () => {
   butConnect.addEventListener("click", () => {
     clickConnect().catch(async (e) => {
-      console.error(e);
+      debugMsg('Connection error: ' + e);
       errorMsg(e.message || e);
       if (espStub) {
         await espStub.disconnect();
@@ -88,54 +263,28 @@ document.addEventListener("DOMContentLoaded", () => {
   updateUploadRowsVisibility();
   
   autoscroll.addEventListener("click", clickAutoscroll);
-  baudRate.addEventListener("change", changeBaudRate);
+  baudRateSelect.addEventListener("change", changeBaudRate);
   darkMode.addEventListener("click", clickDarkMode);
   debugMode.addEventListener("click", clickDebugMode);
   showLog.addEventListener("click", clickShowLog);
   window.addEventListener("error", function (event) {
     console.log("Got an uncaught error: ", event.error);
   });
-  
-  // Header auto-hide functionality
-  const header = document.querySelector(".header");
-  const main = document.querySelector(".main");
-  
-  // Show header on mouse enter at top of page
-  main.addEventListener("mousemove", (e) => {
-    if (e.clientY < 5 && header.classList.contains("header-hidden")) {
-      header.classList.remove("header-hidden");
-      main.classList.remove("no-header-padding");
-    }
-  });
-  
-  // Keep header visible when mouse is over it
-  header.addEventListener("mouseenter", () => {
-    header.classList.remove("header-hidden");
-    main.classList.remove("no-header-padding");
-  });
-  
-  // Hide header when mouse leaves (only if connected)
-  header.addEventListener("mouseleave", () => {
-    if (espStub && header.classList.contains("header-hidden") === false) {
-      setTimeout(() => {
-        if (!header.matches(":hover")) {
-          header.classList.add("header-hidden");
-          main.classList.add("no-header-padding");
-        }
-      }, 1000);
-    }
-  });
-  
-  // Check if Web Serial API or WebUSB is supported
+
+  // Check for Web Serial or WebUSB support
   if ("serial" in navigator || "usb" in navigator) {
     const notSupported = document.getElementById("notSupported");
-    notSupported?.classList.add("hidden");
+    notSupported.classList.add("hidden");
   }
 
   initBaudRate();
+  initAdvancedParams();
   loadAllSettings();
   updateTheme();
   logMsg("WebSerial ESPTool loaded.");
+  
+  // Set initial main padding based on header height
+  updateMainPadding();
 });
 
 function initBaudRate() {
@@ -143,8 +292,17 @@ function initBaudRate() {
     var option = document.createElement("option");
     option.text = rate + " Baud";
     option.value = rate;
-    baudRate.add(option);
+    baudRateSelect.add(option);
   }
+}
+
+function initAdvancedParams() {
+  // Get default values based on environment (Desktop vs WebUSB)
+  const defaults = getDefaultAdvancedParams();
+}
+
+function updateAdvancedParamsForConnection() {
+  const defaults = getDefaultAdvancedParams();
 }
 
 function logMsg(text) {
@@ -235,16 +393,6 @@ function enableStyleSheet(node, enabled) {
   node.disabled = !enabled;
 }
 
-function formatMacAddr(macAddr) {
-  return macAddr
-    .map((value) => value.toString(16).toUpperCase().padStart(2, "0"))
-    .join(":");
-}
-
-function toHex(value) {
-  return "0x" + value.toString(16).padStart(2, "0");
-}
-
 /**
  * Parse flash size string (e.g., "256KB", "4MB") to bytes
  * @param {string} sizeStr - Flash size string with unit (KB or MB)
@@ -276,36 +424,8 @@ function parseFlashSize(sizeStr) {
 }
 
 /**
- * Load WebUSB serial wrapper for Android
- */
-async function loadWebUSBSerial() {
-  // Check if already loaded
-  if (globalThis.requestSerialPort) {
-    return;
-  }
-
-  // Dynamically load the WebUSB serial script as ES6 module
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.type = "module";  // CRITICAL: Load as ES6 module to support export statements
-    script.src = "js/webusb-serial.js";
-    script.onload = () => {
-      // Verify it loaded correctly
-      if (globalThis.requestSerialPort) {
-        resolve();
-      } else {
-        reject(new Error("WebUSB serial script loaded but requestSerialPort not found"));
-      }
-    };
-    script.onerror = () => reject(new Error("Failed to load WebUSB serial script"));
-    document.head.appendChild(script);
-  });
-}
-
-/**
- * Toggle the connection state: connect to an ESP device (using WebUSB on Android or Web Serial on desktop) or disconnect if already connected.
- *
- * On connect, detect platform and transport, initialize the esploader, handle ESP32-S2 native USB reconnection flow when required (showing a modal on desktop or guidance on Android), run the device stub, update UI state, set the detected flash size and selected baud rate, and install a disconnect handler. On disconnect, remove the handler, close the port, clear the stub, and update the UI.
+ * @name clickConnect
+ * Click handler for the connect/disconnect button.
  */
 async function clickConnect() {
   console.log('[clickConnect] Function called');
@@ -325,10 +445,10 @@ async function clickConnect() {
     }
     toggleUIConnected(false);
     espStub = undefined;
-
+    
     // Clear all cached data and state
     clearAllCachedData();
-
+    
     return;
   }
 
@@ -337,37 +457,39 @@ async function clickConnect() {
 
   // Platform detection: Android always uses WebUSB, Desktop uses Web Serial
   const userAgent = navigator.userAgent || '';
-  isAndroidPlatform = /Android/i.test(userAgent);
-  
-  // Load WebUSB support for Android
-  if (isAndroidPlatform && "usb" in navigator) {
-    try {
-      await loadWebUSBSerial();
-      logMsg("WebUSB support loaded");
-    } catch (err) {
-      errorMsg(`Failed to load WebUSB support: ${err.message}`);
-      throw err;
-    }
-  }
+  const isAndroid = /Android/i.test(userAgent);
   
   // Only log platform details to UI in debug mode (avoid fingerprinting surface)
   if (debugMode.checked) {
-    const platformMsg = `Platform: ${isAndroidPlatform ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
+    const platformMsg = `Platform: ${isAndroid ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
     logMsg(platformMsg);
   }
-  logMsg(`Using: ${isAndroidPlatform ? 'WebUSB' : 'Web Serial'}`);
+  logMsg(`Using: ${isAndroid ? 'WebUSB' : 'Web Serial'}`);
   
-  // Use esploaderMod.connect() which will automatically use globalThis.requestSerialPort if available
   let esploader;
-  try {
+  
+  if (isAndroid) {
+    // Android: Use WebUSB directly
+    console.log('[Connect] Using WebUSB for Android');
+    try {
+      const port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
+      esploader = await esploaderMod.connectWithPort(port, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    } catch (err) {
+      logMsg(`WebUSB connection failed: ${err.message || err}`);
+      throw err;
+    }
+  } else {
+    // Desktop: Use Web Serial (standard esptool connect)
+    console.log('[Connect] Using Web Serial for Desktop');
     esploader = await esploaderMod.connect({
       log: (...args) => logMsg(...args),
       debug: (...args) => debugMsg(...args),
       error: (...args) => errorMsg(...args),
     });
-  } catch (err) {
-    logMsg(`Connection failed: ${err.message || err}`);
-    throw err;
   }
   
   // Handle ESP32-S2 Native USB reconnection requirement for BROWSER
@@ -382,58 +504,47 @@ async function clickConnect() {
       esp32s2ReconnectInProgress = true;
       logMsg("ESP32-S2 Native USB detected!");
       toggleUIConnected(false);
+      const previousStubPort = espStub?.port;
       espStub = undefined;
       
       try {
         // Close the port first
-        await esploader.port?.close();
-        
-        // For Android WebUSB: ESP32-S2 automatic reconnection doesn't work
-        // Show message and let user reconnect manually with BOOT button
-        if (isAndroidPlatform) {
-          logMsg("ESP32-S2 has switched to CDC mode");
-          logMsg("Please press and HOLD the BOOT button on your ESP32-S2, then click Connect");
-          toggleUIConnected(false);
-          esp32s2ReconnectInProgress = false;
-          return;
+        await esploader.port.close();
+
+        // Use the modal dialog approach
+        if (previousStubPort && previousStubPort.readable) {
+          await previousStubPort.close();
         }
-        // For Desktop Web Serial: Use the modal dialog approach
-        if (esploader.port?.forget) {
-          await esploader.port.forget();
-        }
-      } catch (disconnectErr) {
-        // Ignore disconnect errors
-        console.warn("Error during disconnect:", disconnectErr);
+      } catch (closeErr) {
+        // Ignore port close errors
+        debugMsg(`Port close error (ignored): ${closeErr.message}`);
       }
       
-      // Show modal dialog ONLY for Desktop
-      if (!isAndroidPlatform) {
-        const modal = document.getElementById("esp32s2Modal");
-        const reconnectBtn = document.getElementById("butReconnectS2");
+      // Show modal dialog
+      const modal = document.getElementById("esp32s2Modal");
+      const reconnectBtn = document.getElementById("butReconnectS2");
         
-        modal.classList.remove("hidden");
+      modal.classList.remove("hidden");
         
-        // Handle reconnect button click
-        const handleReconnect = async () => {
-          modal.classList.add("hidden");
-          reconnectBtn.removeEventListener("click", handleReconnect);
+      // Handle reconnect button click
+      const handleReconnect = async () => {
+        modal.classList.add("hidden");
+        reconnectBtn.removeEventListener("click", handleReconnect);
           
-          logMsg("Requesting new device selection...");
+        logMsg("Requesting new device selection...");
           
-          // Trigger port selection
-          try {
-            await clickConnect();
-            // Reset flag on successful connection
-            esp32s2ReconnectInProgress = false;
-          } catch (err) {
-            errorMsg("Failed to reconnect: " + err);
-            // Reset flag on error so user can try again
-            esp32s2ReconnectInProgress = false;
-          }
-        };
-        
-        reconnectBtn.addEventListener("click", handleReconnect);
-      }
+        // Trigger port selection
+        try {
+          await clickConnect();
+          // Reset flag on successful connection
+          esp32s2ReconnectInProgress = false;
+        } catch (err) {
+          errorMsg("Failed to reconnect: " + err);
+          // Reset flag on error so user can try again
+          esp32s2ReconnectInProgress = false;
+        }
+      };
+      reconnectBtn.addEventListener("click", handleReconnect);
     });
   }
   
@@ -458,7 +569,15 @@ async function clickConnect() {
   logMsg("Connected to " + esploader.chipName);
   logMsg("MAC Address: " + formatMacAddr(esploader.macAddr()));
 
+  // Store chip info globally
+  currentChipName = esploader.chipName;
+  currentMacAddr = formatMacAddr(esploader.macAddr());
+
   espStub = await esploader.runStub();
+  
+  // Update advanced parameters based on actual connection type (WebUSB vs Web Serial)
+  // Only update if user hasn't manually changed them (still at defaults)
+  updateAdvancedParamsForConnection();
   
   toggleUIConnected(true);
   toggleUIToolbar(true);
@@ -470,7 +589,7 @@ async function clickConnect() {
   }
   
   // Set the selected baud rate
-  let baud = parseInt(baudRate.value);
+  let baud = parseInt(baudRateSelect.value);
   if (baudRates.includes(baud)) {
     await espStub.setBaudrate(baud);
   }
@@ -478,7 +597,7 @@ async function clickConnect() {
   // Store disconnect handler so we can remove it later
   const handleDisconnect = () => {
     toggleUIConnected(false);
-    espStub = undefined;
+    espStub = false;
   };
   espStub.handleDisconnect = handleDisconnect; // Store reference on espStub
   espStub.addEventListener("disconnect", handleDisconnect);
@@ -489,9 +608,9 @@ async function clickConnect() {
  * Change handler for the Baud Rate selector.
  */
 async function changeBaudRate() {
-  saveSetting("baudrate", baudRate.value);
+  saveSetting("baudrate", baudRateSelect.value);
   if (espStub) {
-    let baud = parseInt(baudRate.value);
+    let baud = parseInt(baudRateSelect.value);
     if (baudRates.includes(baud)) {
       await espStub.setBaudrate(baud);
     }
@@ -534,6 +653,289 @@ async function clickShowLog() {
 }
 
 /**
+ * @name openConsolePortAndInit
+ * Helper to open port for console and initialize console UI
+ * Avoids code duplication across different console init flows
+ */
+async function openConsolePortAndInit(newPort) {
+  // Open the port at 115200 for console
+  await newPort.open({ baudRate: 115200 });
+  espStub.port = newPort;
+  espStub.connected = true;
+  
+  // Keep parent/loader in sync (used by closeConsole)
+  if (espStub._parent) {
+    espStub._parent.port = newPort;
+  }
+  if (espLoaderBeforeConsole) {
+    espLoaderBeforeConsole.port = newPort;
+  }
+  
+  debugMsg("Port opened for console at 115200 baud");
+  
+  // Device is already in firmware mode, port is open at 115200
+  // Initialize console directly
+  saveSetting("console", true);
+  
+  // Initialize console UI and handlers
+  await initConsoleUI();
+}
+
+/**
+ * @name clickConsole
+ * Change handler for the Console checkbox.
+ */
+async function clickConsole() {
+  // Check if console elements exist
+  if (!consoleSwitch) {
+    logMsg("Console function not available - HTML elements not found");
+    return;
+  }
+  
+  const shouldEnable = consoleSwitch.checked;
+  
+  if (shouldEnable) {
+    // After WDT reset, everything is gone - start fresh with port selection
+    // Initialize console if connected and not already created
+    if (isConnected && espStub && espStub.port && !consoleInstance) {
+      try {
+        // CRITICAL: Save current state BEFORE changing anything
+        // If espStub has a parent, we need to get the baudrate from the parent!
+        // The stub child can not be used for restoring the stub. the parent must be used!
+        const loaderToSave = espStub._parent || espStub;
+        const currentBaudrate = loaderToSave.currentBaudRate;
+        const currentChipFamily = espStub.chipFamily;
+
+        // CRITICAL: Save the PARENT loader (not the stub child!)
+        espLoaderBeforeConsole = loaderToSave;
+        baudRateBeforeConsole = currentBaudrate;
+        chipFamilyBeforeConsole = currentChipFamily;
+
+        // Console ALWAYS runs at 115200 baud (firmware default)
+        // Always set baudrate to 115200 before opening console
+        try {
+          await espStub.setBaudrate(115200);
+          debugMsg("Baudrate set to 115200 for console");
+        } catch (baudErr) {
+          logMsg(`Failed to set baudrate to 115200: ${baudErr.message}`);
+        }
+        
+        // Enter console mode - handles both USB-JTAG and serial chip devices
+        try {
+          const portWasClosed = await espStub.enterConsoleMode();
+          
+          if (portWasClosed) {
+            // USB-JTAG/OTG device: Port was closed after WDT reset
+            debugMsg("Device reset to firmware mode (port closed)");
+            
+            // Wait for device to boot and USB port to become available
+            // Android/WebUSB needs more time than Desktop for USB enumeration
+            const isWebUSB = isUsingWebUSB();
+            const waitTime = isWebUSB ? 1000 : 500; // 1s for Android, 500ms for Desktop
+            debugMsg(`Waiting ${waitTime}ms for device to boot and USB to enumerate...`);
+            await sleep(waitTime);
+            
+            // Check if this is ESP32-S2 or if we're on Android (WebUSB)
+            // Both need modal for user gesture
+            const isS2 = chipFamilyBeforeConsole === 0x3252; // CHIP_FAMILY_ESP32S2 = 0x3252
+            const needsModal = isS2 || isWebUSB;
+            
+            if (needsModal) {
+              // ESP32-S2 (all platforms) or Android (all chips): Use modal for user gesture
+              
+              // Close old port if still open
+              try {
+                if (espStub.port && espStub.port.readable) {
+                  await espStub.port.close();
+                  debugMsg("Old port closed");
+                }
+              } catch (closeErr) {
+                debugMsg(`Port close error (ignored): ${closeErr.message}`);
+              }
+              
+              // Wait a bit for browser to process
+              await sleep(100);
+              
+              // Show modal for port selection (requires user gesture)
+              const modal = document.getElementById("esp32s2Modal");
+              const reconnectBtn = document.getElementById("butReconnectS2");
+              
+              // Update modal text for console mode
+              const modalTitle = modal.querySelector("h2");
+              const modalText = modal.querySelector("p");
+              if (modalTitle) modalTitle.textContent = "Device has been reset to firmware mode";
+              if (modalText) {
+                modalText.textContent = isWebUSB 
+                  ? "Please click the button below to select the USB device for console."
+                  : "Please click the button below to select the serial port for console.";
+              }
+              
+              modal.classList.remove("hidden");
+              
+              // Handle reconnect button click (single-fire to prevent multiple prompts)
+              const handleReconnect = async () => {
+                modal.classList.add("hidden");
+                
+                try {
+                  // Request the NEW port (user gesture from button click)
+                  debugMsg("Please select the port for console mode...");
+                  const newPort = isWebUSB
+                    ? await WebUSBSerial.requestPort((...args) => logMsg(...args))
+                    : await navigator.serial.requestPort();
+                  
+                  // Use helper to open port and initialize console
+                  await openConsolePortAndInit(newPort);
+                } catch (err) {
+                  errorMsg(`Failed to open port for console: ${err.message}`);
+                  if (consoleSwitch) {
+                    consoleSwitch.checked = false;
+                    saveSetting("console", false);
+                  }
+                }
+              };
+              
+              // Use { once: true } to ensure single-fire and automatic cleanup
+              reconnectBtn.addEventListener("click", handleReconnect, { once: true });
+            } else {
+              // Desktop (Web Serial) with ESP32-S3/C3/C5/C6/H2/P4: Direct requestPort
+              try {
+                // Request port selection from user (direct)
+                debugMsg("Please select the serial port again for console mode...");
+                const newPort = await navigator.serial.requestPort();
+                
+                // Use helper to open port and initialize console
+                await openConsolePortAndInit(newPort);
+              } catch (err) {
+                errorMsg(`Failed to open port for console: ${err.message}`);
+                if (consoleSwitch) {
+                  consoleSwitch.checked = false;
+                  saveSetting("console", false);
+                }
+              }
+            }
+            
+            return;
+          } else {
+            // Serial chip device: Port stays open
+            debugMsg("Device reset to firmware mode");
+          }
+        } catch (err) {
+          errorMsg(`Failed to enter console mode: ${err.message}`);
+          if (consoleSwitch) {
+            consoleSwitch.checked = false;
+            saveSetting("console", false);
+          }
+          return;
+        }
+        
+        // Wait for:
+        // - Firmware to start after reset
+        // - Port to be ready for new reader
+        await sleep(200);
+        
+        // Initialize console UI and handlers
+        await initConsoleUI();
+        
+        saveSetting("console", true);
+      } catch (err) {
+        errorMsg("Failed to initialize console: " + err.message);
+        if (consoleSwitch) {
+          consoleSwitch.checked = false;
+          saveSetting("console", false);
+        }
+        await closeConsole();
+      }
+    } else if (!isConnected) {
+      // Not connected - just show message
+      if (consoleSwitch) {
+        consoleSwitch.checked = false;
+        saveSetting("console", false);
+      }
+      errorMsg("Please connect to device first");
+    }
+  } else {
+    await closeConsole();
+    saveSetting("console", false);
+  }
+}
+
+/**
+ * @name closeConsole
+ * Close console and restore device to bootloader state
+ */
+async function closeConsole() {
+  // Remove console-active class from body FIRST to restore visibility
+  document.body.classList.remove("console-active");
+  
+  // Hide console and show commands again
+  const commands = document.getElementById("commands");
+  if (commands) {
+    commands.classList.remove("hidden");
+    // Force display to ensure it's visible
+    commands.style.display = "";
+  }
+  
+  // Restore original state (bootloader + stub + baudrate)
+  if (espLoaderBeforeConsole && Number.isFinite(baudRateBeforeConsole)) {
+    // Disconnect console first to release locks
+    if (consoleInstance) {
+      try {
+        await consoleInstance.disconnect();
+      } catch (err) {
+        debugMsg("Error disconnecting console: " + err);
+      }
+      consoleInstance = null;
+    }
+    
+    // Use esp_loader's exitConsoleMode function
+    try {
+      const needsManualReconnect = await espLoaderBeforeConsole.exitConsoleMode();
+      
+      if (needsManualReconnect) {
+        // ESP32-S2: Port has changed, need to select new port
+        logMsg("ESP32-S2: Port changed - please select the new port");
+        toggleUIConnected(false);
+        espStub = undefined;
+        
+        // Wait a moment for port to stabilize
+        await sleep(1000);
+        
+        // Trigger port selection
+        try {
+          await clickConnect();
+          espLoaderBeforeConsole = null;
+          baudRateBeforeConsole = null;
+          chipFamilyBeforeConsole = null;
+        } catch (err) {
+          errorMsg("Failed to reconnect: " + err);
+        }
+      } else {
+        // Other devices: reconnectToBootloader was called successfully
+        // Reload stub
+        const newStub = await espLoaderBeforeConsole.runStub();
+        espStub = newStub;
+
+        // Restore baudrate
+        if (baudRateBeforeConsole !== 115200) {
+          await espStub.setBaudrate(baudRateBeforeConsole);
+        }
+
+        espLoaderBeforeConsole = null;
+        baudRateBeforeConsole = null;
+        chipFamilyBeforeConsole = null;
+      }
+    } catch (err) {
+      errorMsg("Failed to exit console mode: " + err.message);
+      espStub = undefined;
+      toggleUIConnected(false);
+      espLoaderBeforeConsole = null;
+      baudRateBeforeConsole = null;
+      chipFamilyBeforeConsole = null;
+    }
+  }
+}
+
+/**
  * @name updateLogVisibility
  * Update log and log controls visibility
  */
@@ -554,6 +956,27 @@ function updateLogVisibility() {
 }
 
 /**
+ * @name updateMainPadding
+ * Dynamically adjust main content padding based on header height
+ */
+function updateMainPadding() {
+  // Use requestAnimationFrame to ensure DOM has updated
+  requestAnimationFrame(() => {
+    const header = document.querySelector('.header');
+    const main = document.querySelector('.main');
+    
+    // Guard against missing elements
+    if (!header || !main) {
+      return;
+    }
+    
+    const headerHeight = header.offsetHeight;
+    // Add small buffer (10px) for better spacing
+    main.style.paddingTop = (headerHeight + 10) + 'px';
+  });
+}
+
+/**
  * @name clickErase
  * Click handler for the erase button.
  */
@@ -561,7 +984,6 @@ async function clickErase() {
   if (
     window.confirm("This will erase the entire flash. Click OK to continue.")
   ) {
-    baudRate.disabled = true;
     butErase.disabled = true;
     butProgram.disabled = true;
     try {
@@ -573,7 +995,7 @@ async function clickErase() {
       errorMsg(e);
     } finally {
       butErase.disabled = false;
-      baudRate.disabled = false;
+      baudRateSelect.disabled = false;
       butProgram.disabled = getValidFiles().length == 0;
     }
   }
@@ -600,7 +1022,7 @@ async function clickProgram() {
     });
   };
 
-  baudRate.disabled = true;
+  baudRateSelect.disabled = true;
   butErase.disabled = true;
   butProgram.disabled = true;
   for (let i = 0; i < firmware.length; i++) {
@@ -634,7 +1056,7 @@ async function clickProgram() {
     progress[i].querySelector("div").style.width = "0";
   }
   butErase.disabled = false;
-  baudRate.disabled = false;
+  baudRateSelect.disabled = false;
   butProgram.disabled = getValidFiles().length == 0;
   logMsg("To run the new firmware, please reset your device.");
 }
@@ -736,7 +1158,6 @@ async function clickReadFlash() {
     return;
   }
 
-  baudRate.disabled = true;
   butErase.disabled = true;
   butProgram.disabled = true;
   butReadFlash.disabled = true;
@@ -747,13 +1168,42 @@ async function clickReadFlash() {
   try {
     const progressBar = readProgress.querySelector("div");
 
+    // Prepare options object if advanced mode is enabled
+    // Option validation helpers
+    const validateOption = (name, value) => {
+      if (value === undefined) return undefined;
+      if (!Number.isFinite(value) || value <= 0) {
+        throw new Error(`Invalid ${name}: ${value}`);
+      }
+      return value;
+    };
+
+    let options = undefined;
+    let chunkSizeOpt, blockSizeOpt, maxInFlightOpt;
+    if (advancedMode && advancedMode.checked && chunkSizeSelect && blockSizeSelect && maxInFlightSelect) {
+      chunkSizeOpt = validateOption("chunkSize", parseInt(chunkSizeSelect.value));
+      blockSizeOpt = validateOption("blockSize", parseInt(blockSizeSelect.value));
+      maxInFlightOpt = validateOption("maxInFlight", parseInt(maxInFlightSelect.value));
+      if ((blockSizeOpt ?? maxInFlightOpt) &&
+          (blockSizeOpt === undefined || maxInFlightOpt === undefined)) {
+        throw new Error("blockSize and maxInFlight must be provided together");
+      }
+      options = {
+        chunkSize: chunkSizeOpt,
+        blockSize: blockSizeOpt,
+        maxInFlight: maxInFlightOpt
+      };
+      logMsg(`Advanced mode: chunkSize=0x${options.chunkSize?.toString(16)}, blockSize=${options.blockSize}, maxInFlight=${options.maxInFlight}`);
+    }
+
     const data = await espStub.readFlash(
       offset,
       size,
       (packet, progress, totalSize) => {
         progressBar.style.width =
           Math.floor((progress / totalSize) * 100) + "%";
-      }
+      },
+      options
     );
 
     logMsg(`Successfully read ${data.length} bytes from flash`);
@@ -776,7 +1226,7 @@ async function clickReadFlash() {
     readProgress.classList.add("hidden");
     readProgress.querySelector("div").style.width = "0";
     butErase.disabled = false;
-    baudRate.disabled = false;
+    baudRateSelect.disabled = false;
     butProgram.disabled = getValidFiles().length == 0;
     butReadFlash.disabled = false;
     readOffset.disabled = false;
@@ -920,31 +1370,37 @@ function displayPartitions(partitions) {
     
     // Name
     const nameCell = document.createElement("td");
+    nameCell.setAttribute("data-label", "Name");
     nameCell.textContent = partition.name;
     row.appendChild(nameCell);
     
     // Type
     const typeCell = document.createElement("td");
+    typeCell.setAttribute("data-label", "Type");
     typeCell.textContent = partition.typeName;
     row.appendChild(typeCell);
     
     // SubType
     const subtypeCell = document.createElement("td");
+    subtypeCell.setAttribute("data-label", "SubType");
     subtypeCell.textContent = partition.subtypeName;
     row.appendChild(subtypeCell);
     
     // Offset
     const offsetCell = document.createElement("td");
+    offsetCell.setAttribute("data-label", "Offset");
     offsetCell.textContent = `0x${partition.offset.toString(16)}`;
     row.appendChild(offsetCell);
     
     // Size
     const sizeCell = document.createElement("td");
+    sizeCell.setAttribute("data-label", "Size");
     sizeCell.textContent = formatSize(partition.size);
     row.appendChild(sizeCell);
     
     // Action
     const actionCell = document.createElement("td");
+    actionCell.setAttribute("data-label", "Action");
     const downloadBtn = document.createElement("button");
     downloadBtn.textContent = "Download";
     downloadBtn.className = "partition-download-btn";
@@ -1075,26 +1531,38 @@ function toggleUIConnected(connected) {
   
   if (connected) {
     lbl = "Disconnect";
-    // Auto-hide header after connection
-    setTimeout(() => {
-      header.classList.add("header-hidden");
-      main.classList.add("no-header-padding");
-    }, 2000); // Hide after 2 seconds
+    isConnected = true;
+
   } else {
+    isConnected = false;
     toggleUIToolbar(false);
-    // Show header when disconnected
-    header.classList.remove("header-hidden");
-    main.classList.remove("no-header-padding");
+    
+    // Cleanup console if it was running
+    if (consoleInstance) {
+      consoleInstance.disconnect().catch(err => {
+        debugMsg("Error disconnecting console: " + err);
+      });
+      consoleInstance = null;
+    }
+    
+    // Hide console container, show commands, and uncheck switch
+    const commands = document.getElementById("commands");
+    if (commands) commands.classList.remove("hidden");
+    consoleSwitch.checked = false;
+    saveSetting("console", false);
   }
   butConnect.textContent = lbl;
 }
 
 function loadAllSettings() {
+  // Get default values based on environment (Desktop vs WebUSB)
+  const defaults = getDefaultAdvancedParams();
+  
   // Load all saved settings or defaults
   autoscroll.checked = loadSetting("autoscroll", true);
-  baudRate.value = loadSetting("baudrate", 2000000);
+  baudRateSelect.value = loadSetting("baudrate", 2000000);
   darkMode.checked = loadSetting("darkmode", false);
-  debugMode.checked = loadSetting("debugmode", true);
+  debugMode.checked = loadSetting("debugmode", false);
   showLog.checked = loadSetting("showlog", false);
   
   // Apply show log setting
@@ -1119,202 +1587,4 @@ function ucWords(text) {
     .replace("_", " ")
     .toLowerCase()
     .replace(/(?<= )[^\s]|^./g, (a) => a.toUpperCase());
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * @name openConsolePortAndInit
- * Helper to open port for console and initialize console UI
- * Avoids code duplication across different console init flows
- */
-async function openConsolePortAndInit(newPort) {
-  // Open the port at 115200 for console
-  await newPort.open({ baudRate: 115200 });
-  espStub.port = newPort;
-  espStub.connected = true;
-  
-  // Keep parent/loader in sync (used by closeConsole)
-  if (espStub._parent) {
-    espStub._parent.port = newPort;
-  }
-  if (espLoaderBeforeConsole) {
-    espLoaderBeforeConsole.port = newPort;
-  }
-  
-  logMsg("Port opened for console at 115200 baud");
-  
-  // Device is already in firmware mode, port is open at 115200
-  // Initialize console directly
-  // Note: consoleSwitch would need to be added to HTML
-  // consoleSwitch.checked = true;
-  // saveSetting("console", true);
-  
-  // Initialize console UI and handlers
-  await initConsoleUI();
-}
-
-/**
- * @name initConsoleUI
- * Initialize console UI, event handlers, and start console instance
- * Extracted helper to avoid duplication across different console init flows
- */
-async function initConsoleUI() {
-  // Wait for port to be ready
-  await sleep(200);
-  
-  // Show console container and hide commands
-  // Note: consoleContainer would need to be added to HTML
-  // consoleContainer.classList.remove("hidden");
-  
-  // Add console-active class to body for mobile styling
-  document.body.classList.add("console-active");
-  
-  const commands = document.getElementById("commands");
-  if (commands) commands.classList.add("hidden");
-  
-  // Initialize console
-  // Note: consoleContainer would need to be added to HTML
-  // consoleInstance = new ESP32ToolConsole(espStub.port, consoleContainer, true);
-  // await consoleInstance.init();
-  
-  // Check if console reset is supported and hide button if not
-  if (espLoaderBeforeConsole && typeof espLoaderBeforeConsole.isConsoleResetSupported === 'function') {
-    const resetSupported = espLoaderBeforeConsole.isConsoleResetSupported();
-    // Note: Reset button would need to be added to console HTML
-    // const resetBtn = consoleContainer.querySelector("#console-reset-btn");
-    // if (resetBtn) {
-    //   if (resetSupported) {
-    //     resetBtn.style.display = "";
-    //   } else {
-    //     resetBtn.style.display = "none";
-    //   }
-    // }
-  }
-  
-  // Listen for console reset events
-  // Note: Event handlers would need to be set up when console HTML is added
-  
-  // Listen for console close events
-  // Note: Event handlers would need to be set up when console HTML is added
-  
-  logMsg("Console initialized");
-}
-
-/**
- * @name clickConsole
- * Change handler for the Console checkbox.
- */
-async function clickConsole() {
-  // Note: This function requires console HTML elements to be added
-  // const shouldEnable = consoleSwitch.checked;
-  
-  // if (shouldEnable) {
-  //   // Initialize console if connected and not already created
-  //   if (isConnected && espStub && espStub.port && !consoleInstance) {
-  //     try {
-  //       // Save current state
-  //       const loaderToSave = espStub._parent || espStub;
-  //       const currentBaudrate = loaderToSave.currentBaudRate;
-  //       const currentChipFamily = espStub.chipFamily;
-  //       
-  //       espLoaderBeforeConsole = loaderToSave;
-  //       baudRateBeforeConsole = currentBaudrate;
-  //       chipFamilyBeforeConsole = currentChipFamily;
-  //       
-  //       // Set baudrate to 115200 for console
-  //       await espStub.setBaudrate(115200);
-  //       
-  //       // Enter console mode
-  //       const portWasClosed = await espStub.enterConsoleMode();
-  //       
-  //       if (portWasClosed) {
-  //         // Handle USB-JTAG/OTG device reconnection
-  //         // See esp32tool/js/script.js for full implementation
-  //       } else {
-  //         // Serial chip device: Port stays open
-  //         await sleep(200);
-  //         await initConsoleUI();
-  //       }
-  //     } catch (err) {
-  //       logMsg("Failed to initialize console: " + err.message);
-  //     }
-  //   }
-  // } else {
-  //   await closeConsole();
-  // }
-  
-  logMsg("Console function not yet fully implemented - HTML elements needed");
-}
-
-/**
- * @name closeConsole
- * Close console and restore device to bootloader state
- */
-async function closeConsole() {
-  // Remove console-active class from body FIRST to restore visibility
-  document.body.classList.remove("console-active");
-  
-  // Hide console and show commands again
-  // Note: consoleContainer would need to be added to HTML
-  // consoleContainer.classList.add("hidden");
-  const commands = document.getElementById("commands");
-  if (commands) {
-    commands.classList.remove("hidden");
-    // Force display to ensure it's visible
-    commands.style.display = "";
-  }
-  
-  // Restore original state (bootloader + stub + baudrate)
-  if (espLoaderBeforeConsole && Number.isFinite(baudRateBeforeConsole)) {
-    // Disconnect console first to release locks
-    if (consoleInstance) {
-      try {
-        await consoleInstance.disconnect();
-      } catch (err) {
-        logMsg("Error disconnecting console: " + err);
-      }
-      consoleInstance = null;
-    }
-    
-    // Use esp_loader's exitConsoleMode function
-    try {
-      const needsManualReconnect = await espLoaderBeforeConsole.exitConsoleMode();
-      
-      if (needsManualReconnect) {
-        // ESP32-S2: Port has changed, need to select new port
-        logMsg("ESP32-S2: Port changed - please select the new port");
-        // Note: Would need to trigger reconnection flow
-        espStub = undefined;
-        espLoaderBeforeConsole = null;
-        baudRateBeforeConsole = null;
-        chipFamilyBeforeConsole = null;
-      } else {
-        // Restore baudrate and reconnect to bootloader
-        try {
-          await espLoaderBeforeConsole.setBaudrate(baudRateBeforeConsole);
-          logMsg(`Baudrate restored to ${baudRateBeforeConsole}`);
-        } catch (err) {
-          logMsg(`Failed to restore baudrate: ${err.message}`);
-        }
-        
-        espLoaderBeforeConsole = null;
-        baudRateBeforeConsole = null;
-        chipFamilyBeforeConsole = null;
-      }
-    } catch (err) {
-      logMsg(`Error exiting console mode: ${err.message}`);
-    }
-  }
-  
-  logMsg("Console closed");
-}
-
-/**
- * Helper function to check if using WebUSB
- */
-function isUsingWebUSB() {
-  return espStub && espStub.port && espStub.port.isWebUSB === true;
 }
