@@ -354,10 +354,10 @@ async function clickConnect() {
     }
     toggleUIConnected(false);
     espStub = undefined;
-    
+
     // Clear all cached data and state
     clearAllCachedData();
-    
+
     return;
   }
 
@@ -1066,26 +1066,13 @@ async function clickReadFlash() {
   try {
     const progressBar = readProgress.querySelector("div");
 
-    // Prepare options object if advanced mode is enabled
-    // Option validation helpers
-    const validateOption = (name, value) => {
-      if (value === undefined) return undefined;
-      if (!Number.isFinite(value) || value <= 0) {
-        throw new Error(`Invalid ${name}: ${value}`);
-      }
-      return value;
-    };
-
-    let options = undefined;
-
     const data = await espStub.readFlash(
       offset,
       size,
       (packet, progress, totalSize) => {
         progressBar.style.width =
           Math.floor((progress / totalSize) * 100) + "%";
-      },
-      options
+      }
     );
 
     logMsg(`Successfully read ${data.length} bytes from flash`);
@@ -1435,7 +1422,7 @@ function toggleUIConnected(connected) {
   butConnect.textContent = lbl;
 }
 
-function loadAllSettings() {  
+function loadAllSettings() {
   // Load all saved settings or defaults
   autoscroll.checked = loadSetting("autoscroll", true);
   baudRateSelect.value = loadSetting("baudrate", 2000000);
