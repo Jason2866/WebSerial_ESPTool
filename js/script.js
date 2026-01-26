@@ -692,8 +692,6 @@ async function clickConsole() {
     return;
   }
   
-  const shouldEnable = consoleSwitch.checked;
-  
   if (shouldEnable) {
     // After WDT reset, everything is gone - start fresh with port selection
     // Initialize console if connected and not already created
@@ -788,7 +786,6 @@ async function clickConsole() {
                 } catch (err) {
                   errorMsg(`Failed to open port for console: ${err.message}`);
                   if (consoleSwitch) {
-                    consoleSwitch.checked = false;
                     saveSetting("console", false);
                   }
                 }
@@ -808,7 +805,6 @@ async function clickConsole() {
               } catch (err) {
                 errorMsg(`Failed to open port for console: ${err.message}`);
                 if (consoleSwitch) {
-                  consoleSwitch.checked = false;
                   saveSetting("console", false);
                 }
               }
@@ -822,7 +818,6 @@ async function clickConsole() {
         } catch (err) {
           errorMsg(`Failed to enter console mode: ${err.message}`);
           if (consoleSwitch) {
-            consoleSwitch.checked = false;
             saveSetting("console", false);
           }
           return;
@@ -840,7 +835,6 @@ async function clickConsole() {
       } catch (err) {
         errorMsg("Failed to initialize console: " + err.message);
         if (consoleSwitch) {
-          consoleSwitch.checked = false;
           saveSetting("console", false);
         }
         await closeConsole();
@@ -848,7 +842,6 @@ async function clickConsole() {
     } else if (!isConnected) {
       // Not connected - just show message
       if (consoleSwitch) {
-        consoleSwitch.checked = false;
         saveSetting("console", false);
       }
       errorMsg("Please connect to device first");
@@ -1548,7 +1541,6 @@ function toggleUIConnected(connected) {
     // Hide console container, show commands, and uncheck switch
     const commands = document.getElementById("commands");
     if (commands) commands.classList.remove("hidden");
-    consoleSwitch.checked = false;
     saveSetting("console", false);
   }
   butConnect.textContent = lbl;
