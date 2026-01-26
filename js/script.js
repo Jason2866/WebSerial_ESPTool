@@ -1,5 +1,6 @@
 // Import WebUSB serial support for Android compatibility
 import { WebUSBSerial, requestSerialPort } from './webusb-serial.js';
+import { ESP32ToolConsole } from './console.js';
 
 // Make requestSerialPort available globally for esptool.js
 // Use defensive assignment to avoid accidental overwrites
@@ -7,10 +8,26 @@ if (!globalThis.requestSerialPort) {
   globalThis.requestSerialPort = requestSerialPort;
 }
 
+// Utility functions imported from esptool module
+let toHex, formatMacAddr, sleep;
+
+// Load utilities from esptool package
+window.esptoolPackage.then((esptoolMod) => {
+  toHex = esptoolMod.toHex;
+  formatMacAddr = esptoolMod.formatMacAddr;
+  sleep = esptoolMod.sleep;
+});
+
 let espStub;
 let esp32s2ReconnectInProgress = false;
 let isConnected = false; // Track connection state
 let isAndroidPlatform = false; // Track if running on Android
+let consoleInstance = null; // ESP32ToolConsole instance
+let baudRateBeforeConsole = null; // Store baudrate before opening console
+let espLoaderBeforeConsole = null; // Store original ESPLoader before console
+let chipFamilyBeforeConsole = null; // Store chipFamily before opening console
+let consoleResetHandler = null;
+let consoleCloseHandler = null;
 
 /**
  * Clear all cached data and state on disconnect
@@ -49,6 +66,8 @@ const readSize = document.getElementById("readSize");
 const readProgress = document.getElementById("readProgress");
 const butReadPartitions = document.getElementById("butReadPartitions");
 const partitionList = document.getElementById("partitionList");
+const consoleContainer = document.getElementById("console-container");
+const consoleSwitch = document.getElementById("console");
 const autoscroll = document.getElementById("autoscroll");
 const lightSS = document.getElementById("light");
 const darkSS = document.getElementById("dark");
@@ -1136,4 +1155,198 @@ function ucWords(text) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * @name openConsolePortAndInit
+ * Helper to open port for console and initialize console UI
+ * Avoids code duplication across different console init flows
+ */
+async function openConsolePortAndInit(newPort) {
+  // Open the port at 115200 for console
+  await newPort.open({ baudRate: 115200 });
+  espStub.port = newPort;
+  espStub.connected = true;
+  
+  // Keep parent/loader in sync (used by closeConsole)
+  if (espStub._parent) {
+    espStub._parent.port = newPort;
+  }
+  if (espLoaderBeforeConsole) {
+    espLoaderBeforeConsole.port = newPort;
+  }
+  
+  logMsg("Port opened for console at 115200 baud");
+  
+  // Device is already in firmware mode, port is open at 115200
+  // Initialize console directly
+  // Note: consoleSwitch would need to be added to HTML
+  // consoleSwitch.checked = true;
+  // saveSetting("console", true);
+  
+  // Initialize console UI and handlers
+  await initConsoleUI();
+}
+
+/**
+ * @name initConsoleUI
+ * Initialize console UI, event handlers, and start console instance
+ * Extracted helper to avoid duplication across different console init flows
+ */
+async function initConsoleUI() {
+  // Wait for port to be ready
+  await sleep(200);
+  
+  // Show console container and hide commands
+  // Note: consoleContainer would need to be added to HTML
+  // consoleContainer.classList.remove("hidden");
+  
+  // Add console-active class to body for mobile styling
+  document.body.classList.add("console-active");
+  
+  const commands = document.getElementById("commands");
+  if (commands) commands.classList.add("hidden");
+  
+  // Initialize console
+  // Note: consoleContainer would need to be added to HTML
+  // consoleInstance = new ESP32ToolConsole(espStub.port, consoleContainer, true);
+  // await consoleInstance.init();
+  
+  // Check if console reset is supported and hide button if not
+  if (espLoaderBeforeConsole && typeof espLoaderBeforeConsole.isConsoleResetSupported === 'function') {
+    const resetSupported = espLoaderBeforeConsole.isConsoleResetSupported();
+    // Note: Reset button would need to be added to console HTML
+    // const resetBtn = consoleContainer.querySelector("#console-reset-btn");
+    // if (resetBtn) {
+    //   if (resetSupported) {
+    //     resetBtn.style.display = "";
+    //   } else {
+    //     resetBtn.style.display = "none";
+    //   }
+    // }
+  }
+  
+  // Listen for console reset events
+  // Note: Event handlers would need to be set up when console HTML is added
+  
+  // Listen for console close events
+  // Note: Event handlers would need to be set up when console HTML is added
+  
+  logMsg("Console initialized");
+}
+
+/**
+ * @name clickConsole
+ * Change handler for the Console checkbox.
+ */
+async function clickConsole() {
+  // Note: This function requires console HTML elements to be added
+  // const shouldEnable = consoleSwitch.checked;
+  
+  // if (shouldEnable) {
+  //   // Initialize console if connected and not already created
+  //   if (isConnected && espStub && espStub.port && !consoleInstance) {
+  //     try {
+  //       // Save current state
+  //       const loaderToSave = espStub._parent || espStub;
+  //       const currentBaudrate = loaderToSave.currentBaudRate;
+  //       const currentChipFamily = espStub.chipFamily;
+  //       
+  //       espLoaderBeforeConsole = loaderToSave;
+  //       baudRateBeforeConsole = currentBaudrate;
+  //       chipFamilyBeforeConsole = currentChipFamily;
+  //       
+  //       // Set baudrate to 115200 for console
+  //       await espStub.setBaudrate(115200);
+  //       
+  //       // Enter console mode
+  //       const portWasClosed = await espStub.enterConsoleMode();
+  //       
+  //       if (portWasClosed) {
+  //         // Handle USB-JTAG/OTG device reconnection
+  //         // See esp32tool/js/script.js for full implementation
+  //       } else {
+  //         // Serial chip device: Port stays open
+  //         await sleep(200);
+  //         await initConsoleUI();
+  //       }
+  //     } catch (err) {
+  //       logMsg("Failed to initialize console: " + err.message);
+  //     }
+  //   }
+  // } else {
+  //   await closeConsole();
+  // }
+  
+  logMsg("Console function not yet fully implemented - HTML elements needed");
+}
+
+/**
+ * @name closeConsole
+ * Close console and restore device to bootloader state
+ */
+async function closeConsole() {
+  // Remove console-active class from body FIRST to restore visibility
+  document.body.classList.remove("console-active");
+  
+  // Hide console and show commands again
+  // Note: consoleContainer would need to be added to HTML
+  // consoleContainer.classList.add("hidden");
+  const commands = document.getElementById("commands");
+  if (commands) {
+    commands.classList.remove("hidden");
+    // Force display to ensure it's visible
+    commands.style.display = "";
+  }
+  
+  // Restore original state (bootloader + stub + baudrate)
+  if (espLoaderBeforeConsole && Number.isFinite(baudRateBeforeConsole)) {
+    // Disconnect console first to release locks
+    if (consoleInstance) {
+      try {
+        await consoleInstance.disconnect();
+      } catch (err) {
+        logMsg("Error disconnecting console: " + err);
+      }
+      consoleInstance = null;
+    }
+    
+    // Use esp_loader's exitConsoleMode function
+    try {
+      const needsManualReconnect = await espLoaderBeforeConsole.exitConsoleMode();
+      
+      if (needsManualReconnect) {
+        // ESP32-S2: Port has changed, need to select new port
+        logMsg("ESP32-S2: Port changed - please select the new port");
+        // Note: Would need to trigger reconnection flow
+        espStub = undefined;
+        espLoaderBeforeConsole = null;
+        baudRateBeforeConsole = null;
+        chipFamilyBeforeConsole = null;
+      } else {
+        // Restore baudrate and reconnect to bootloader
+        try {
+          await espLoaderBeforeConsole.setBaudrate(baudRateBeforeConsole);
+          logMsg(`Baudrate restored to ${baudRateBeforeConsole}`);
+        } catch (err) {
+          logMsg(`Failed to restore baudrate: ${err.message}`);
+        }
+        
+        espLoaderBeforeConsole = null;
+        baudRateBeforeConsole = null;
+        chipFamilyBeforeConsole = null;
+      }
+    } catch (err) {
+      logMsg(`Error exiting console mode: ${err.message}`);
+    }
+  }
+  
+  logMsg("Console closed");
+}
+
+/**
+ * Helper function to check if using WebUSB
+ */
+function isUsingWebUSB() {
+  return espStub && espStub.port && espStub.port.isWebUSB === true;
 }

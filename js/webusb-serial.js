@@ -951,6 +951,26 @@ class WebUSBSerial {
         });
     }
 
+    /**
+     * Recreate streams without closing the port
+     * Useful after hardware reset or when switching to console mode
+     * This stops the current read loop and creates fresh streams
+     */
+    recreateStreams() {
+        // Stop the current read loop
+        this._readLoopRunning = false;
+        
+        // Wait a bit for the read loop to finish
+        // The ReadableStream will close itself when _readLoopRunning becomes false
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                // Create new streams
+                this._createStreams();
+                resolve();
+            }, 100);
+        });
+    }
+
     _cleanup() {
         this._readLoopRunning = false;
         if (this._usbDisconnectHandler) {
