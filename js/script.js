@@ -64,7 +64,6 @@ const readProgress = document.getElementById("readProgress");
 const butReadPartitions = document.getElementById("butReadPartitions");
 const partitionList = document.getElementById("partitionList");
 const autoscroll = document.getElementById("autoscroll");
-const consoleSwitch = document.getElementById("console");
 const lightSS = document.getElementById("light");
 const darkSS = document.getElementById("dark");
 const darkMode = document.getElementById("darkmode");
@@ -115,21 +114,6 @@ function isUsingWebUSB() {
   
   // Default to Web Serial (desktop)
   return false;
-}
-
-/**
- * Get default advanced parameters based on environment
- * Desktop (Web Serial): Higher values for better performance
- * Mobile/WebUSB: Lower values for compatibility
- */
-function getDefaultAdvancedParams() {
-  const isWebUSB = isUsingWebUSB();
-  
-  return {
-    chunkSize: isWebUSB ? 0x4000 : 0x20000,  // 16 KB for WebUSB, 128 KB for Desktop
-    blockSize: isWebUSB ? 248 : 3968,         // 248 B for WebUSB, 3968 B for Desktop
-    maxInFlight: isWebUSB ? 248 : 15872       // 248 B for WebUSB, 15872 B for Desktop
-  };
 }
 
 // Update mobile classes and padding
@@ -213,7 +197,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   initBaudRate();
-  initAdvancedParams();
   loadAllSettings();
   updateTheme();
   logMsg("WebSerial ESPTool loaded.");
@@ -229,15 +212,6 @@ function initBaudRate() {
     option.value = rate;
     baudRateSelect.add(option);
   }
-}
-
-function initAdvancedParams() {
-  // Get default values based on environment (Desktop vs WebUSB)
-  const defaults = getDefaultAdvancedParams();
-}
-
-function updateAdvancedParamsForConnection() {
-  const defaults = getDefaultAdvancedParams();
 }
 
 function logMsg(text) {
@@ -510,13 +484,9 @@ async function clickConnect() {
 
   espStub = await esploader.runStub();
   
-  // Update advanced parameters based on actual connection type (WebUSB vs Web Serial)
-  // Only update if user hasn't manually changed them (still at defaults)
-  updateAdvancedParamsForConnection();
-  
   toggleUIConnected(true);
   toggleUIToolbar(true);
-  
+
   // Set detected flash size in the read size field
   if (espStub.flashSize) {
     const flashSizeBytes = parseFlashSize(espStub.flashSize);
@@ -1465,10 +1435,7 @@ function toggleUIConnected(connected) {
   butConnect.textContent = lbl;
 }
 
-function loadAllSettings() {
-  // Get default values based on environment (Desktop vs WebUSB)
-  const defaults = getDefaultAdvancedParams();
-  
+function loadAllSettings() {  
   // Load all saved settings or defaults
   autoscroll.checked = loadSetting("autoscroll", true);
   baudRateSelect.value = loadSetting("baudrate", 2000000);
