@@ -50,65 +50,10 @@ function clearAllCachedData() {
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 
-// Advanced read flash parameters
-// chunkSize: Amount of data to request from ESP in one command (in KB)
-const chunkSizes = [
-  { label: "4 KB", value: 0x1000 },
-  { label: "8 KB", value: 0x2000 },
-  { label: "16 KB (WebUSB)", value: 0x4000 },
-  { label: "64 KB", value: 0x10000 },
-  { label: "128 KB (Desktop)", value: 0x20000 },
-  { label: "256 KB", value: 0x40000 }
-];
-
-// blockSize: Size of each data block sent by ESP (in bytes)
-const blockSizes = [
-  { label: "31 B (Android)", value: 31 },
-  { label: "62 B", value: 62 },
-  { label: "124 B", value: 124 },
-  { label: "248 B (CDC)", value: 248 },
-  { label: "256 B", value: 256 },
-  { label: "496 B", value: 496 },
-  { label: "512 B", value: 512 },
-  { label: "992 B", value: 992 },
-  { label: "1024 B", value: 1024 },
-  { label: "1984 B", value: 1984 },
-  { label: "2024 B", value: 2024 },
-  { label: "3968 B (Desktop)", value: 3968 }
-];
-
-// maxInFlight: Maximum unacknowledged bytes (in bytes)
-const maxInFlights = [
-  { label: "31 B (Android)", value: 31 },
-  { label: "62 B", value: 62 },
-  { label: "124 B", value: 124 },
-  { label: "248 B (Android CDC)", value: 248 },
-  { label: "512 B", value: 512 },
-  { label: "992 B", value: 992 },
-  { label: "1024 B", value: 1024 },
-  { label: "1984 B", value: 1984 },
-  { label: "2024 B", value: 2024 },
-  { label: "3968 B", value: 3968 },
-  { label: "4096 B", value: 4096 },
-  { label: "7936 B", value: 7936 },
-  { label: "8192 B", value: 8192 },
-  { label: "15872 B (Desktop)", value: 15872 },
-  { label: "31744 B", value: 31744 },
-  { label: "63488 B", value: 63488 },
-  { label: "126976 B", value: 126976 },
-  { label: "253952 B", value: 253952 }
-];
-
 const maxLogLength = 100;
 const log = document.getElementById("log");
 const butConnect = document.getElementById("butConnect");
 const baudRateSelect = document.getElementById("baudRate");
-const advancedMode = document.getElementById("advanced");
-const advancedRow = document.querySelector(".advanced-row");
-const main = document.querySelector(".main");
-const chunkSizeSelect = document.getElementById("chunkSize");
-const blockSizeSelect = document.getElementById("blockSize");
-const maxInFlightSelect = document.getElementById("maxInFlight");
 const butClear = document.getElementById("butClear");
 const butErase = document.getElementById("butErase");
 const butProgram = document.getElementById("butProgram");
@@ -129,16 +74,6 @@ const firmware = document.querySelectorAll(".upload .firmware input");
 const progress = document.querySelectorAll(".upload .progress-bar");
 const offsets = document.querySelectorAll(".upload .offset");
 const appDiv = document.getElementById("app");
-const fileViewerModal = document.getElementById("fileViewerModal");
-const fileViewerTitle = document.getElementById("fileViewerTitle");
-const fileViewerPath = document.getElementById("fileViewerPath");
-const fileViewerSize = document.getElementById("fileViewerSize");
-const fileViewerText = document.getElementById("fileViewerText");
-const tabText = document.getElementById("tabText");
-const tabHex = document.getElementById("tabHex");
-
-let currentViewedFile = null;
-let currentViewedFileData = null;
 
 // Mobile detection
 function isMobileDevice() {
@@ -1172,22 +1107,6 @@ async function clickReadFlash() {
     };
 
     let options = undefined;
-    let chunkSizeOpt, blockSizeOpt, maxInFlightOpt;
-    if (advancedMode && advancedMode.checked && chunkSizeSelect && blockSizeSelect && maxInFlightSelect) {
-      chunkSizeOpt = validateOption("chunkSize", parseInt(chunkSizeSelect.value));
-      blockSizeOpt = validateOption("blockSize", parseInt(blockSizeSelect.value));
-      maxInFlightOpt = validateOption("maxInFlight", parseInt(maxInFlightSelect.value));
-      if ((blockSizeOpt ?? maxInFlightOpt) &&
-          (blockSizeOpt === undefined || maxInFlightOpt === undefined)) {
-        throw new Error("blockSize and maxInFlight must be provided together");
-      }
-      options = {
-        chunkSize: chunkSizeOpt,
-        blockSize: blockSizeOpt,
-        maxInFlight: maxInFlightOpt
-      };
-      logMsg(`Advanced mode: chunkSize=0x${options.chunkSize?.toString(16)}, blockSize=${options.blockSize}, maxInFlight=${options.maxInFlight}`);
-    }
 
     const data = await espStub.readFlash(
       offset,
