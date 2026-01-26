@@ -3463,6 +3463,19 @@ export class ESPLoader extends EventTarget {
         this.logger.debug(`Could not reset device: ${err}`);
       }
 
+      // For WebUSB (Android), recreate streams after hardware reset
+      const isWebUSB = (this.port as any).isWebUSB === true;
+      if (isWebUSB) {
+        try {
+          // Use the public recreateStreams() method to safely recreate streams
+          // without closing the port (important after hardware reset)
+          await (this.port as any).recreateStreams();
+          this.logger.debug("WebUSB streams recreated for console mode");
+        } catch (err) {
+          this.logger.debug(`Failed to recreate WebUSB streams: ${err}`);
+        }
+      }
+
       return false; // Port stays open
     }
   }
@@ -3826,18 +3839,18 @@ export class ESPLoader extends EventTarget {
     if (isESP32S2 && isUsbJtagOrOtg) {
       // ESP32-S2 USB: Device is in firmware mode, port will change when entering bootloader
       // Trigger the same event that's used during initial connection
-      this.logger.log(
-        "ESP32-S2 USB detected - triggering reconnection event",
-      );
-      
+      this.logger.log("ESP32-S2 USB detected - triggering reconnection event");
+
       // Dispatch the esp32s2-usb-reconnect event
       // This will be handled by the existing event listener in script.js
       this.dispatchEvent(
         new CustomEvent("esp32s2-usb-reconnect", {
-          detail: { message: "ESP32-S2 requires port reselection after console exit" },
+          detail: {
+            message: "ESP32-S2 requires port reselection after console exit",
+          },
         }),
       );
-      
+
       return true; // Indicates manual reconnection needed
     }
 
