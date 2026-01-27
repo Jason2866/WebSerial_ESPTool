@@ -3453,8 +3453,7 @@ export class ESPLoader extends EventTarget {
       }
 
       // For WebUSB (Android), recreate streams after hardware reset
-      const isWebUSB = (this.port as any).isWebUSB === true;
-      if (isWebUSB) {
+      if (this.isWebUSB()) {
         try {
           // Use the public recreateStreams() method to safely recreate streams
           // without closing the port (important after hardware reset)
