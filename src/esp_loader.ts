@@ -3369,7 +3369,7 @@ export class ESPLoader extends EventTarget {
    * @returns true if USB-JTAG or USB-OTG, false if external serial chip
    * @throws Error if chipFamily is not set
    */
-  private async detectUsbConnectionType(): Promise<boolean> {
+  public async detectUsbConnectionType(): Promise<boolean> {
     if (!this.chipFamily) {
       throw new Error("Cannot detect USB connection type: chipFamily not set");
     }
