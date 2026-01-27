@@ -141,9 +141,13 @@ export class ESPLoader extends EventTarget {
   __inputBuffer?: number[];
   __inputBufferReadIndex?: number;
   __totalBytesRead?: number;
-  private __currentBaudRate: number = ESP_ROM_BAUD;
+  public currentBaudRate: number = ESP_ROM_BAUD;
   private _maxUSBSerialBaudrate?: number;
   public __reader?: ReadableStreamDefaultReader<Uint8Array>;
+  private SLIP_END = 0xc0;
+  private SLIP_ESC = 0xdb;
+  private SLIP_ESC_END = 0xdc;
+  private SLIP_ESC_ESC = 0xdd;
   private _isESP32S2NativeUSB: boolean = false;
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
@@ -757,17 +761,14 @@ export class ESPLoader extends EventTarget {
 
         // Always read from browser's serial buffer immediately
         // to prevent browser buffer overflow. Don't apply back-pressure here.
-        const chunk = Array.from(value);
+        const chunk = Array.from(value as Uint8Array);
         Array.prototype.push.apply(this._inputBuffer, chunk);
 
         // Track total bytes read from serial port
         this._totalBytesRead += value.length;
       }
     } catch {
-      // Don't log error if this is an expected disconnect during console mode transition
-      if (!this._consoleMode) {
-        this.logger.error("Read loop got disconnected");
-      }
+      //      this.logger.error("Read loop got disconnected");
     } finally {
       // Always reset reconfiguring flag when read loop ends
       // This prevents "Cannot write during port reconfiguration" errors
@@ -1462,9 +1463,9 @@ export class ESPLoader extends EventTarget {
         }
       } catch (error) {
         lastError = error as Error;
-        this.logger.debug(
-          `${strategy.name} reset failed: ${(error as Error).message}`,
-        );
+        //        this.logger.debug(
+        //          `${strategy.name} reset failed: ${(error as Error).message}`,
+        //        );
 
         // Set abandon flag to stop any in-flight operations
         this._abandonCurrentOperation = true;
@@ -2129,47 +2130,47 @@ export class ESPLoader extends EventTarget {
               "Timed out waiting for packet " + waitingFor,
             );
           }
-          const b = this._readByte()!;
+          const byte = this._readByte()!;
 
           if (partialPacket === null) {
             // waiting for packet header
-            if (b == 0xc0) {
+            if (byte == this.SLIP_END) {
               partialPacket = [];
             } else {
               if (this.debug) {
-                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug("Read invalid data: " + toHex(byte));
                 this.logger.debug(
                   "Remaining data in serial buffer: " +
                     hexFormatter(this._inputBuffer),
                 );
               }
               throw new SlipReadError(
-                "Invalid head of packet (" + toHex(b) + ")",
+                "Invalid head of packet (" + toHex(byte) + ")",
               );
             }
           } else if (inEscape) {
             // part-way through escape sequence
             inEscape = false;
-            if (b == 0xdc) {
-              partialPacket.push(0xc0);
-            } else if (b == 0xdd) {
-              partialPacket.push(0xdb);
+            if (byte == this.SLIP_ESC_END) {
+              partialPacket.push(this.SLIP_END);
+            } else if (byte == this.SLIP_ESC_ESC) {
+              partialPacket.push(this.SLIP_ESC);
             } else {
               if (this.debug) {
-                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug("Read invalid data: " + toHex(byte));
                 this.logger.debug(
                   "Remaining data in serial buffer: " +
                     hexFormatter(this._inputBuffer),
                 );
               }
               throw new SlipReadError(
-                "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
+                "Invalid SLIP escape (0xdb, " + toHex(byte) + ")",
               );
             }
-          } else if (b == 0xdb) {
+          } else if (byte == this.SLIP_ESC) {
             // start of escape sequence
             inEscape = true;
-          } else if (b == 0xc0) {
+          } else if (byte == this.SLIP_END) {
             // end of packet
             if (this.debug)
               this.logger.debug(
@@ -2180,7 +2181,7 @@ export class ESPLoader extends EventTarget {
             return partialPacket;
           } else {
             // normal byte in packet
-            partialPacket.push(b);
+            partialPacket.push(byte);
           }
         }
       }
@@ -2214,46 +2215,46 @@ export class ESPLoader extends EventTarget {
           this.logger.debug(
             "Read " + readBytes.length + " bytes: " + hexFormatter(readBytes),
           );
-        for (const b of readBytes) {
+        for (const byte of readBytes) {
           if (partialPacket === null) {
             // waiting for packet header
-            if (b == 0xc0) {
+            if (byte == this.SLIP_END) {
               partialPacket = [];
             } else {
               if (this.debug) {
-                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug("Read invalid data: " + toHex(byte));
                 this.logger.debug(
                   "Remaining data in serial buffer: " +
                     hexFormatter(this._inputBuffer),
                 );
               }
               throw new SlipReadError(
-                "Invalid head of packet (" + toHex(b) + ")",
+                "Invalid head of packet (" + toHex(byte) + ")",
               );
             }
           } else if (inEscape) {
             // part-way through escape sequence
             inEscape = false;
-            if (b == 0xdc) {
-              partialPacket.push(0xc0);
-            } else if (b == 0xdd) {
-              partialPacket.push(0xdb);
+            if (byte == this.SLIP_ESC_END) {
+              partialPacket.push(this.SLIP_END);
+            } else if (byte == this.SLIP_ESC_ESC) {
+              partialPacket.push(this.SLIP_ESC);
             } else {
               if (this.debug) {
-                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug("Read invalid data: " + toHex(byte));
                 this.logger.debug(
                   "Remaining data in serial buffer: " +
                     hexFormatter(this._inputBuffer),
                 );
               }
               throw new SlipReadError(
-                "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
+                "Invalid SLIP escape (0xdb, " + toHex(byte) + ")",
               );
             }
-          } else if (b == 0xdb) {
+          } else if (byte == this.SLIP_ESC) {
             // start of escape sequence
             inEscape = true;
-          } else if (b == 0xc0) {
+          } else if (byte == this.SLIP_END) {
             // end of packet
             if (this.debug)
               this.logger.debug(
@@ -2264,7 +2265,7 @@ export class ESPLoader extends EventTarget {
             return partialPacket;
           } else {
             // normal byte in packet
-            partialPacket.push(b);
+            partialPacket.push(byte);
           }
         }
       }
@@ -2341,9 +2342,9 @@ export class ESPLoader extends EventTarget {
 
     // Track current baudrate for reconnect
     if (this._parent) {
-      this._parent._currentBaudRate = baud;
+      this._parent.currentBaudRate = baud;
     } else {
-      this._currentBaudRate = baud;
+      this.currentBaudRate = baud;
     }
 
     // Warn if baudrate exceeds USB-Serial chip capability
@@ -2429,8 +2430,8 @@ export class ESPLoader extends EventTarget {
       // Restart Readloop
       this.readLoop();
     } catch (e) {
-      this.logger.error(`Reconfigure port error: ${e}`);
-      throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
+      //      this.logger.error(`Reconfigure port error: ${e}`);
+      //      throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
     } finally {
       // Always reset flag, even on error or early return
       this._isReconfiguring = false;
@@ -3138,20 +3139,6 @@ export class ESPLoader extends EventTarget {
     }
   }
 
-  private get _currentBaudRate(): number {
-    return this._parent
-      ? this._parent._currentBaudRate
-      : this.__currentBaudRate;
-  }
-
-  private set _currentBaudRate(value: number) {
-    if (this._parent) {
-      this._parent._currentBaudRate = value;
-    } else {
-      this.__currentBaudRate = value;
-    }
-  }
-
   async writeToStream(data: number[]) {
     if (!this.port.writable) {
       this.logger.debug("Port writable stream not available, skipping write");
@@ -3231,7 +3218,7 @@ export class ESPLoader extends EventTarget {
       return;
     }
     if (!this.port.writable) {
-      this.logger.debug("Port already closed, skipping disconnect");
+      //      this.logger.debug("Port already closed, skipping disconnect");
       return;
     }
 
@@ -3239,7 +3226,7 @@ export class ESPLoader extends EventTarget {
     try {
       await this._writeChain;
     } catch (err) {
-      this.logger.debug(`Pending write error during disconnect: ${err}`);
+      //      this.logger.debug(`Pending write error during disconnect: ${err}`);
     }
 
     // Release persistent writer before closing
@@ -3248,7 +3235,7 @@ export class ESPLoader extends EventTarget {
         await this._writer.close();
         this._writer.releaseLock();
       } catch (err) {
-        this.logger.debug(`Writer close/release error: ${err}`);
+        //        this.logger.debug(`Writer close/release error: ${err}`);
       }
       this._writer = undefined;
     } else {
@@ -3259,7 +3246,7 @@ export class ESPLoader extends EventTarget {
         await writer.close();
         writer.releaseLock();
       } catch (err) {
-        this.logger.debug(`Direct writer close error: ${err}`);
+        //        this.logger.debug(`Direct writer close error: ${err}`);
       }
     }
 
@@ -3288,7 +3275,7 @@ export class ESPLoader extends EventTarget {
       try {
         this._reader.cancel();
       } catch (err) {
-        this.logger.debug(`Reader cancel error: ${err}`);
+        //        this.logger.debug(`Reader cancel error: ${err}`);
         // Reader already released, resolve immediately
         clearTimeout(timeout);
         resolve(undefined);
@@ -3328,7 +3315,7 @@ export class ESPLoader extends EventTarget {
     try {
       await this._writeChain;
     } catch (err) {
-      this.logger.debug(`Pending write error during release: ${err}`);
+      //      this.logger.debug(`Pending write error during release: ${err}`);
     }
 
     // Release writer
@@ -3442,6 +3429,8 @@ export class ESPLoader extends EventTarget {
       isUsbJtag = this.isUsbJtagOrOtg;
     }
 
+    // Release reader/writer so console can create new ones
+    // This is needed for Desktop (Web Serial) to unlock streams
     if (isUsbJtag) {
       // USB-JTAG/OTG devices: Use watchdog reset which closes port
       const wasReset = await this._resetToFirmwareIfNeeded();
@@ -3464,8 +3453,7 @@ export class ESPLoader extends EventTarget {
       }
 
       // For WebUSB (Android), recreate streams after hardware reset
-      const isWebUSB = (this.port as any).isWebUSB === true;
-      if (isWebUSB) {
+      if (this.isWebUSB()) {
         try {
           // Use the public recreateStreams() method to safely recreate streams
           // without closing the port (important after hardware reset)
@@ -3501,7 +3489,7 @@ export class ESPLoader extends EventTarget {
             : "USB-JTAG/Serial";
 
         this.logger.log(
-          `Resetting ${this.chipFamily} (${resetMethod}) to boot into firmware...`,
+          `Resetting ${this.chipName || "device"} (${resetMethod}) to boot into firmware...`,
         );
 
         // Set console mode flag before reset to prevent subsequent hardReset calls
@@ -3580,7 +3568,7 @@ export class ESPLoader extends EventTarget {
 
     try {
       this.logger.log("Reconnecting serial port...");
-      const savedBaudRate = this._currentBaudRate;
+      const savedBaudRate = this.currentBaudRate;
 
       this.connected = false;
       this.__inputBuffer = [];
@@ -3629,7 +3617,7 @@ export class ESPLoader extends EventTarget {
       try {
         await this.port.open({ baudRate: ESP_ROM_BAUD });
         this.connected = true;
-        this._currentBaudRate = ESP_ROM_BAUD;
+        this.currentBaudRate = ESP_ROM_BAUD;
       } catch (err) {
         throw new Error(`Failed to open port: ${err}`);
       }
@@ -3771,7 +3759,7 @@ export class ESPLoader extends EventTarget {
       try {
         await this.port.open({ baudRate: ESP_ROM_BAUD });
         this.connected = true;
-        this._currentBaudRate = ESP_ROM_BAUD;
+        this.currentBaudRate = ESP_ROM_BAUD;
       } catch (err) {
         throw new Error(`Failed to open port: ${err}`);
       }
@@ -3821,7 +3809,7 @@ export class ESPLoader extends EventTarget {
   /**
    * @name exitConsoleMode
    * Exit console mode and return to bootloader
-   * For ESP32-S2, this triggers the esp32s2-usb-reconnect event for UI handling
+   * For ESP32-S2, uses reconnectToBootloader which will trigger port change
    * @returns true if manual reconnection is needed (ESP32-S2), false otherwise
    */
   async exitConsoleMode(): Promise<boolean> {
@@ -3834,29 +3822,97 @@ export class ESPLoader extends EventTarget {
 
     // Check if this is ESP32-S2 with USB-JTAG/OTG
     const isESP32S2 = this.chipFamily === CHIP_FAMILY_ESP32S2;
-    const isUsbJtagOrOtg = this._isUsbJtagOrOtg === true;
+
+    // For ESP32-S2: if _isUsbJtagOrOtg is undefined, try to detect it
+    // If detection fails or is undefined, assume USB-JTAG/OTG (conservative/safe path)
+    let isUsbJtagOrOtg = this._isUsbJtagOrOtg;
+    if (isESP32S2 && isUsbJtagOrOtg === undefined) {
+      try {
+        isUsbJtagOrOtg = await this.detectUsbConnectionType();
+      } catch (err) {
+        this.logger.debug(
+          `USB detection failed, assuming USB-JTAG/OTG for ESP32-S2: ${err}`,
+        );
+        isUsbJtagOrOtg = true; // Conservative fallback for ESP32-S2
+      }
+    }
 
     if (isESP32S2 && isUsbJtagOrOtg) {
-      // ESP32-S2 USB: Device is in firmware mode, port will change when entering bootloader
-      // Trigger the same event that's used during initial connection
-      this.logger.log("ESP32-S2 USB detected - triggering reconnection event");
+      // ESP32-S2 USB: Use reconnectToBootloader which handles the mode switch
+      // This will close the port and the device will reboot to bootloader
+      this.logger.log("ESP32-S2 USB detected - reconnecting to bootloader");
 
-      // Dispatch the esp32s2-usb-reconnect event
-      // This will be handled by the existing event listener in script.js
-      this.dispatchEvent(
-        new CustomEvent("esp32s2-usb-reconnect", {
-          detail: {
-            message: "ESP32-S2 requires port reselection after console exit",
-          },
-        }),
-      );
+      try {
+        await this.reconnectToBootloader();
+      } catch (err) {
+        this.logger.debug(`Reconnect error (expected for ESP32-S2): ${err}`);
+      }
 
-      return true; // Indicates manual reconnection needed
+      // For ESP32-S2, port will change, so return true to indicate manual reconnection needed
+      return true;
     }
 
     // For other devices, use standard reconnectToBootloader
     await this.reconnectToBootloader();
     return false; // No manual reconnection needed
+  }
+
+  /**
+   * @name isConsoleResetSupported
+   * Check if console reset is supported for this device
+   * ESP32-S2 USB-JTAG/CDC does not support reset in console mode
+   * because any reset causes USB port to be lost (hardware limitation)
+   */
+  isConsoleResetSupported(): boolean {
+    if (this._parent) {
+      return this._parent.isConsoleResetSupported();
+    }
+
+    // For ESP32-S2: if _isUsbJtagOrOtg is undefined, assume USB-JTAG/OTG (conservative)
+    // This means console reset is NOT supported (safer default)
+    const isS2UsbJtag =
+      this.chipFamily === CHIP_FAMILY_ESP32S2 &&
+      (this._isUsbJtagOrOtg === true || this._isUsbJtagOrOtg === undefined);
+    return !isS2UsbJtag; // Not supported for ESP32-S2 USB-JTAG/CDC
+  }
+
+  /**
+   * @name resetInConsoleMode
+   * Reset device while in console mode (firmware mode)
+   *
+   * NOTE: For ESP32-S2 USB-JTAG/CDC, ANY reset (hardware or software) causes
+   * the USB port to be lost because the device switches USB modes during reset.
+   * This is a hardware limitation - use isConsoleResetSupported() to check first.
+   */
+  async resetInConsoleMode(): Promise<void> {
+    if (this._parent) {
+      return await this._parent.resetInConsoleMode();
+    }
+
+    if (!this.isConsoleResetSupported()) {
+      this.logger.debug(
+        "Console reset not supported for ESP32-S2 USB-JTAG/CDC",
+      );
+      return; // Do nothing
+    }
+
+    // For other devices: Use standard firmware reset
+    const isWebUSB = (this.port as any).isWebUSB === true;
+
+    try {
+      this.logger.debug("Resetting device in console mode");
+
+      if (isWebUSB) {
+        await this.hardResetToFirmwareWebUSB();
+      } else {
+        await this.hardResetToFirmware();
+      }
+
+      this.logger.debug("Device reset complete");
+    } catch (err) {
+      this.logger.error(`Reset failed: ${err}`);
+      throw err;
+    }
   }
 
   /**
@@ -3874,7 +3930,7 @@ export class ESPLoader extends EventTarget {
     await sleep(bufferingTime);
 
     // Unsupported command response is sent 8 times and has
-    // 14 bytes length including delimiter 0xC0 bytes.
+    // 14 bytes length including delimiter SLIP_END (0xC0) bytes.
     // At least part of it is read as a command response,
     // but to be safe, read it all.
     const bytesToDrain = 14 * 8;
@@ -4094,7 +4150,7 @@ export class ESPLoader extends EventTarget {
                 // The stub expects 4 bytes (ACK), if we send less it will break out
                 try {
                   // Send SLIP frame with no data (just delimiters)
-                  const abortFrame = [0xc0, 0xc0]; // Empty SLIP frame
+                  const abortFrame = [this.SLIP_END, this.SLIP_END]; // Empty SLIP frame
                   await this.writeToStream(abortFrame);
                   this.logger.debug(`Sent abort frame to stub`);
 

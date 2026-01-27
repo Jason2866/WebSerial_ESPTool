@@ -7,10 +7,27 @@ if (!globalThis.requestSerialPort) {
   globalThis.requestSerialPort = requestSerialPort;
 }
 
+// Utility functions imported from esptool module
+let toHex, formatMacAddr, sleep;
+
+// Load utilities from esptool package
+window.esptoolPackage.then((esptoolMod) => {
+  toHex = esptoolMod.toHex;
+  formatMacAddr = esptoolMod.formatMacAddr;
+  sleep = esptoolMod.sleep;
+});
+
 let espStub;
 let esp32s2ReconnectInProgress = false;
+let currentChipName = null; // Store chip name globally
+let currentMacAddr = null; // Store MAC address globally
 let isConnected = false; // Track connection state
-let isAndroidPlatform = false; // Track if running on Android
+let consoleInstance = null; // ESP32ToolConsole instance
+let baudRateBeforeConsole = null; // Store baudrate before opening console
+let espLoaderBeforeConsole = null; // Store original ESPLoader before console
+let chipFamilyBeforeConsole = null; // Store chipFamily before opening console
+let consoleResetHandler = null;
+let consoleCloseHandler = null;
 
 /**
  * Clear all cached data and state on disconnect
@@ -32,14 +49,11 @@ function clearAllCachedData() {
 }
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
-const bufferSize = 512;
-const colors = ["#00a7e9", "#f89521", "#be1e2d"];
-const measurementPeriodId = "0001";
 
 const maxLogLength = 100;
 const log = document.getElementById("log");
 const butConnect = document.getElementById("butConnect");
-const baudRate = document.getElementById("baudRate");
+const baudRateSelect = document.getElementById("baudRate");
 const butClear = document.getElementById("butClear");
 const butErase = document.getElementById("butErase");
 const butProgram = document.getElementById("butProgram");
@@ -60,10 +74,91 @@ const progress = document.querySelectorAll(".upload .progress-bar");
 const offsets = document.querySelectorAll(".upload .offset");
 const appDiv = document.getElementById("app");
 
+// Mobile detection
+function isMobileDevice() {
+  const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+  
+  // Check for mobile user agents
+  const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+  const isMobileUA = mobileRegex.test(userAgent);
+  
+  // Check for touch support
+  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  
+  // Check screen size
+  const isSmallScreen = window.innerWidth <= 768;
+  
+  return isMobileUA || (hasTouch && isSmallScreen);
+}
+
+/**
+ * Detect if we're using WebUSB (mobile/Android) or Web Serial (desktop)
+ * WebUSB is typically used on Android devices
+ * Web Serial is used on desktop browsers
+ */
+function isUsingWebUSB() {
+  // If we have an active connection, check the port's isWebUSB property
+  if (espStub && espStub.port && typeof espStub.port.isWebUSB !== 'undefined') {
+    return espStub.port.isWebUSB === true;
+  }
+  
+  // Fallback: Check if we're on a mobile device (likely using WebUSB)
+  if (isMobileDevice()) {
+    return true;
+  }
+  
+  // Check if Web Serial is NOT available but USB is (WebUSB only)
+  if (!("serial" in navigator) && "usb" in navigator) {
+    return true;
+  }
+  
+  // Default to Web Serial (desktop)
+  return false;
+}
+
+// Update mobile classes and padding
+function updateMobileClasses() {
+  const isMobile = isMobileDevice();
+  
+  if (isMobile) {
+    document.body.classList.add('mobile-device');
+    document.body.classList.add('no-hover');
+  } else {
+    document.body.classList.remove('mobile-device');
+    document.body.classList.remove('no-hover');
+  }
+  
+  // Update main padding to match header height
+  updateMainPadding();
+}
+
+// Debounce helper
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Debounced resize handler
+const debouncedUpdateMobileClasses = debounce(updateMobileClasses, 250);
+
+// Apply mobile class on load
+updateMobileClasses();
+
+// Update on resize and orientation change
+window.addEventListener('resize', debouncedUpdateMobileClasses);
+window.addEventListener('orientationchange', debouncedUpdateMobileClasses);
+
 document.addEventListener("DOMContentLoaded", () => {
   butConnect.addEventListener("click", () => {
     clickConnect().catch(async (e) => {
-      console.error(e);
+      debugMsg('Connection error: ' + e);
       errorMsg(e.message || e);
       if (espStub) {
         await espStub.disconnect();
@@ -87,54 +182,27 @@ document.addEventListener("DOMContentLoaded", () => {
   updateUploadRowsVisibility();
   
   autoscroll.addEventListener("click", clickAutoscroll);
-  baudRate.addEventListener("change", changeBaudRate);
+  baudRateSelect.addEventListener("change", changeBaudRate);
   darkMode.addEventListener("click", clickDarkMode);
   debugMode.addEventListener("click", clickDebugMode);
   showLog.addEventListener("click", clickShowLog);
   window.addEventListener("error", function (event) {
     console.log("Got an uncaught error: ", event.error);
   });
-  
-  // Header auto-hide functionality
-  const header = document.querySelector(".header");
-  const main = document.querySelector(".main");
-  
-  // Show header on mouse enter at top of page
-  main.addEventListener("mousemove", (e) => {
-    if (e.clientY < 5 && header.classList.contains("header-hidden")) {
-      header.classList.remove("header-hidden");
-      main.classList.remove("no-header-padding");
-    }
-  });
-  
-  // Keep header visible when mouse is over it
-  header.addEventListener("mouseenter", () => {
-    header.classList.remove("header-hidden");
-    main.classList.remove("no-header-padding");
-  });
-  
-  // Hide header when mouse leaves (only if connected)
-  header.addEventListener("mouseleave", () => {
-    if (espStub && header.classList.contains("header-hidden") === false) {
-      setTimeout(() => {
-        if (!header.matches(":hover")) {
-          header.classList.add("header-hidden");
-          main.classList.add("no-header-padding");
-        }
-      }, 1000);
-    }
-  });
-  
-  // Check if Web Serial API or WebUSB is supported
+
+  // Check for Web Serial or WebUSB support
   if ("serial" in navigator || "usb" in navigator) {
     const notSupported = document.getElementById("notSupported");
-    notSupported?.classList.add("hidden");
+    notSupported.classList.add("hidden");
   }
 
   initBaudRate();
   loadAllSettings();
   updateTheme();
   logMsg("WebSerial ESPTool loaded.");
+  
+  // Set initial main padding based on header height
+  updateMainPadding();
 });
 
 function initBaudRate() {
@@ -142,7 +210,7 @@ function initBaudRate() {
     var option = document.createElement("option");
     option.text = rate + " Baud";
     option.value = rate;
-    baudRate.add(option);
+    baudRateSelect.add(option);
   }
 }
 
@@ -235,26 +303,6 @@ function enableStyleSheet(node, enabled) {
 }
 
 /**
- * Format a MAC address byte array as colon-separated uppercase hexadecimal octets.
- * @param {Array<number>|Uint8Array} macAddr - Array of bytes representing the MAC address (each 0–255).
- * @returns {string} Colon-separated uppercase hex octets, e.g. "AA:BB:CC:DD:EE:FF".
- */
-function formatMacAddr(macAddr) {
-  return macAddr
-    .map((value) => value.toString(16).toUpperCase().padStart(2, "0"))
-    .join(":");
-}
-
-/**
- * Format a byte value as a two-digit hexadecimal string prefixed with `0x`.
- * @param {number} value - Numeric value to format (treated as a byte).
- * @returns {string} Hex string in the form `0xNN` with lowercase letters and at least two digits.
- */
-function toHex(value) {
-  return "0x" + value.toString(16).padStart(2, "0");
-}
-
-/**
  * Parse flash size string (e.g., "256KB", "4MB") to bytes
  * @param {string} sizeStr - Flash size string with unit (KB or MB)
  * @returns {number} Size in bytes
@@ -285,36 +333,8 @@ function parseFlashSize(sizeStr) {
 }
 
 /**
- * Load WebUSB serial wrapper for Android
- */
-async function loadWebUSBSerial() {
-  // Check if already loaded
-  if (globalThis.requestSerialPort) {
-    return;
-  }
-
-  // Dynamically load the WebUSB serial script as ES6 module
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.type = "module";  // CRITICAL: Load as ES6 module to support export statements
-    script.src = "js/webusb-serial.js";
-    script.onload = () => {
-      // Verify it loaded correctly
-      if (globalThis.requestSerialPort) {
-        resolve();
-      } else {
-        reject(new Error("WebUSB serial script loaded but requestSerialPort not found"));
-      }
-    };
-    script.onerror = () => reject(new Error("Failed to load WebUSB serial script"));
-    document.head.appendChild(script);
-  });
-}
-
-/**
- * Toggle the connection state: connect to an ESP device (using WebUSB on Android or Web Serial on desktop) or disconnect if already connected.
- *
- * On connect, detect platform and transport, initialize the esploader, handle ESP32-S2 native USB reconnection flow when required (showing a modal on desktop or guidance on Android), run the device stub, update UI state, set the detected flash size and selected baud rate, and install a disconnect handler. On disconnect, remove the handler, close the port, clear the stub, and update the UI.
+ * @name clickConnect
+ * Click handler for the connect/disconnect button.
  */
 async function clickConnect() {
   console.log('[clickConnect] Function called');
@@ -346,42 +366,40 @@ async function clickConnect() {
 
   // Platform detection: Android always uses WebUSB, Desktop uses Web Serial
   const userAgent = navigator.userAgent || '';
-  isAndroidPlatform = /Android/i.test(userAgent);
-  
-  // Load WebUSB support for Android
-  if (isAndroidPlatform && "usb" in navigator) {
-    try {
-      await loadWebUSBSerial();
-      logMsg("WebUSB support loaded");
-    } catch (err) {
-      errorMsg(`Failed to load WebUSB support: ${err.message}`);
-      throw err;
-    }
-  }
+  const isAndroid = /Android/i.test(userAgent);
   
   // Only log platform details to UI in debug mode (avoid fingerprinting surface)
   if (debugMode.checked) {
-    const platformMsg = `Platform: ${isAndroidPlatform ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
+    const platformMsg = `Platform: ${isAndroid ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
     logMsg(platformMsg);
   }
-  logMsg(`Using: ${isAndroidPlatform ? 'WebUSB' : 'Web Serial'}`);
+  logMsg(`Using: ${isAndroid ? 'WebUSB' : 'Web Serial'}`);
   
-  // Use esploaderMod.connect() which will automatically use globalThis.requestSerialPort if available
   let esploader;
-  try {
+  
+  if (isAndroid) {
+    // Android: Use WebUSB directly
+    console.log('[Connect] Using WebUSB for Android');
+    try {
+      const port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
+      esploader = await esploaderMod.connectWithPort(port, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    } catch (err) {
+      logMsg(`WebUSB connection failed: ${err.message || err}`);
+      throw err;
+    }
+  } else {
+    // Desktop: Use Web Serial (standard esptool connect)
+    console.log('[Connect] Using Web Serial for Desktop');
     esploader = await esploaderMod.connect({
       log: (...args) => logMsg(...args),
       debug: (...args) => debugMsg(...args),
       error: (...args) => errorMsg(...args),
     });
-  } catch (err) {
-    logMsg(`Connection failed: ${err.message || err}`);
-    throw err;
   }
-  
-  // Store port info for ESP32-S2 detection
-  let portInfo = esploader.port?.getInfo ? esploader.port.getInfo() : {};
-  let isESP32S2 = portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x0002;
   
   // Handle ESP32-S2 Native USB reconnection requirement for BROWSER
   // Only add listener if not already in reconnect mode
@@ -395,58 +413,47 @@ async function clickConnect() {
       esp32s2ReconnectInProgress = true;
       logMsg("ESP32-S2 Native USB detected!");
       toggleUIConnected(false);
+      const previousStubPort = espStub?.port;
       espStub = undefined;
       
       try {
         // Close the port first
-        await esploader.port?.close();
-        
-        // For Android WebUSB: ESP32-S2 automatic reconnection doesn't work
-        // Show message and let user reconnect manually with BOOT button
-        if (isAndroidPlatform) {
-          logMsg("ESP32-S2 has switched to CDC mode");
-          logMsg("Please press and HOLD the BOOT button on your ESP32-S2, then click Connect");
-          toggleUIConnected(false);
-          esp32s2ReconnectInProgress = false;
-          return;
+        await esploader.port.close();
+
+        // Use the modal dialog approach
+        if (previousStubPort && previousStubPort.readable) {
+          await previousStubPort.close();
         }
-        // For Desktop Web Serial: Use the modal dialog approach
-        if (esploader.port?.forget) {
-          await esploader.port.forget();
-        }
-      } catch (disconnectErr) {
-        // Ignore disconnect errors
-        console.warn("Error during disconnect:", disconnectErr);
+      } catch (closeErr) {
+        // Ignore port close errors
+        debugMsg(`Port close error (ignored): ${closeErr.message}`);
       }
       
-      // Show modal dialog ONLY for Desktop
-      if (!isAndroidPlatform) {
-        const modal = document.getElementById("esp32s2Modal");
-        const reconnectBtn = document.getElementById("butReconnectS2");
+      // Show modal dialog
+      const modal = document.getElementById("esp32s2Modal");
+      const reconnectBtn = document.getElementById("butReconnectS2");
         
-        modal.classList.remove("hidden");
+      modal.classList.remove("hidden");
         
-        // Handle reconnect button click
-        const handleReconnect = async () => {
-          modal.classList.add("hidden");
-          reconnectBtn.removeEventListener("click", handleReconnect);
+      // Handle reconnect button click
+      const handleReconnect = async () => {
+        modal.classList.add("hidden");
+        reconnectBtn.removeEventListener("click", handleReconnect);
           
-          logMsg("Requesting new device selection...");
+        logMsg("Requesting new device selection...");
           
-          // Trigger port selection
-          try {
-            await clickConnect();
-            // Reset flag on successful connection
-            esp32s2ReconnectInProgress = false;
-          } catch (err) {
-            errorMsg("Failed to reconnect: " + err);
-            // Reset flag on error so user can try again
-            esp32s2ReconnectInProgress = false;
-          }
-        };
-        
-        reconnectBtn.addEventListener("click", handleReconnect);
-      }
+        // Trigger port selection
+        try {
+          await clickConnect();
+          // Reset flag on successful connection
+          esp32s2ReconnectInProgress = false;
+        } catch (err) {
+          errorMsg("Failed to reconnect: " + err);
+          // Reset flag on error so user can try again
+          esp32s2ReconnectInProgress = false;
+        }
+      };
+      reconnectBtn.addEventListener("click", handleReconnect);
     });
   }
   
@@ -471,11 +478,15 @@ async function clickConnect() {
   logMsg("Connected to " + esploader.chipName);
   logMsg("MAC Address: " + formatMacAddr(esploader.macAddr()));
 
+  // Store chip info globally
+  currentChipName = esploader.chipName;
+  currentMacAddr = formatMacAddr(esploader.macAddr());
+
   espStub = await esploader.runStub();
   
   toggleUIConnected(true);
   toggleUIToolbar(true);
-  
+
   // Set detected flash size in the read size field
   if (espStub.flashSize) {
     const flashSizeBytes = parseFlashSize(espStub.flashSize);
@@ -483,7 +494,7 @@ async function clickConnect() {
   }
   
   // Set the selected baud rate
-  let baud = parseInt(baudRate.value);
+  let baud = parseInt(baudRateSelect.value);
   if (baudRates.includes(baud)) {
     await espStub.setBaudrate(baud);
   }
@@ -491,7 +502,7 @@ async function clickConnect() {
   // Store disconnect handler so we can remove it later
   const handleDisconnect = () => {
     toggleUIConnected(false);
-    espStub = undefined;
+    espStub = false;
   };
   espStub.handleDisconnect = handleDisconnect; // Store reference on espStub
   espStub.addEventListener("disconnect", handleDisconnect);
@@ -502,9 +513,9 @@ async function clickConnect() {
  * Change handler for the Baud Rate selector.
  */
 async function changeBaudRate() {
-  saveSetting("baudrate", baudRate.value);
+  saveSetting("baudrate", baudRateSelect.value);
   if (espStub) {
-    let baud = parseInt(baudRate.value);
+    let baud = parseInt(baudRateSelect.value);
     if (baudRates.includes(baud)) {
       await espStub.setBaudrate(baud);
     }
@@ -567,6 +578,27 @@ function updateLogVisibility() {
 }
 
 /**
+ * @name updateMainPadding
+ * Dynamically adjust main content padding based on header height
+ */
+function updateMainPadding() {
+  // Use requestAnimationFrame to ensure DOM has updated
+  requestAnimationFrame(() => {
+    const header = document.querySelector('.header');
+    const main = document.querySelector('.main');
+    
+    // Guard against missing elements
+    if (!header || !main) {
+      return;
+    }
+    
+    const headerHeight = header.offsetHeight;
+    // Add small buffer (10px) for better spacing
+    main.style.paddingTop = (headerHeight + 10) + 'px';
+  });
+}
+
+/**
  * @name clickErase
  * Click handler for the erase button.
  */
@@ -574,7 +606,6 @@ async function clickErase() {
   if (
     window.confirm("This will erase the entire flash. Click OK to continue.")
   ) {
-    baudRate.disabled = true;
     butErase.disabled = true;
     butProgram.disabled = true;
     try {
@@ -586,7 +617,7 @@ async function clickErase() {
       errorMsg(e);
     } finally {
       butErase.disabled = false;
-      baudRate.disabled = false;
+      baudRateSelect.disabled = false;
       butProgram.disabled = getValidFiles().length == 0;
     }
   }
@@ -613,7 +644,7 @@ async function clickProgram() {
     });
   };
 
-  baudRate.disabled = true;
+  baudRateSelect.disabled = true;
   butErase.disabled = true;
   butProgram.disabled = true;
   for (let i = 0; i < firmware.length; i++) {
@@ -647,7 +678,7 @@ async function clickProgram() {
     progress[i].querySelector("div").style.width = "0";
   }
   butErase.disabled = false;
-  baudRate.disabled = false;
+  baudRateSelect.disabled = false;
   butProgram.disabled = getValidFiles().length == 0;
   logMsg("To run the new firmware, please reset your device.");
 }
@@ -749,7 +780,6 @@ async function clickReadFlash() {
     return;
   }
 
-  baudRate.disabled = true;
   butErase.disabled = true;
   butProgram.disabled = true;
   butReadFlash.disabled = true;
@@ -789,7 +819,7 @@ async function clickReadFlash() {
     readProgress.classList.add("hidden");
     readProgress.querySelector("div").style.width = "0";
     butErase.disabled = false;
-    baudRate.disabled = false;
+    baudRateSelect.disabled = false;
     butProgram.disabled = getValidFiles().length == 0;
     butReadFlash.disabled = false;
     readOffset.disabled = false;
@@ -933,31 +963,37 @@ function displayPartitions(partitions) {
     
     // Name
     const nameCell = document.createElement("td");
+    nameCell.setAttribute("data-label", "Name");
     nameCell.textContent = partition.name;
     row.appendChild(nameCell);
     
     // Type
     const typeCell = document.createElement("td");
+    typeCell.setAttribute("data-label", "Type");
     typeCell.textContent = partition.typeName;
     row.appendChild(typeCell);
     
     // SubType
     const subtypeCell = document.createElement("td");
+    subtypeCell.setAttribute("data-label", "SubType");
     subtypeCell.textContent = partition.subtypeName;
     row.appendChild(subtypeCell);
     
     // Offset
     const offsetCell = document.createElement("td");
+    offsetCell.setAttribute("data-label", "Offset");
     offsetCell.textContent = `0x${partition.offset.toString(16)}`;
     row.appendChild(offsetCell);
     
     // Size
     const sizeCell = document.createElement("td");
+    sizeCell.setAttribute("data-label", "Size");
     sizeCell.textContent = formatSize(partition.size);
     row.appendChild(sizeCell);
     
     // Action
     const actionCell = document.createElement("td");
+    actionCell.setAttribute("data-label", "Action");
     const downloadBtn = document.createElement("button");
     downloadBtn.textContent = "Download";
     downloadBtn.className = "partition-download-btn";
@@ -1088,16 +1124,11 @@ function toggleUIConnected(connected) {
   
   if (connected) {
     lbl = "Disconnect";
-    // Auto-hide header after connection
-    setTimeout(() => {
-      header.classList.add("header-hidden");
-      main.classList.add("no-header-padding");
-    }, 2000); // Hide after 2 seconds
+    isConnected = true;
+
   } else {
+    isConnected = false;
     toggleUIToolbar(false);
-    // Show header when disconnected
-    header.classList.remove("header-hidden");
-    main.classList.remove("no-header-padding");
   }
   butConnect.textContent = lbl;
 }
@@ -1105,9 +1136,9 @@ function toggleUIConnected(connected) {
 function loadAllSettings() {
   // Load all saved settings or defaults
   autoscroll.checked = loadSetting("autoscroll", true);
-  baudRate.value = loadSetting("baudrate", 2000000);
+  baudRateSelect.value = loadSetting("baudrate", 2000000);
   darkMode.checked = loadSetting("darkmode", false);
-  debugMode.checked = loadSetting("debugmode", true);
+  debugMode.checked = loadSetting("debugmode", false);
   showLog.checked = loadSetting("showlog", false);
   
   // Apply show log setting
@@ -1132,8 +1163,4 @@ function ucWords(text) {
     .replace("_", " ")
     .toLowerCase()
     .replace(/(?<= )[^\s]|^./g, (a) => a.toUpperCase());
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
