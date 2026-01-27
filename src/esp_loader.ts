@@ -3365,37 +3365,46 @@ export class ESPLoader extends EventTarget {
   /**
    * @name detectUsbConnectionType
    * Detect if device is using USB-JTAG/Serial or USB-OTG (not external serial chip)
-   * This helper extracts the detection logic from initialize() for reuse
+   * Uses USB PID (Product ID) for reliable detection
    * @returns true if USB-JTAG or USB-OTG, false if external serial chip
-   * @throws Error if detection fails and chipFamily is not set
+   * @throws Error if chipFamily is not set
    */
   private async detectUsbConnectionType(): Promise<boolean> {
     if (!this.chipFamily) {
       throw new Error("Cannot detect USB connection type: chipFamily not set");
     }
 
-    if (
-      this.chipFamily === CHIP_FAMILY_ESP32S2 ||
-      this.chipFamily === CHIP_FAMILY_ESP32S3
-    ) {
-      const isUsingUsbOtg = await this.usingUsbOtg();
-      const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
-      return isUsingUsbOtg || isUsingUsbJtagSerial;
-    } else if (
-      this.chipFamily === CHIP_FAMILY_ESP32C3 ||
-      this.chipFamily === CHIP_FAMILY_ESP32C5 ||
-      this.chipFamily === CHIP_FAMILY_ESP32C6
-    ) {
-      const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
-      return isUsingUsbJtagSerial;
-    } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
-      const isUsingUsbOtg = await this.usingUsbOtg();
-      const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
-      return isUsingUsbOtg || isUsingUsbJtagSerial;
-    } else {
-      // Other chips don't have USB-JTAG/OTG
+    // Use PID-based detection (most reliable method)
+    const portInfo = this.port.getInfo();
+    const pid = portInfo.usbProductId;
+    const vid = portInfo.usbVendorId;
+
+    this.logger.debug(
+      `USB detection: VID=0x${vid?.toString(16)}, PID=0x${pid?.toString(16)}`,
+    );
+
+    // Check if this is an Espressif device
+    const isEspressif = vid === 0x303a;
+
+    if (!isEspressif) {
+      this.logger.debug("Not Espressif VID - external serial chip");
       return false;
     }
+
+    // ESP32-S2/S3/C3/C6/H2 USB-JTAG/OTG PIDs
+    // 0x1001 = ESP32-S3 USB-JTAG
+    // 0x0002 = ESP32-S2 USB-JTAG
+    // 0x1000 = ESP32-C3 USB-JTAG
+    // 0x4008 = ESP32-C6 USB-JTAG
+    // 0x4009 = ESP32-H2 USB-JTAG
+    const usbJtagPids = [0x1001, 0x0002, 0x1000, 0x4008, 0x4009];
+    const isUsbJtag = usbJtagPids.includes(pid || 0);
+
+    this.logger.debug(
+      `USB-JTAG/OTG detection: ${isUsbJtag ? "YES" : "NO"} (PID=0x${pid?.toString(16)})`,
+    );
+
+    return isUsbJtag;
   }
 
   /**
