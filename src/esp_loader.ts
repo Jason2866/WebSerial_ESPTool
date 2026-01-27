@@ -3365,16 +3365,11 @@ export class ESPLoader extends EventTarget {
   /**
    * @name detectUsbConnectionType
    * Detect if device is using USB-JTAG/Serial or USB-OTG (not external serial chip)
-   * Uses USB PID (Product ID) for reliable detection
+   * Uses USB PID (Product ID) for reliable detection - does NOT require chipFamily
    * @returns true if USB-JTAG or USB-OTG, false if external serial chip
-   * @throws Error if chipFamily is not set
    */
   public async detectUsbConnectionType(): Promise<boolean> {
-    if (!this.chipFamily) {
-      throw new Error("Cannot detect USB connection type: chipFamily not set");
-    }
-
-    // Use PID-based detection (most reliable method)
+    // Use PID-based detection
     const portInfo = this.port.getInfo();
     const pid = portInfo.usbProductId;
     const vid = portInfo.usbVendorId;
@@ -3391,13 +3386,12 @@ export class ESPLoader extends EventTarget {
       return false;
     }
 
-    // ESP32-S2/S3/C3/C6/H2 USB-JTAG/OTG PIDs
-    // 0x1001 = ESP32-S3 USB-JTAG
-    // 0x0002 = ESP32-S2 USB-JTAG
-    // 0x1000 = ESP32-C3 USB-JTAG
-    // 0x4008 = ESP32-C6 USB-JTAG
-    // 0x4009 = ESP32-H2 USB-JTAG
-    const usbJtagPids = [0x1001, 0x0002, 0x1000, 0x4008, 0x4009];
+    // ESP32-S2/S3/C3/C5/C6/C61/H2/P4 USB-JTAG/OTG PIDs
+    // According to official Espressif documentation:
+    // https://docs.espressif.com/projects/esp-iot-solution/en/latest/usb/usb_overview/usb_device_const_COM.html
+    // 0x0002 = ESP32-S2 USB-OTG
+    // 0x1001 = ESP32-S3, C3, C5, C6, C61, H2, P4 USB-Serial-JTAG
+    const usbJtagPids = [0x0002, 0x1001];
     const isUsbJtag = usbJtagPids.includes(pid || 0);
 
     this.logger.debug(
