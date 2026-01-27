@@ -143,7 +143,7 @@ export class ESPLoader extends EventTarget {
   __totalBytesRead?: number;
   public currentBaudRate: number = ESP_ROM_BAUD;
   private _maxUSBSerialBaudrate?: number;
-  private _reader?: ReadableStreamDefaultReader<Uint8Array>;
+  public __reader?: ReadableStreamDefaultReader<Uint8Array>;
   private SLIP_END = 0xc0;
   private SLIP_ESC = 0xdb;
   private SLIP_ESC_END = 0xdc;
