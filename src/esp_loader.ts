@@ -3412,13 +3412,15 @@ export class ESPLoader extends EventTarget {
     this._consoleMode = true;
 
     // Re-detect USB connection type to ensure we have a definitive value
-    // This handles cases where isUsbJtagOrOtg might be undefined
     let isUsbJtag: boolean;
     try {
       isUsbJtag = await this.detectUsbConnectionType();
       this.logger.debug(
         `USB connection type detected: ${isUsbJtag ? "USB-JTAG/OTG" : "External Serial Chip"}`,
       );
+      
+      // CRITICAL: Set the cached value so _resetToFirmwareIfNeeded() can use it
+      this._isUsbJtagOrOtg = isUsbJtag;
     } catch (err) {
       // If detection fails, fall back to cached value or fail-fast
       if (this.isUsbJtagOrOtg === undefined) {
@@ -3531,10 +3533,10 @@ export class ESPLoader extends EventTarget {
         // Perform watchdog reset to reboot into firmware
         try {
           await this.rtcWdtResetChipSpecific();
-          this.logger.debug("Watchdog reset triggered successfully");
+          this.logger.log("Watchdog reset triggered successfully");
         } catch (err) {
           // Error is expected - device resets before responding
-          this.logger.debug(
+          this.logger.log(
             `Watchdog reset initiated (connection lost as expected: ${err})`,
           );
         }
