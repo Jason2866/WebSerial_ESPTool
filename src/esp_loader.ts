@@ -3418,7 +3418,7 @@ export class ESPLoader extends EventTarget {
       this.logger.debug(
         `USB connection type detected: ${isUsbJtag ? "USB-JTAG/OTG" : "External Serial Chip"}`,
       );
-      
+
       // CRITICAL: Set the cached value so _resetToFirmwareIfNeeded() can use it
       this._isUsbJtagOrOtg = isUsbJtag;
     } catch (err) {
@@ -3533,10 +3533,10 @@ export class ESPLoader extends EventTarget {
         // Perform watchdog reset to reboot into firmware
         try {
           await this.rtcWdtResetChipSpecific();
-          this.logger.log("Watchdog reset triggered successfully");
+          this.logger.debug("Watchdog reset triggered successfully");
         } catch (err) {
           // Error is expected - device resets before responding
-          this.logger.log(
+          this.logger.debug(
             `Watchdog reset initiated (connection lost as expected: ${err})`,
           );
         }
