@@ -873,11 +873,22 @@ class WebUSBSerial {
                 try {
                     while (this._readLoopRunning && this.device) {
                         try {
+                            // CRITICAL: Check backpressure before reading more data
+                            // If desiredSize is 0 or negative, the consumer can't keep up
+                            // Wait for the consumer to drain the buffer before reading more
+                            if (controller.desiredSize !== null && controller.desiredSize <= 0) {
+                                // Consumer is backlogged - wait before reading more
+                                await new Promise(r => setTimeout(r, 10));
+                                continue;
+                            }
+
                             const result = await this.device.transferIn(this.endpointIn, this.maxTransferSize);
 
                             if (result.status === 'ok') {
                                 controller.enqueue(new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength));
-                                // No delay - immediately read next packet
+                                // Small delay to allow consumer to process data
+                                // This prevents overwhelming the TextDecoderStream on Android
+                                await new Promise(r => setTimeout(r, 1));
                                 continue;
                             } else if (result.status === 'stall') {
                                 await this.device.clearHalt('in', this.endpointIn);
