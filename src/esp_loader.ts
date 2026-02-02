@@ -461,10 +461,8 @@ export class ESPLoader extends EventTarget {
       0x303a: {
         // Espressif (native USB)
         0x2: { name: "ESP32-S2 Native USB", maxBaudrate: 2000000 },
+        0x12: { name: "ESP32-P4 Native USB", maxBaudrate: 2000000 },
         0x1001: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
-        0x1002: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
-        0x4002: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
-        0x1000: { name: "ESP32 Native USB", maxBaudrate: 2000000 },
       },
     };
 
