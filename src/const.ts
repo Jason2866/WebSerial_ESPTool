@@ -209,7 +209,7 @@ export const ESP32C3_EFUSE_RD_MAC_SPI_SYS_3_REG = 0x60008850;
 export const ESP32C3_EFUSE_RD_MAC_SPI_SYS_5_REG = 0x60008858;
 // ESP32-C3 GPIO strap register for boot mode detection
 export const ESP32C3_GPIO_STRAP_REG = 0x60004038;
-export const ESP32C3_GPIO_STRAP_SPI_BOOT_MASK = 1 << 8; // GPIO8 - Not download mode
+export const ESP32C3_GPIO_STRAP_SPI_BOOT_MASK = 1 << 9; // GPIO9 - Not download mode (HIGH = normal boot, LOW = download mode)
 
 export const ESP32C5_SPI_REG_BASE = 0x60003000;
 export const ESP32C5_BASEFUSEADDR = 0x600b4800;
@@ -227,7 +227,7 @@ export const ESP32C5_UARTDEV_BUF_NO = 0x4085f514; // Variable in ROM .bss which 
 export const ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3; // The above var when USB-JTAG/Serial is used
 // ESP32-C5 GPIO strap register for boot mode detection
 export const ESP32C5_GPIO_STRAP_REG = 0x60004038;
-export const ESP32C5_GPIO_STRAP_SPI_BOOT_MASK = 1 << 8; // GPIO8 - Not download mode
+export const ESP32C5_GPIO_STRAP_SPI_BOOT_MASK = 1 << 28; // GPIO28 - Not download mode (HIGH = normal boot, LOW = download mode)
 
 export const ESP32C6_SPI_REG_BASE = 0x60003000;
 export const ESP32C6_BASEFUSEADDR = 0x600b0800;
