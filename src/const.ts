@@ -207,6 +207,9 @@ export const ESP32C3_BUF_UART_NO_OFFSET = 24;
 // ESP32-C3 EFUSE registers for chip revision detection
 export const ESP32C3_EFUSE_RD_MAC_SPI_SYS_3_REG = 0x60008850;
 export const ESP32C3_EFUSE_RD_MAC_SPI_SYS_5_REG = 0x60008858;
+// ESP32-C3 GPIO strap register for boot mode detection
+export const ESP32C3_GPIO_STRAP_REG = 0x60004038;
+export const ESP32C3_GPIO_STRAP_SPI_BOOT_MASK = 1 << 8; // GPIO8 - Not download mode
 
 export const ESP32C5_SPI_REG_BASE = 0x60003000;
 export const ESP32C5_BASEFUSEADDR = 0x600b4800;
@@ -222,6 +225,9 @@ export const ESP32C5_BOOTLOADER_FLASH_OFFSET = 0x2000;
 // ESP32-C5 USB-JTAG/Serial detection
 export const ESP32C5_UARTDEV_BUF_NO = 0x4085f514; // Variable in ROM .bss which indicates the port in use
 export const ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3; // The above var when USB-JTAG/Serial is used
+// ESP32-C5 GPIO strap register for boot mode detection
+export const ESP32C5_GPIO_STRAP_REG = 0x60004038;
+export const ESP32C5_GPIO_STRAP_SPI_BOOT_MASK = 1 << 8; // GPIO8 - Not download mode
 
 export const ESP32C6_SPI_REG_BASE = 0x60003000;
 export const ESP32C6_BASEFUSEADDR = 0x600b0800;
@@ -247,6 +253,9 @@ export const ESP32C6_RTC_CNTL_SWD_WKEY = 0x50d83aa1; // LP_WDT_SWD_WKEY, same as
 // ESP32-C6 USB-JTAG/Serial detection
 export const ESP32C6_UARTDEV_BUF_NO = 0x4087f580; // Variable in ROM .bss which indicates the port in use
 export const ESP32C6_UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3; // The above var when USB-JTAG/Serial is used
+// ESP32-C6 GPIO strap register for boot mode detection
+export const ESP32C6_GPIO_STRAP_REG = 0x60004038;
+export const ESP32C6_GPIO_STRAP_SPI_BOOT_MASK = 1 << 9; // GPIO9 - Not download mode
 
 // ESP32-C5/C6 LP Watchdog Timer registers (Low Power WDT)
 export const ESP32C5_C6_DR_REG_LP_WDT_BASE = 0x600b1c00;

@@ -89,14 +89,20 @@ import {
   ESP32C3_RTC_CNTL_WDTCONFIG0_REG,
   ESP32C3_RTC_CNTL_WDTCONFIG1_REG,
   ESP32C3_RTC_CNTL_WDT_WKEY,
+  ESP32C3_GPIO_STRAP_REG,
+  ESP32C3_GPIO_STRAP_SPI_BOOT_MASK,
   ESP32C5_C6_RTC_CNTL_WDTWPROTECT_REG,
   ESP32C5_C6_RTC_CNTL_WDTCONFIG0_REG,
   ESP32C5_C6_RTC_CNTL_WDTCONFIG1_REG,
   ESP32C5_C6_RTC_CNTL_WDT_WKEY,
+  ESP32C5_GPIO_STRAP_REG,
+  ESP32C5_GPIO_STRAP_SPI_BOOT_MASK,
   ESP32C5_UARTDEV_BUF_NO,
   ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
   ESP32C6_UARTDEV_BUF_NO,
   ESP32C6_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32C6_GPIO_STRAP_REG,
+  ESP32C6_GPIO_STRAP_SPI_BOOT_MASK,
   ESP32P4_RTC_CNTL_WDTWPROTECT_REG,
   ESP32P4_RTC_CNTL_WDTCONFIG0_REG,
   ESP32P4_RTC_CNTL_WDTCONFIG1_REG,
@@ -107,6 +113,8 @@ import {
   ESP32P4_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
   ESP32P4_RTC_CNTL_OPTION1_REG,
   ESP32P4_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+  ESP32P4_GPIO_STRAP_REG,
+  ESP32P4_GPIO_STRAP_SPI_BOOT_MASK,
   ESP32H2_UARTDEV_BUF_NO,
   ESP32H2_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
 } from "./const";
@@ -1733,7 +1741,7 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
-   * Helper: Check if USB-based WDT reset should be used for S2/S3
+   * Helper: Check if USB-based WDT reset should be used for S2/S3/P4
    * Returns true if WDT reset was performed, false otherwise
    */
   private async tryUsbWdtReset(
@@ -1761,6 +1769,34 @@ export class ESPLoader extends EventTarget {
         await this.rtcWdtResetChipSpecific();
         this.logger.debug(
           `${chipName}: RTC WDT reset (USB detected, GPIO0=${gpio0Low ? "low" : "high"}, ForceDownload=${forceDownloadBootSet})`,
+        );
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Helper: Check if USB-based WDT reset should be used for C3/C5/C6
+   * These chips don't have FORCE_DOWNLOAD_BOOT register, only check GPIO strap
+   * Returns true if WDT reset was performed, false otherwise
+   */
+  private async tryUsbWdtResetSimple(
+    chipName: string,
+    GPIO_STRAP_REG: number,
+    GPIO_STRAP_SPI_BOOT_MASK: number,
+  ): Promise<boolean> {
+    const isUsingUsbJtagSerial = await this.usingUsbJtagSerial();
+
+    if (isUsingUsbJtagSerial) {
+      const strapReg = await this.readRegister(GPIO_STRAP_REG);
+      const gpioBootLow = (strapReg & GPIO_STRAP_SPI_BOOT_MASK) === 0;
+
+      // Use watchdog reset if boot GPIO is low (user wants download mode)
+      if (gpioBootLow) {
+        await this.rtcWdtResetChipSpecific();
+        this.logger.debug(
+          `${chipName}: RTC WDT reset (USB-JTAG/Serial detected, boot GPIO=${gpioBootLow ? "low" : "high"})`,
         );
         return true;
       }
@@ -1853,7 +1889,7 @@ export class ESPLoader extends EventTarget {
       }
     } else {
       // just reset (no bootloader mode)
-      // For ESP32-S2/S3 with USB-OTG or USB-JTAG/Serial, check if watchdog reset is needed
+      // For ESP32-S2/S3/P4 with USB-OTG or USB-JTAG/Serial, check if watchdog reset is needed
       if (this.chipFamily === CHIP_FAMILY_ESP32S2 && !this._consoleMode) {
         const wdtResetUsed = await this.tryUsbWdtReset(
           "ESP32-S2",
@@ -1873,6 +1909,48 @@ export class ESPLoader extends EventTarget {
           ESP32S3_GPIO_STRAP_SPI_BOOT_MASK,
           ESP32S3_RTC_CNTL_OPTION1_REG,
           ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+        );
+        if (wdtResetUsed) return;
+      } else if (
+        this.chipFamily === CHIP_FAMILY_ESP32P4 &&
+        !this._consoleMode
+      ) {
+        const wdtResetUsed = await this.tryUsbWdtReset(
+          "ESP32-P4",
+          ESP32P4_GPIO_STRAP_REG,
+          ESP32P4_GPIO_STRAP_SPI_BOOT_MASK,
+          ESP32P4_RTC_CNTL_OPTION1_REG,
+          ESP32P4_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+        );
+        if (wdtResetUsed) return;
+      } else if (
+        this.chipFamily === CHIP_FAMILY_ESP32C3 &&
+        !this._consoleMode
+      ) {
+        const wdtResetUsed = await this.tryUsbWdtResetSimple(
+          "ESP32-C3",
+          ESP32C3_GPIO_STRAP_REG,
+          ESP32C3_GPIO_STRAP_SPI_BOOT_MASK,
+        );
+        if (wdtResetUsed) return;
+      } else if (
+        this.chipFamily === CHIP_FAMILY_ESP32C5 &&
+        !this._consoleMode
+      ) {
+        const wdtResetUsed = await this.tryUsbWdtResetSimple(
+          "ESP32-C5",
+          ESP32C5_GPIO_STRAP_REG,
+          ESP32C5_GPIO_STRAP_SPI_BOOT_MASK,
+        );
+        if (wdtResetUsed) return;
+      } else if (
+        this.chipFamily === CHIP_FAMILY_ESP32C6 &&
+        !this._consoleMode
+      ) {
+        const wdtResetUsed = await this.tryUsbWdtResetSimple(
+          "ESP32-C6",
+          ESP32C6_GPIO_STRAP_REG,
+          ESP32C6_GPIO_STRAP_SPI_BOOT_MASK,
         );
         if (wdtResetUsed) return;
       }
