@@ -1750,14 +1750,17 @@ export class ESPLoader extends EventTarget {
       const strapReg = await this.readRegister(GPIO_STRAP_REG);
       const forceDlReg = await this.readRegister(RTC_CNTL_OPTION1_REG);
 
-      // Only use watchdog reset if GPIO0 is low AND force download boot mode is not set
-      if (
-        (strapReg & GPIO_STRAP_SPI_BOOT_MASK) === 0 &&
-        (forceDlReg & RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK) === 0
-      ) {
+      const gpio0Low = (strapReg & GPIO_STRAP_SPI_BOOT_MASK) === 0;
+      const forceDownloadBootSet =
+        (forceDlReg & RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK) !== 0;
+
+      // Use watchdog reset if:
+      // 1. GPIO0 is low (user wants download mode), OR
+      // 2. Force download boot bit is set (needs to be cleared by WDT reset)
+      if (gpio0Low || forceDownloadBootSet) {
         await this.rtcWdtResetChipSpecific();
         this.logger.debug(
-          `${chipName}: RTC WDT reset (USB detected, GPIO0 low)`,
+          `${chipName}: RTC WDT reset (USB detected, GPIO0=${gpio0Low ? "low" : "high"}, ForceDownload=${forceDownloadBootSet})`,
         );
         return true;
       }
