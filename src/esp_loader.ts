@@ -1639,15 +1639,15 @@ export class ESPLoader extends EventTarget {
       if (this.chipFamily === CHIP_FAMILY_ESP32S2) {
         const wdtResetUsed = await this.tryUsbWdtReset("ESP32-S2");
         if (wdtResetUsed) return;
-      } else if (this.chipFamily === CHIP_FAMILY_ESP32S3) {
-        const wdtResetUsed = await this.tryUsbWdtReset("ESP32-S3");
-        if (wdtResetUsed) return;
+      //  } else if (this.chipFamily === CHIP_FAMILY_ESP32S3) {
+      //    const wdtResetUsed = await this.tryUsbWdtReset("ESP32-S3");
+      //    if (wdtResetUsed) return;
       } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
         const wdtResetUsed = await this.tryUsbWdtReset("ESP32-P4");
         if (wdtResetUsed) return;
-      } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
-        const wdtResetUsed = await this.tryUsbWdtReset("ESP32-C3");
-        if (wdtResetUsed) return;
+      //  } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
+      //    const wdtResetUsed = await this.tryUsbWdtReset("ESP32-C3");
+      //    if (wdtResetUsed) return;
       } else if (this.chipFamily === CHIP_FAMILY_ESP32C5) {
         const wdtResetUsed = await this.tryUsbWdtReset("ESP32-C5");
         if (wdtResetUsed) return;
