@@ -88,6 +88,13 @@ import {
   ESP32P4_RTC_CNTL_WDT_WKEY,
   ESP32P4_RTC_CNTL_OPTION1_REG,
   ESP32P4_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+  ESP32P4_LP_SYSTEM_REG_ANA_XPD_PAD_GROUP_REG,
+  ESP32P4_PMU_EXT_LDO_P0_0P1A_ANA_REG,
+  ESP32P4_PMU_ANA_0P1A_EN_CUR_LIM_0,
+  ESP32P4_PMU_EXT_LDO_P0_0P1A_REG,
+  ESP32P4_PMU_0P1A_TARGET0_0,
+  ESP32P4_PMU_0P1A_FORCE_TIEH_SEL_0,
+  ESP32P4_PMU_DATE_REG,
 } from "./const";
 import { getStubCode } from "./stubs";
 import { hexFormatter, sleep, slipEncode, toHex } from "./util";
@@ -500,6 +507,11 @@ export class ESPLoader extends EventTarget {
     // Detect chip type
     await this.detectChip();
 
+    // Power on flash for ESP32-P4 Rev 301 (must be done before loading stub)
+    if (this.chipFamily === CHIP_FAMILY_ESP32P4 && this.chipRevision === 301) {
+      await this.powerOnFlash();
+    }
+
     // Detect if device is using USB-JTAG/Serial or USB-OTG (not external serial chip)
     // This is needed to determine the correct reset strategy for console mode
     try {
@@ -645,6 +657,75 @@ export class ESPLoader extends EventTarget {
     }
 
     return 0;
+  }
+
+  /**
+   * Power on the flash chip for ESP32-P4 Rev 301 (ECO6)
+   * The flash chip is powered off by default on ECO6, when the default flash
+   * voltage changed from 1.8V to 3.3V. This is to prevent damage to 1.8V flash chips.
+   */
+  async powerOnFlash(): Promise<void> {
+    if (this.chipFamily !== CHIP_FAMILY_ESP32P4) {
+      return; // Only needed for ESP32-P4
+    }
+
+    if (this.chipRevision !== 301) {
+      return; // Only needed for Rev 301 (ECO6)
+    }
+
+    this.logger.debug("Powering on flash for ESP32-P4 Rev 301 (ECO6)");
+
+    // Power up pad group
+    await this.writeRegister(ESP32P4_LP_SYSTEM_REG_ANA_XPD_PAD_GROUP_REG, 1);
+    await sleep(10); // 0.01 seconds
+
+    // Flash power up sequence
+    const pmuAnaReg = await this.readRegister(
+      ESP32P4_PMU_EXT_LDO_P0_0P1A_ANA_REG,
+    );
+    await this.writeRegister(
+      ESP32P4_PMU_EXT_LDO_P0_0P1A_ANA_REG,
+      pmuAnaReg | ESP32P4_PMU_ANA_0P1A_EN_CUR_LIM_0,
+    );
+
+    const pmuReg = await this.readRegister(ESP32P4_PMU_EXT_LDO_P0_0P1A_REG);
+    await this.writeRegister(
+      ESP32P4_PMU_EXT_LDO_P0_0P1A_REG,
+      pmuReg | ESP32P4_PMU_0P1A_FORCE_TIEH_SEL_0,
+    );
+
+    const pmuDateReg = await this.readRegister(ESP32P4_PMU_DATE_REG);
+    await this.writeRegister(ESP32P4_PMU_DATE_REG, pmuDateReg | (3 << 0));
+
+    await sleep(0.05); // 0.00005 seconds = 0.05 ms
+
+    const pmuAnaReg2 = await this.readRegister(
+      ESP32P4_PMU_EXT_LDO_P0_0P1A_ANA_REG,
+    );
+    await this.writeRegister(
+      ESP32P4_PMU_EXT_LDO_P0_0P1A_ANA_REG,
+      pmuAnaReg2 & ~ESP32P4_PMU_ANA_0P1A_EN_CUR_LIM_0,
+    );
+
+    const pmuReg2 = await this.readRegister(ESP32P4_PMU_EXT_LDO_P0_0P1A_REG);
+    await this.writeRegister(
+      ESP32P4_PMU_EXT_LDO_P0_0P1A_REG,
+      pmuReg2 & ~ESP32P4_PMU_0P1A_TARGET0_0,
+    );
+
+    // Update eFuse voltage to PMU
+    const pmuReg3 = await this.readRegister(ESP32P4_PMU_EXT_LDO_P0_0P1A_REG);
+    await this.writeRegister(ESP32P4_PMU_EXT_LDO_P0_0P1A_REG, pmuReg3 | 0x80);
+
+    const pmuReg4 = await this.readRegister(ESP32P4_PMU_EXT_LDO_P0_0P1A_REG);
+    await this.writeRegister(
+      ESP32P4_PMU_EXT_LDO_P0_0P1A_REG,
+      pmuReg4 & ~ESP32P4_PMU_0P1A_FORCE_TIEH_SEL_0,
+    );
+
+    await sleep(2); // 0.0018 seconds = 1.8 ms, rounded to 2ms
+
+    this.logger.debug("Flash powered on successfully");
   }
 
   /**
@@ -1639,15 +1720,15 @@ export class ESPLoader extends EventTarget {
       if (this.chipFamily === CHIP_FAMILY_ESP32S2) {
         const wdtResetUsed = await this.tryUsbWdtReset("ESP32-S2");
         if (wdtResetUsed) return;
-      //  } else if (this.chipFamily === CHIP_FAMILY_ESP32S3) {
-      //    const wdtResetUsed = await this.tryUsbWdtReset("ESP32-S3");
-      //    if (wdtResetUsed) return;
+        //      } else if (this.chipFamily === CHIP_FAMILY_ESP32S3) {
+        //        const wdtResetUsed = await this.tryUsbWdtReset("ESP32-S3");
+        //        if (wdtResetUsed) return;
       } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
         const wdtResetUsed = await this.tryUsbWdtReset("ESP32-P4");
         if (wdtResetUsed) return;
-      //  } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
-      //    const wdtResetUsed = await this.tryUsbWdtReset("ESP32-C3");
-      //    if (wdtResetUsed) return;
+        //      } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
+        //        const wdtResetUsed = await this.tryUsbWdtReset("ESP32-C3");
+        //        if (wdtResetUsed) return;
       } else if (this.chipFamily === CHIP_FAMILY_ESP32C5) {
         const wdtResetUsed = await this.tryUsbWdtReset("ESP32-C5");
         if (wdtResetUsed) return;
@@ -2827,6 +2908,9 @@ export class ESPLoader extends EventTarget {
   }
 
   async runStub(skipFlashDetection = false): Promise<EspStubLoader> {
+    this.logger.debug(
+      `Loading stub for ${this.chipName}, revision: ${this.chipRevision}`,
+    );
     const stub = await getStubCode(this.chipFamily, this.chipRevision);
 
     // No stub available for this chip, return ROM loader
@@ -3548,6 +3632,14 @@ export class ESPLoader extends EventTarget {
       // Verify port is ready
       if (!this.port.writable || !this.port.readable) {
         throw new Error("Port not ready after reconnect");
+      }
+
+      // Power on flash for ESP32-P4 Rev 301 (must be done before loading stub)
+      if (
+        this.chipFamily === CHIP_FAMILY_ESP32P4 &&
+        this.chipRevision === 301
+      ) {
+        await this.powerOnFlash();
       }
 
       // Load stub
