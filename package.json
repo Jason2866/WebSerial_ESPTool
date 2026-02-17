@@ -1,6 +1,6 @@
 {
   "name": "tasmota-webserial-esptool",
-  "version": "9.2.17",
+  "version": "9.2.18",
   "description": "World's first tool for flashing and reading ESP devices on Android mobile devices using WebUSB. Flash & Read ESP devices using WebSerial/WebUSB - up to 10x faster flash read than esptool.py",
   "main": "dist/index.js",
   "repository": {

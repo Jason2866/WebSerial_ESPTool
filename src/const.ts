@@ -218,7 +218,12 @@ export const ESP32C5_SPI_MOSI_DLEN_OFFS = 0x24;
 export const ESP32C5_SPI_MISO_DLEN_OFFS = 0x28;
 export const ESP32C5_SPI_W0_OFFS = 0x58;
 export const ESP32C5_UART_DATE_REG_ADDR = 0x6000007c;
+export const ESP32C5_UART_CLKDIV_REG = 0x60000014;
 export const ESP32C5_BOOTLOADER_FLASH_OFFSET = 0x2000;
+// ESP32-C5 Crystal frequency detection registers
+export const ESP32C5_PCR_SYSCLK_CONF_REG = 0x60096110;
+export const ESP32C5_PCR_SYSCLK_XTAL_FREQ_V = 0x7f << 24;
+export const ESP32C5_PCR_SYSCLK_XTAL_FREQ_S = 24;
 // ESP32-C5 USB-JTAG/Serial detection
 export const ESP32C5_UARTDEV_BUF_NO = 0x4085f514; // Variable in ROM .bss which indicates the port in use
 export const ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3; // The above var when USB-JTAG/Serial is used
@@ -274,6 +279,11 @@ export const ESP32C61_SPI_MISO_DLEN_OFFS = 0x28;
 export const ESP32C61_SPI_W0_OFFS = 0x58;
 export const ESP32C61_UART_DATE_REG_ADDR = 0x6000007c;
 export const ESP32C61_BOOTLOADER_FLASH_OFFSET = 0x0000;
+// ESP32-C61 USB-JTAG/Serial detection (dynamic based on chip revision)
+export const ESP32C61_UARTDEV_BUF_NO_REV_LE2 = 0x4084f5ec; // revision <= 2
+export const ESP32C61_UARTDEV_BUF_NO_REV_GT2 = 0x4084f5e4; // revision > 2
+export const ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_LE2 = 3; // revision <= 2
+export const ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_GT2 = 4; // revision > 2
 
 export const ESP32H2_SPI_REG_BASE = 0x60003000;
 export const ESP32H2_BASEFUSEADDR = 0x600b0800;
@@ -321,6 +331,9 @@ export const ESP32H4_RTC_CNTL_WDTCONFIG1_REG =
   ESP32H4_DR_REG_LP_WDT_BASE + 0x0004; // LP_WDT_RWDT_CONFIG1_REG
 export const ESP32H4_RTC_CNTL_WDT_WKEY = 0x50d83aa1; // LP_WDT_SWD_WKEY, same as WDT key in this case
 export const ESP32H4_RTC_CNTL_SWD_WKEY = 0x50d83aa1; // LP_WDT_SWD_WKEY, same as WDT key in this case
+// ESP32-H4 USB-JTAG/Serial detection
+export const ESP32H4_UARTDEV_BUF_NO = 0x4087f580; // Variable in ROM .bss which indicates the port in use
+export const ESP32H4_UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3; // The above var when USB-JTAG/Serial is used
 
 export const ESP32H21_SPI_REG_BASE = 0x60003000;
 export const ESP32H21_BASEFUSEADDR = 0x600b4000;
