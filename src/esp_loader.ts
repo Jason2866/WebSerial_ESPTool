@@ -1048,21 +1048,6 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
-   * @name hardResetUSBJTAGSerialWebUSB
-   * USB-JTAG/Serial reset for WebUSB (Android)
-   */
-  async hardResetUSBJTAGSerialWebUSB() {
-    await this.runSignalSequence([
-      { rts: false },
-      { dtr: false, delayMs: 100 },
-      { dtr: true, rts: false, delayMs: 100 },
-      { rts: true },
-      { dtr: false, rts: true, delayMs: 100 },
-      { dtr: false, rts: false, delayMs: 200 },
-    ]);
-  }
-
-  /**
    * @name hardResetUSBJTAGSerialInvertedDTRWebUSB
    * USB-JTAG/Serial reset with inverted DTR for WebUSB (Android)
    */
@@ -1072,33 +1057,6 @@ export class ESPLoader extends EventTarget {
       { dtr: false, rts: false, delayMs: 100 },
       { rts: true, dtr: true, delayMs: 100 },
       { dtr: true, rts: false, delayMs: 200 },
-    ]);
-  }
-
-  /**
-   * @name hardResetClassicWebUSB
-   * Classic reset for WebUSB (Android)
-   */
-  async hardResetClassicWebUSB() {
-    await this.runSignalSequence([
-      { dtr: false, rts: true, delayMs: 100 },
-      { dtr: true, rts: false, delayMs: 50 },
-      { dtr: false, delayMs: 200 },
-    ]);
-  }
-
-  /**
-   * @name hardResetUnixTightWebUSB
-   * Unix Tight reset for WebUSB (Android) - sets DTR and RTS simultaneously
-   */
-  async hardResetUnixTightWebUSB() {
-    await this.runSignalSequence([
-      { dtr: false, rts: false },
-      { dtr: true, rts: true },
-      { dtr: false, rts: true, delayMs: 100 },
-      { dtr: true, rts: false, delayMs: 50 },
-      { dtr: false, rts: false },
-      { dtr: false, delayMs: 200 },
     ]);
   }
 
@@ -1217,7 +1175,7 @@ export class ESPLoader extends EventTarget {
           resetStrategies.push({
             name: "USB-JTAG/Serial (WebUSB) - ESP32-S2",
             fn: async () => {
-              return await self.hardResetUSBJTAGSerialWebUSB();
+              return await self.hardResetUSBJTAGSerial();
             },
           });
 
@@ -1233,7 +1191,7 @@ export class ESPLoader extends EventTarget {
           resetStrategies.push({
             name: "UnixTight (WebUSB) - ESP32-S2 CDC",
             fn: async () => {
-              return await self.hardResetUnixTightWebUSB();
+              return await self.hardResetUnixTight();
             },
           });
 
@@ -1241,7 +1199,7 @@ export class ESPLoader extends EventTarget {
           resetStrategies.push({
             name: "Classic (WebUSB) - ESP32-S2 CDC",
             fn: async () => {
-              return await self.hardResetClassicWebUSB();
+              return await self.hardResetClassic();
             },
           });
         } else {
@@ -1255,7 +1213,7 @@ export class ESPLoader extends EventTarget {
           resetStrategies.push({
             name: "USB-JTAG/Serial (WebUSB)",
             fn: async () => {
-              return await self.hardResetUSBJTAGSerialWebUSB();
+              return await self.hardResetUSBJTAGSerial();
             },
           });
           resetStrategies.push({
@@ -1274,13 +1232,13 @@ export class ESPLoader extends EventTarget {
           resetStrategies.push({
             name: "UnixTight (WebUSB) - CH34x",
             fn: async () => {
-              return await self.hardResetUnixTightWebUSB();
+              return await self.hardResetUnixTight();
             },
           });
           resetStrategies.push({
             name: "Classic (WebUSB) - CH34x",
             fn: async () => {
-              return await self.hardResetClassicWebUSB();
+              return await self.hardResetClassic();
             },
           });
           resetStrategies.push({
@@ -1308,14 +1266,14 @@ export class ESPLoader extends EventTarget {
           resetStrategies.push({
             name: "UnixTight (WebUSB) - CP2102",
             fn: async () => {
-              return await self.hardResetUnixTightWebUSB();
+              return await self.hardResetUnixTight();
             },
           });
 
           resetStrategies.push({
             name: "Classic (WebUSB) - CP2102",
             fn: async () => {
-              return await self.hardResetClassicWebUSB();
+              return await self.hardResetClassic();
             },
           });
 
@@ -1344,13 +1302,13 @@ export class ESPLoader extends EventTarget {
           resetStrategies.push({
             name: "UnixTight (WebUSB)",
             fn: async () => {
-              return await self.hardResetUnixTightWebUSB();
+              return await self.hardResetUnixTight();
             },
           });
           resetStrategies.push({
             name: "Classic (WebUSB)",
             fn: async function () {
-              return await self.hardResetClassicWebUSB();
+              return await self.hardResetClassic();
             },
           });
           resetStrategies.push({
@@ -1381,7 +1339,7 @@ export class ESPLoader extends EventTarget {
           resetStrategies.push({
             name: "Classic (WebUSB)",
             fn: async function () {
-              return await self.hardResetClassicWebUSB();
+              return await self.hardResetClassic();
             },
           });
         }
@@ -1390,7 +1348,7 @@ export class ESPLoader extends EventTarget {
         resetStrategies.push({
           name: "UnixTight (WebUSB)",
           fn: async function () {
-            return await self.hardResetUnixTightWebUSB();
+            return await self.hardResetUnixTight();
           },
         });
 
@@ -1415,7 +1373,7 @@ export class ESPLoader extends EventTarget {
           resetStrategies.push({
             name: "USB-JTAG/Serial fallback (WebUSB)",
             fn: async function () {
-              return await self.hardResetUSBJTAGSerialWebUSB();
+              return await self.hardResetUSBJTAGSerial();
             },
           });
         }
@@ -1655,13 +1613,8 @@ export class ESPLoader extends EventTarget {
       return true;
     } else {
       // Use classic reset for non-USB devices
-      if (this.isWebUSB()) {
-        await this.hardResetClassicWebUSB();
-        this.logger.debug("Classic reset (WebUSB/Android).");
-      } else {
-        await this.hardResetClassic();
-        this.logger.debug("Classic reset.");
-      }
+      await this.hardResetClassic();
+      this.logger.debug("Classic reset.");
     }
     return false;
   }
@@ -1688,14 +1641,8 @@ export class ESPLoader extends EventTarget {
         await this.hardResetUSBJTAGSerial();
         this.logger.debug("USB-JTAG/Serial reset.");
       } else {
-        // Use different reset strategy for WebUSB (Android) vs Web Serial (Desktop)
-        if (this.isWebUSB()) {
-          await this.hardResetClassicWebUSB();
-          this.logger.debug("Classic reset (WebUSB/Android).");
-        } else {
-          await this.hardResetClassic();
-          this.logger.debug("Classic reset.");
-        }
+        await this.hardResetClassic();
+        this.logger.debug("Classic reset.");
       }
     } else {
       // just reset (no bootloader mode)
@@ -3940,11 +3887,7 @@ export class ESPLoader extends EventTarget {
       // Perform hardware reset to bootloader (GPIO0=LOW)
       // This will cause the port to change from CDC (firmware) to JTAG (bootloader)
       try {
-        if (this.isWebUSB()) {
-          await this.hardResetClassicWebUSB();
-        } else {
-          await this.hardResetClassic();
-        }
+        await this.hardResetClassic();
         this.logger.debug("Reset to bootloader initiated");
       } catch (err) {
         this.logger.debug(`Reset error: ${err}`);
