@@ -57,7 +57,47 @@ import {
   CHIP_DETECT_MAGIC_REG_ADDR,
   CHIP_DETECT_MAGIC_VALUES,
   CHIP_ID_TO_INFO,
+  ESP32_BASEFUSEADDR,
+  ESP32_APB_CTL_DATE_ADDR,
+  ESP32S2_EFUSE_BLOCK1_ADDR,
+  ESP32S3_EFUSE_BLOCK1_ADDR,
+  ESP32C2_EFUSE_BLOCK2_ADDR,
+  ESP32C5_EFUSE_BLOCK1_ADDR,
+  ESP32C6_EFUSE_BLOCK1_ADDR,
+  ESP32C61_EFUSE_BLOCK1_ADDR,
+  ESP32H2_EFUSE_BLOCK1_ADDR,
   ESP32P4_EFUSE_BLOCK1_ADDR,
+  ESP32S31_EFUSE_BLOCK1_ADDR,
+  ESP32C3_EFUSE_RD_MAC_SPI_SYS_3_REG,
+  ESP32C3_EFUSE_RD_MAC_SPI_SYS_5_REG,
+  ESP32C5_UART_CLKDIV_REG,
+  ESP32C5_PCR_SYSCLK_CONF_REG,
+  ESP32C5_PCR_SYSCLK_XTAL_FREQ_V,
+  ESP32C5_PCR_SYSCLK_XTAL_FREQ_S,
+  ESP32S2_UARTDEV_BUF_NO,
+  ESP32S2_UARTDEV_BUF_NO_USB_OTG,
+  ESP32S3_UARTDEV_BUF_NO,
+  ESP32S3_UARTDEV_BUF_NO_USB_OTG,
+  ESP32S3_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32C3_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32C3_BUF_UART_NO_OFFSET,
+  ESP32C5_UARTDEV_BUF_NO,
+  ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32C6_UARTDEV_BUF_NO,
+  ESP32C6_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32C61_UARTDEV_BUF_NO_REV_LE2,
+  ESP32C61_UARTDEV_BUF_NO_REV_GT2,
+  ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_LE2,
+  ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_GT2,
+  ESP32H2_UARTDEV_BUF_NO,
+  ESP32H2_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32H4_UARTDEV_BUF_NO,
+  ESP32H4_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  ESP32P4_UARTDEV_BUF_NO_REV0,
+  ESP32P4_UARTDEV_BUF_NO_REV300,
+  ESP32P4_UARTDEV_BUF_NO_USB_OTG,
+  ESP32P4_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
+  SlipReadError,
   ESP32P4_LP_SYSTEM_REG_ANA_XPD_PAD_GROUP_REG,
   ESP32P4_PMU_EXT_LDO_P0_0P1A_ANA_REG,
   ESP32P4_PMU_ANA_0P1A_EN_CUR_LIM_0,
@@ -65,7 +105,6 @@ import {
   ESP32P4_PMU_0P1A_TARGET0_0,
   ESP32P4_PMU_0P1A_FORCE_TIEH_SEL_0,
   ESP32P4_PMU_DATE_REG,
-  SlipReadError,
 } from "./const";
 import { getStubCode } from "./stubs";
 import { hexFormatter, sleep, slipEncode, toHex } from "./util";
@@ -74,10 +113,10 @@ import { deflate } from "pako/dist/pako.esm.mjs";
 import { pack, unpack } from "./struct";
 
 export class ESPLoader extends EventTarget {
-  chipFamily!: ChipFamily;
-  chipName: string | null = null;
-  chipRevision: number | null = null;
-  chipVariant: string | null = null;
+  __chipFamily?: ChipFamily;
+  __chipName: string | null = null;
+  __chipRevision: number | null = null;
+  __chipVariant: string | null = null;
   _efuses = new Array(4).fill(0);
   _flashsize = 4 * 1024 * 1024;
   debug = false;
@@ -86,14 +125,26 @@ export class ESPLoader extends EventTarget {
   flashSize: string | null = null;
 
   __inputBuffer?: number[];
+  __inputBufferReadIndex?: number;
   __totalBytesRead?: number;
-  private _currentBaudRate: number = ESP_ROM_BAUD;
+  public currentBaudRate: number = ESP_ROM_BAUD;
   private _maxUSBSerialBaudrate?: number;
   private _reader?: ReadableStreamDefaultReader<Uint8Array>;
   private _isESP32S2NativeUSB: boolean = false;
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
   private __isReconfiguring: boolean = false;
+  private __abandonCurrentOperation: boolean = false;
+  private _suppressDisconnect: boolean = false;
+  private __consoleMode: boolean = false;
+  public _isUsbJtagOrOtg: boolean | undefined = undefined;
+
+  // Adaptive speed adjustment for flash read operations
+  private __adaptiveBlockMultiplier: number = 1;
+  private __adaptiveMaxInFlightMultiplier: number = 1;
+  private __consecutiveSuccessfulChunks: number = 0;
+  private __lastAdaptiveAdjustment: number = 0;
+  private __isCDCDevice: boolean = false;
 
   constructor(
     public port: SerialPort,
@@ -103,8 +154,101 @@ export class ESPLoader extends EventTarget {
     super();
   }
 
+  // Chip properties with parent delegation
+  get chipFamily(): ChipFamily {
+    return this._parent ? this._parent.chipFamily : this.__chipFamily!;
+  }
+
+  set chipFamily(value: ChipFamily) {
+    if (this._parent) {
+      this._parent.chipFamily = value;
+    } else {
+      this.__chipFamily = value;
+    }
+  }
+
+  get chipName(): string | null {
+    return this._parent ? this._parent.chipName : this.__chipName;
+  }
+
+  set chipName(value: string | null) {
+    if (this._parent) {
+      this._parent.chipName = value;
+    } else {
+      this.__chipName = value;
+    }
+  }
+
+  get chipRevision(): number | null {
+    return this._parent ? this._parent.chipRevision : this.__chipRevision;
+  }
+
+  set chipRevision(value: number | null) {
+    if (this._parent) {
+      this._parent.chipRevision = value;
+    } else {
+      this.__chipRevision = value;
+    }
+  }
+
+  get chipVariant(): string | null {
+    return this._parent ? this._parent.chipVariant : this.__chipVariant;
+  }
+
+  set chipVariant(value: string | null) {
+    if (this._parent) {
+      this._parent.chipVariant = value;
+    } else {
+      this.__chipVariant = value;
+    }
+  }
+
+  // Console mode with parent delegation
+  private get _consoleMode(): boolean {
+    return this._parent ? this._parent._consoleMode : this.__consoleMode;
+  }
+
+  private set _consoleMode(value: boolean) {
+    if (this._parent) {
+      this._parent._consoleMode = value;
+    } else {
+      this.__consoleMode = value;
+    }
+  }
+
+  // Public setter for console mode (used by script.js)
+  public setConsoleMode(value: boolean): void {
+    this._consoleMode = value;
+  }
+
   private get _inputBuffer(): number[] {
-    return this._parent ? this._parent._inputBuffer : this.__inputBuffer!;
+    if (this._parent) {
+      return this._parent._inputBuffer;
+    }
+    if (this.__inputBuffer === undefined) {
+      throw new Error("_inputBuffer accessed before initialization");
+    }
+    return this.__inputBuffer;
+  }
+
+  private get _inputBufferReadIndex(): number {
+    return this._parent
+      ? this._parent._inputBufferReadIndex
+      : this.__inputBufferReadIndex || 0;
+  }
+
+  private set _inputBufferReadIndex(value: number) {
+    if (this._parent) {
+      this._parent._inputBufferReadIndex = value;
+    } else {
+      this.__inputBufferReadIndex = value;
+    }
+  }
+
+  // Clear input buffer and reset read index
+  private _clearInputBuffer(): void {
+    this._inputBuffer.length = 0;
+    this._inputBufferReadIndex = 0;
   }
 
   private get _totalBytesRead(): number {
@@ -145,6 +289,96 @@ export class ESPLoader extends EventTarget {
     } else {
       this.__isReconfiguring = value;
     }
+  }
+
+  private get _abandonCurrentOperation(): boolean {
+    return this._parent
+      ? this._parent._abandonCurrentOperation
+      : this.__abandonCurrentOperation;
+  }
+
+  private set _abandonCurrentOperation(value: boolean) {
+    if (this._parent) {
+      this._parent._abandonCurrentOperation = value;
+    } else {
+      this.__abandonCurrentOperation = value;
+    }
+  }
+
+  private get _adaptiveBlockMultiplier(): number {
+    return this._parent
+      ? this._parent._adaptiveBlockMultiplier
+      : this.__adaptiveBlockMultiplier;
+  }
+
+  private set _adaptiveBlockMultiplier(value: number) {
+    if (this._parent) {
+      this._parent._adaptiveBlockMultiplier = value;
+    } else {
+      this.__adaptiveBlockMultiplier = value;
+    }
+  }
+
+  private get _adaptiveMaxInFlightMultiplier(): number {
+    return this._parent
+      ? this._parent._adaptiveMaxInFlightMultiplier
+      : this.__adaptiveMaxInFlightMultiplier;
+  }
+
+  private set _adaptiveMaxInFlightMultiplier(value: number) {
+    if (this._parent) {
+      this._parent._adaptiveMaxInFlightMultiplier = value;
+    } else {
+      this.__adaptiveMaxInFlightMultiplier = value;
+    }
+  }
+
+  private get _consecutiveSuccessfulChunks(): number {
+    return this._parent
+      ? this._parent._consecutiveSuccessfulChunks
+      : this.__consecutiveSuccessfulChunks;
+  }
+
+  private set _consecutiveSuccessfulChunks(value: number) {
+    if (this._parent) {
+      this._parent._consecutiveSuccessfulChunks = value;
+    } else {
+      this.__consecutiveSuccessfulChunks = value;
+    }
+  }
+
+  private get _lastAdaptiveAdjustment(): number {
+    return this._parent
+      ? this._parent._lastAdaptiveAdjustment
+      : this.__lastAdaptiveAdjustment;
+  }
+
+  private set _lastAdaptiveAdjustment(value: number) {
+    if (this._parent) {
+      this._parent._lastAdaptiveAdjustment = value;
+    } else {
+      this.__lastAdaptiveAdjustment = value;
+    }
+  }
+
+  private get _isCDCDevice(): boolean {
+    return this._parent ? this._parent._isCDCDevice : this.__isCDCDevice;
+  }
+
+  private set _isCDCDevice(value: boolean) {
+    if (this._parent) {
+      this._parent._isCDCDevice = value;
+    } else {
+      this.__isCDCDevice = value;
+    }
+  }
+
+  /**
+   * Check if device is using USB-JTAG or USB-OTG (not external serial chip)
+   * Returns undefined if not yet determined
+   */
+  public get isUsbJtagOrOtg(): boolean | undefined {
+    return this._parent ? this._parent._isUsbJtagOrOtg : this._isUsbJtagOrOtg;
   }
 
   private detectUSBSerialChip(
@@ -201,6 +435,7 @@ export class ESPLoader extends EventTarget {
   async initialize() {
     if (!this._parent) {
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
       this.__totalBytesRead = 0;
 
       // Detect and log USB-Serial chip info
@@ -221,6 +456,15 @@ export class ESPLoader extends EventTarget {
         if (portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x2) {
           this._isESP32S2NativeUSB = true;
         }
+
+        // Detect CDC devices for adaptive speed adjustment
+        // Espressif Native USB (VID: 0x303a) or CH343 (VID: 0x1a86, PID: 0x55d3)
+        if (
+          portInfo.usbVendorId === 0x303a ||
+          (portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3)
+        ) {
+          this._isCDCDevice = true;
+        }
       }
 
       // Don't await this promise so it doesn't block rest of method.
@@ -238,13 +482,37 @@ export class ESPLoader extends EventTarget {
       await this.powerOnFlash();
     }
 
+    // Detect if device is using USB-JTAG/Serial or USB-OTG (not external serial chip)
+    // This is needed to determine the correct reset strategy for console mode
+    try {
+      this._isUsbJtagOrOtg = await this.detectUsbConnectionType();
+      this.logger.debug(
+        `USB connection type: ${this._isUsbJtagOrOtg ? "USB-JTAG/OTG" : "External Serial Chip"}`,
+      );
+    } catch (err) {
+      this.logger.debug(`Could not detect USB connection type: ${err}`);
+    }
+
+    try {
+      const usbMode = await this.getUsbMode();
+      this.logger.debug(
+        `USB mode (register): ${usbMode.mode} (uartNo=${usbMode.uartNo})`,
+      );
+    } catch (err) {
+      this.logger.debug(`Could not detect USB mode: ${err}`);
+    }
+
     // Read the OTP data for this chip and store into this.efuses array
     const FlAddr = getSpiFlashAddresses(this.getChipFamily());
     const AddrMAC = FlAddr.macFuse;
     for (let i = 0; i < 4; i++) {
       this._efuses[i] = await this.readRegister(AddrMAC + 4 * i);
     }
-    this.logger.log(`Chip type ${this.chipName}`);
+    const revisionInfo =
+      this.chipRevision !== null && this.chipRevision !== undefined
+        ? ` (revision ${this.chipRevision})`
+        : "";
+    this.logger.log(`Connected to ${this.chipName}${revisionInfo}`);
     this.logger.debug(
       `Bootloader flash offset: 0x${FlAddr.flashOffs.toString(16)}`,
     );
@@ -267,18 +535,16 @@ export class ESPLoader extends EventTarget {
         this.chipName = chipInfo.name;
         this.chipFamily = chipInfo.family;
 
-        // Get chip revision for ESP32-P4
-        if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
-          this.chipRevision = await this.getChipRevision();
-          this.logger.debug(`ESP32-P4 revision: ${this.chipRevision}`);
+        this.chipRevision = await this.getChipRevision();
+        this.logger.debug(`${this.chipName} revision: ${this.chipRevision}`);
 
-          // Set chip variant based on revision
-          if (this.chipRevision >= 300) {
-            this.chipVariant = "rev300";
-          } else {
-            this.chipVariant = "rev0";
-          }
-          this.logger.debug(`ESP32-P4 variant: ${this.chipVariant}`);
+        if (
+          this.chipFamily === CHIP_FAMILY_ESP32P4 &&
+          this.chipRevision >= 300
+        ) {
+          this.chipVariant = "rev300";
+        } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+          this.chipVariant = "rev0";
         }
 
         this.logger.debug(
@@ -301,7 +567,7 @@ export class ESPLoader extends EventTarget {
       await this.drainInputBuffer(200);
 
       // Clear input buffer and re-sync to recover from failed command
-      this._inputBuffer.length = 0;
+      this._clearInputBuffer();
       await sleep(SYNC_TIMEOUT);
 
       // Re-sync with the chip to ensure clean communication
@@ -328,15 +594,11 @@ export class ESPLoader extends EventTarget {
     this.chipName = chip.name;
     this.chipFamily = chip.family;
 
-    if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
-      this.chipRevision = await this.getChipRevision();
-      this.logger.debug(`ESP32-P4 revision: ${this.chipRevision}`);
+    this.chipRevision = await this.getChipRevision();
+    this.logger.debug(`${this.chipName} revision: ${this.chipRevision}`);
 
-      if (this.chipRevision >= 300) {
-        this.chipVariant = "rev300";
-      } else {
-        this.chipVariant = "rev0";
-      }
+    if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+      this.chipVariant = this.chipRevision >= 300 ? "rev300" : "rev0";
       this.logger.debug(`ESP32-P4 variant: ${this.chipVariant}`);
     }
 
@@ -345,26 +607,102 @@ export class ESPLoader extends EventTarget {
     );
   }
 
-  /**
-   * Get chip revision for ESP32-P4
-   */
   async getChipRevision(): Promise<number> {
-    if (this.chipFamily !== CHIP_FAMILY_ESP32P4) {
-      return 0;
+    let minor = 0;
+    let major = 0;
+
+    switch (this.chipFamily) {
+      case CHIP_FAMILY_ESP32: {
+        const efuse3 = await this.readRegister(ESP32_BASEFUSEADDR + 4 * 3);
+        const efuse5 = await this.readRegister(ESP32_BASEFUSEADDR + 4 * 5);
+        minor = (efuse5 >> 24) & 0x3;
+        const revBit0 = (efuse3 >> 15) & 0x1;
+        const revBit1 = (efuse5 >> 20) & 0x1;
+        const apb = await this.readRegister(ESP32_APB_CTL_DATE_ADDR);
+        const revBit2 = (apb >> 31) & 0x1;
+        const combined = (revBit2 << 2) | (revBit1 << 1) | revBit0;
+        major =
+          ({ 0: 0, 1: 1, 3: 2, 7: 3 } as Record<number, number>)[combined] ?? 0;
+        break;
+      }
+      case CHIP_FAMILY_ESP32S2: {
+        const w3 = await this.readRegister(ESP32S2_EFUSE_BLOCK1_ADDR + 4 * 3);
+        const w4 = await this.readRegister(ESP32S2_EFUSE_BLOCK1_ADDR + 4 * 4);
+        const hi = (w3 >> 20) & 0x01;
+        const lo = (w4 >> 4) & 0x07;
+        minor = (hi << 3) + lo;
+        major = (w3 >> 18) & 0x03;
+        break;
+      }
+      case CHIP_FAMILY_ESP32S3: {
+        const w3 = await this.readRegister(ESP32S3_EFUSE_BLOCK1_ADDR + 4 * 3);
+        const w5 = await this.readRegister(ESP32S3_EFUSE_BLOCK1_ADDR + 4 * 5);
+        const hi = (w5 >> 23) & 0x01;
+        const lo = (w3 >> 18) & 0x07;
+        minor = (hi << 3) + lo;
+        major = (w5 >> 24) & 0x03;
+        break;
+      }
+      case CHIP_FAMILY_ESP32C2: {
+        const w1 = await this.readRegister(ESP32C2_EFUSE_BLOCK2_ADDR + 4 * 1);
+        minor = (w1 >> 16) & 0x0f;
+        major = (w1 >> 20) & 0x03;
+        break;
+      }
+      case CHIP_FAMILY_ESP32C3: {
+        const w3 = await this.readRegister(ESP32C3_EFUSE_RD_MAC_SPI_SYS_3_REG);
+        const w5 = await this.readRegister(ESP32C3_EFUSE_RD_MAC_SPI_SYS_5_REG);
+        const hi = (w5 >> 23) & 0x01;
+        const lo = (w3 >> 18) & 0x07;
+        minor = (hi << 3) + lo;
+        major = (w5 >> 24) & 0x03;
+        break;
+      }
+      case CHIP_FAMILY_ESP32C5: {
+        const w2 = await this.readRegister(ESP32C5_EFUSE_BLOCK1_ADDR + 4 * 2);
+        minor = w2 & 0x0f;
+        major = (w2 >> 4) & 0x03;
+        break;
+      }
+      case CHIP_FAMILY_ESP32C6: {
+        const w3 = await this.readRegister(ESP32C6_EFUSE_BLOCK1_ADDR + 4 * 3);
+        minor = (w3 >> 18) & 0x0f;
+        major = (w3 >> 22) & 0x03;
+        break;
+      }
+      case CHIP_FAMILY_ESP32C61: {
+        const w2 = await this.readRegister(ESP32C61_EFUSE_BLOCK1_ADDR + 4 * 2);
+        minor = w2 & 0x0f;
+        major = (w2 >> 4) & 0x03;
+        break;
+      }
+      case CHIP_FAMILY_ESP32H2: {
+        const w3 = await this.readRegister(ESP32H2_EFUSE_BLOCK1_ADDR + 4 * 3);
+        minor = (w3 >> 18) & 0x07;
+        major = (w3 >> 21) & 0x03;
+        break;
+      }
+      case CHIP_FAMILY_ESP32H4: {
+        break;
+      }
+      case CHIP_FAMILY_ESP32H21: {
+        break;
+      }
+      case CHIP_FAMILY_ESP32P4: {
+        const w2 = await this.readRegister(ESP32P4_EFUSE_BLOCK1_ADDR + 4 * 2);
+        minor = w2 & 0x0f;
+        major = (((w2 >> 23) & 1) << 2) | ((w2 >> 4) & 0x03);
+        break;
+      }
+      case CHIP_FAMILY_ESP32S31: {
+        const w2 = await this.readRegister(ESP32S31_EFUSE_BLOCK1_ADDR + 4 * 2);
+        minor = w2 & 0x0f;
+        major = (w2 >> 4) & 0x03;
+        break;
+      }
     }
 
-    // Read from EFUSE_BLOCK1 to get chip revision
-    // Word 2 contains revision info for ESP32-P4
-    const word2 = await this.readRegister(ESP32P4_EFUSE_BLOCK1_ADDR + 8);
-
-    // Minor revision: bits [3:0]
-    const minorRev = word2 & 0x0f;
-
-    // Major revision: bits [23] << 2 | bits [5:4]
-    const majorRev = (((word2 >> 23) & 1) << 2) | ((word2 >> 4) & 0x03);
-
-    // Revision is major * 100 + minor
-    return majorRev * 100 + minorRev;
+    return major * 100 + minor;
   }
 
   /**
@@ -487,6 +825,223 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
+   * Get MAC address from efuses
+   */
+  async getMacAddress(): Promise<string> {
+    if (!this._initializationSucceeded) {
+      throw new Error(
+        "getMacAddress() requires initialize() to have completed successfully",
+      );
+    }
+    const macBytes = this.macAddr(); // chip-family-aware
+    return macBytes
+      .map((b) => b.toString(16).padStart(2, "0").toUpperCase())
+      .join(":");
+  }
+
+  /**
+   * Detect if device is using USB-JTAG/Serial or USB-OTG (not external serial chip)
+   * Stub implementation - returns undefined (not yet implemented in WebSerial_ESPTool)
+   */
+  async detectUsbConnectionType(): Promise<boolean> {
+    // Stub implementation - would need USB PID detection
+    return false;
+  }
+
+  /**
+   * Get USB mode (UART, USB-JTAG/Serial, or USB-OTG)
+   * Reads the UARTDEV_BUF_NO register to determine the USB mode
+   */
+  async getUsbMode(): Promise<{
+    mode: "uart" | "usb-jtag-serial" | "usb-otg";
+    uartNo: number;
+  }> {
+    const family = this._parent ? this._parent.chipFamily : this.chipFamily;
+    const revision = this._parent
+      ? (this._parent.chipRevision ?? 0)
+      : (this.chipRevision ?? 0);
+
+    let bufNoAddr: number | null = null;
+    let jtagSerialVal: number | null = null;
+    let otgVal: number | null = null;
+
+    switch (family) {
+      case CHIP_FAMILY_ESP32S2:
+        bufNoAddr = ESP32S2_UARTDEV_BUF_NO;
+        otgVal = ESP32S2_UARTDEV_BUF_NO_USB_OTG;
+        break;
+      case CHIP_FAMILY_ESP32S3:
+        bufNoAddr = ESP32S3_UARTDEV_BUF_NO;
+        jtagSerialVal = ESP32S3_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+        otgVal = ESP32S3_UARTDEV_BUF_NO_USB_OTG;
+        break;
+      case CHIP_FAMILY_ESP32C3: {
+        const bssAddr = revision < 101 ? 0x3fcdf064 : 0x3fcdf060;
+        bufNoAddr = bssAddr + ESP32C3_BUF_UART_NO_OFFSET;
+        jtagSerialVal = ESP32C3_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+        break;
+      }
+      case CHIP_FAMILY_ESP32C5:
+        bufNoAddr = ESP32C5_UARTDEV_BUF_NO;
+        jtagSerialVal = ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+        break;
+      case CHIP_FAMILY_ESP32C6:
+        bufNoAddr = ESP32C6_UARTDEV_BUF_NO;
+        jtagSerialVal = ESP32C6_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+        break;
+      case CHIP_FAMILY_ESP32C61:
+        bufNoAddr =
+          revision <= 200
+            ? ESP32C61_UARTDEV_BUF_NO_REV_LE2
+            : ESP32C61_UARTDEV_BUF_NO_REV_GT2;
+        jtagSerialVal =
+          revision <= 200
+            ? ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_LE2
+            : ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_GT2;
+        break;
+      case CHIP_FAMILY_ESP32H2:
+        bufNoAddr = ESP32H2_UARTDEV_BUF_NO;
+        jtagSerialVal = ESP32H2_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+        break;
+      case CHIP_FAMILY_ESP32H4:
+        bufNoAddr = ESP32H4_UARTDEV_BUF_NO;
+        jtagSerialVal = ESP32H4_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+        break;
+      case CHIP_FAMILY_ESP32P4:
+        bufNoAddr =
+          revision < 300
+            ? ESP32P4_UARTDEV_BUF_NO_REV0
+            : ESP32P4_UARTDEV_BUF_NO_REV300;
+        jtagSerialVal = ESP32P4_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
+        otgVal = ESP32P4_UARTDEV_BUF_NO_USB_OTG;
+        break;
+    }
+
+    if (bufNoAddr === null) {
+      return { mode: "uart", uartNo: 0 };
+    }
+
+    const uartNo = (await this.readRegister(bufNoAddr)) & 0xff;
+
+    if (otgVal !== null && uartNo === otgVal) {
+      this.logger.debug(`USB mode: USB-OTG (uartNo=${uartNo})`);
+      return { mode: "usb-otg", uartNo };
+    }
+    if (jtagSerialVal !== null && uartNo === jtagSerialVal) {
+      this.logger.debug(`USB mode: USB-JTAG/Serial (uartNo=${uartNo})`);
+      return { mode: "usb-jtag-serial", uartNo };
+    }
+
+    this.logger.debug(`USB mode: UART (uartNo=${uartNo})`);
+    return { mode: "uart", uartNo };
+  }
+
+  /**
+   * Get ESP32-C5 crystal frequency from ROM expectation
+   */
+  async getC5CrystalFreqRomExpect(): Promise<number> {
+    const reg = await this.readRegister(ESP32C5_PCR_SYSCLK_CONF_REG);
+    return (
+      (reg & ESP32C5_PCR_SYSCLK_XTAL_FREQ_V) >>> ESP32C5_PCR_SYSCLK_XTAL_FREQ_S
+    );
+  }
+
+  /**
+   * Get ESP32-C5 crystal frequency detected by measuring UART clock divider
+   */
+  async getC5CrystalFreqDetected(): Promise<number> {
+    const UART_CLKDIV_MASK = 0xfffff;
+    const uartDiv =
+      (await this.readRegister(ESP32C5_UART_CLKDIV_REG)) & UART_CLKDIV_MASK;
+    const estXtal = (ESP_ROM_BAUD * uartDiv) / 1e6;
+    if (estXtal > 45) return 48;
+    if (estXtal > 33) return 40;
+    return 26;
+  }
+
+  /**
+   * Set baudrate with ESP32-C5 crystal frequency adjustment
+   */
+  async setBaudrate(baud: number) {
+    const chipFamily = this._parent ? this._parent.chipFamily : this.chipFamily;
+
+    if (!this.IS_STUB && chipFamily === CHIP_FAMILY_ESP32C5) {
+      await this.setBaudrateC5Rom(baud);
+    } else {
+      try {
+        const buffer = pack("<II", baud, this.IS_STUB ? ESP_ROM_BAUD : 0);
+        await this.checkCommand(ESP_CHANGE_BAUDRATE, buffer);
+      } catch (e) {
+        this.logger.error(`Baudrate change error: ${e}`);
+        throw new Error(
+          `Unable to change the baud rate to ${baud}: No response from set baud rate command.`,
+        );
+      }
+    }
+
+    if (this._parent) {
+      await this._parent.reconfigurePort(baud);
+    } else {
+      await this.reconfigurePort(baud);
+    }
+
+    // Wait for port to be ready after baudrate change
+    await sleep(SYNC_TIMEOUT);
+
+    // Track current baudrate for reconnect
+    if (this._parent) {
+      this._parent.currentBaudRate = baud;
+    } else {
+      this.currentBaudRate = baud;
+    }
+
+    // Warn if baudrate exceeds USB-Serial chip capability
+    const maxBaud = this._parent
+      ? this._parent._maxUSBSerialBaudrate
+      : this._maxUSBSerialBaudrate;
+    if (maxBaud && baud > maxBaud) {
+      this.logger.log(
+        `⚠️  WARNING: Baudrate ${baud} exceeds USB-Serial chip limit (${maxBaud})!`,
+      );
+      this.logger.log(
+        `⚠️  This may cause data corruption or connection failures!`,
+      );
+    }
+
+    this.logger.debug(`Changed baud rate to ${baud}`);
+  }
+
+  /**
+   * Set baudrate for ESP32-C5 ROM with crystal frequency adjustment
+   */
+  private async setBaudrateC5Rom(baud: number) {
+    const crystalFreqRomExpect = await this.getC5CrystalFreqRomExpect();
+    const crystalFreqDetect = await this.getC5CrystalFreqDetected();
+    this.logger.log(
+      `ROM expects crystal freq: ${crystalFreqRomExpect} MHz, detected ${crystalFreqDetect} MHz.`,
+    );
+
+    let baudRate = baud;
+    if (crystalFreqDetect === 48 && crystalFreqRomExpect === 40) {
+      baudRate = Math.trunc((baud * 40) / 48);
+    } else if (crystalFreqDetect === 40 && crystalFreqRomExpect === 48) {
+      baudRate = Math.trunc((baud * 48) / 40);
+    }
+
+    this.logger.log(`Changing baud rate to ${baudRate}...`);
+    try {
+      const buffer = pack("<II", baudRate, 0);
+      await this.checkCommand(ESP_CHANGE_BAUDRATE, buffer);
+    } catch (e) {
+      this.logger.error(`Baudrate change error: ${e}`);
+      throw new Error(
+        `Unable to change the baud rate to ${baudRate}: No response from set baud rate command.`,
+      );
+    }
+    this.logger.log("Changed.");
+  }
+
+  /**
    * @name readLoop
    * Reads data from the input stream and places it in the inputBuffer
    */
@@ -512,15 +1067,32 @@ export class ESPLoader extends EventTarget {
 
         // Always read from browser's serial buffer immediately
         // to prevent browser buffer overflow. Don't apply back-pressure here.
-        const chunk = Array.from(value);
+        const chunk = Array.from(value as Uint8Array);
         Array.prototype.push.apply(this._inputBuffer, chunk);
 
         // Track total bytes read from serial port
         this._totalBytesRead += value.length;
       }
     } catch {
-      this.logger.error("Read loop got disconnected");
+      //      this.logger.error("Read loop got disconnected");
+    } finally {
+      // Always reset reconfiguring flag when read loop ends
+      // This prevents "Cannot write during port reconfiguration" errors
+      // when the read loop dies unexpectedly
+      this._isReconfiguring = false;
+
+      // Release reader if still locked
+      if (this._reader) {
+        try {
+          this._reader.releaseLock();
+          this.logger.debug("Reader released in readLoop cleanup");
+        } catch (err) {
+          this.logger.debug(`Reader release error in readLoop: ${err}`);
+        }
+        this._reader = undefined;
+      }
     }
+
     // Disconnected!
     this.connected = false;
 
@@ -537,7 +1109,11 @@ export class ESPLoader extends EventTarget {
       );
     }
 
-    this.dispatchEvent(new Event("disconnect"));
+    // Only dispatch disconnect event if not suppressed
+    if (!this._suppressDisconnect) {
+      this.dispatchEvent(new Event("disconnect"));
+    }
+    this._suppressDisconnect = false;
     this.logger.debug("Finished read loop");
   }
 
@@ -546,6 +1122,8 @@ export class ESPLoader extends EventTarget {
   }
 
   state_DTR = false;
+  state_RTS = false;
+
   async setRTS(state: boolean) {
     await this.port.setSignals({ requestToSend: state });
     // Work-around for adapters on Windows using the usbser.sys driver:
@@ -558,6 +1136,15 @@ export class ESPLoader extends EventTarget {
   async setDTR(state: boolean) {
     this.state_DTR = state;
     await this.port.setSignals({ dataTerminalReady: state });
+  }
+
+  async setDTRandRTS(dtr: boolean, rts: boolean) {
+    this.state_DTR = dtr;
+    this.state_RTS = rts;
+    await this.port.setSignals({
+      dataTerminalReady: dtr,
+      requestToSend: rts,
+    });
   }
 
   async hardReset(bootloader = false) {
@@ -886,50 +1473,6 @@ export class ESPLoader extends EventTarget {
       state ^= b;
     }
     return state;
-  }
-
-  async setBaudrate(baud: number) {
-    try {
-      // Send ESP_ROM_BAUD(115200) as the old one if running STUB otherwise 0
-      const buffer = pack("<II", baud, this.IS_STUB ? ESP_ROM_BAUD : 0);
-      await this.checkCommand(ESP_CHANGE_BAUDRATE, buffer);
-    } catch (e) {
-      this.logger.error(`Baudrate change error: ${e}`);
-      throw new Error(
-        `Unable to change the baud rate to ${baud}: No response from set baud rate command.`,
-      );
-    }
-
-    if (this._parent) {
-      await this._parent.reconfigurePort(baud);
-    } else {
-      await this.reconfigurePort(baud);
-    }
-
-    // Wait for port to be ready after baudrate change
-    await sleep(SYNC_TIMEOUT);
-
-    // Track current baudrate for reconnect
-    if (this._parent) {
-      this._parent._currentBaudRate = baud;
-    } else {
-      this._currentBaudRate = baud;
-    }
-
-    // Warn if baudrate exceeds USB-Serial chip capability
-    const maxBaud = this._parent
-      ? this._parent._maxUSBSerialBaudrate
-      : this._maxUSBSerialBaudrate;
-    if (maxBaud && baud > maxBaud) {
-      this.logger.log(
-        `⚠️  WARNING: Baudrate ${baud} exceeds USB-Serial chip limit (${maxBaud})!`,
-      );
-      this.logger.log(
-        `⚠️  This may cause data corruption or connection failures!`,
-      );
-    }
-
-    this.logger.log(`Changed baud rate to ${baud}`);
   }
 
   async reconfigurePort(baud: number) {
@@ -1993,8 +2536,8 @@ export class ESPLoader extends EventTarget {
       this.logger.debug("Stub loaded");
 
       // Restore baudrate if it was changed
-      if (this._currentBaudRate !== ESP_ROM_BAUD) {
-        await stubLoader.setBaudrate(this._currentBaudRate);
+      if (this.currentBaudRate !== ESP_ROM_BAUD) {
+        await stubLoader.setBaudrate(this.currentBaudRate);
 
         // Verify port is still ready after baudrate change
         if (!this.port.writable || !this.port.readable) {
