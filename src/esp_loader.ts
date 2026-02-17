@@ -1332,8 +1332,14 @@ export class ESPLoader extends EventTarget {
         }
       }
 
-      // Add general fallback strategies only for non-CP2102 and non-ESP32-S2 Native USB chips
-      if (!isCP2102 && !isESP32S2NativeUSB) {
+      // Add general fallback strategies only for Native USB chips (not USB-Serial)
+      // and only for chips not already handled by specific blocks above
+      if (
+        !isUSBSerialChip &&
+        !isCP2102 &&
+        !isESP32S2NativeUSB &&
+        !isUSBJTAGSerial
+      ) {
         // Classic reset (for chips not handled above)
         if (portInfo.usbVendorId !== 0x1a86) {
           resetStrategies.push({
@@ -1369,7 +1375,7 @@ export class ESPLoader extends EventTarget {
         });
 
         // WebUSB Strategy: USB-JTAG/Serial fallback
-        if (!isUSBJTAGSerial && !isEspressifUSB) {
+        if (!isEspressifUSB) {
           resetStrategies.push({
             name: "USB-JTAG/Serial fallback (WebUSB)",
             fn: async function () {
