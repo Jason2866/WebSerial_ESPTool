@@ -54,5 +54,25 @@ export const formatMacAddr = (macAddr: number[]): string => {
     .join(":");
 };
 
+/**
+ * @name padTo
+ * Pad data to the next alignment boundary with the given fill byte (default 0xFF)
+ */
+export function padTo(
+  data: Uint8Array,
+  alignment: number,
+  padCharacter = 0xff,
+): Uint8Array {
+  const padMod = data.length % alignment;
+  if (padMod !== 0) {
+    const padding = new Uint8Array(alignment - padMod).fill(padCharacter);
+    const paddedData = new Uint8Array(data.length + padding.length);
+    paddedData.set(data);
+    paddedData.set(padding, data.length);
+    return paddedData;
+  }
+  return data;
+}
+
 export const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));

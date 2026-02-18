@@ -124,7 +124,7 @@ import {
   ESP32P4_UARTDEV_BUF_NO_USB_OTG,
 } from "./const";
 import { getStubCode } from "./stubs";
-import { hexFormatter, sleep, slipEncode, toHex } from "./util";
+import { hexFormatter, padTo, sleep, slipEncode, toHex } from "./util";
 import { deflate } from "pako";
 import { pack, unpack } from "./struct";
 
@@ -2406,6 +2406,9 @@ export class ESPLoader extends EventTarget {
         )}, FlashSizeFreq=${toHex(headerFlashSizeFreq)}`,
       );
     }
+
+    const paddedData = padTo(new Uint8Array(binaryData), 4);
+    binaryData = paddedData.buffer as ArrayBuffer;
 
     const uncompressedFilesize = binaryData.byteLength;
     let compressedFilesize = 0;
