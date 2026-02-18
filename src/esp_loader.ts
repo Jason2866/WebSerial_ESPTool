@@ -2421,7 +2421,7 @@ export class ESPLoader extends EventTarget {
     }
 
     const paddedData = padTo(new Uint8Array(binaryData), 4);
-    binaryData = paddedData.buffer;
+    binaryData = paddedData.buffer as ArrayBuffer;
 
     const uncompressedFilesize = binaryData.byteLength;
     let compressedFilesize = 0;
