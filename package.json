@@ -1,6 +1,6 @@
 {
   "name": "tasmota-webserial-esptool",
-  "version": "7.3.8",
+  "version": "7.3.9",
   "description": "Flash & Read ESP devices using WebSerial",
   "main": "dist/index.js",
   "repository": {
@@ -21,7 +21,7 @@
     "lintAndFix": "eslint src/ --fix"
   },
   "devDependencies": {
-    "@types/node": "^25.0.2",
+    "@types/node": "^25.2.3",
     "@eslint/js": "^9.39.2",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.0",
@@ -33,10 +33,10 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "prettier": "^3.7.3",
-    "rollup": "^4.53.5",
+    "rollup": "^4.57.0",
     "serve": "^14.2.4",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.51.0"
+    "typescript-eslint": "^8.56.0"
   },
   "dependencies": {
     "pako": "^2.1.0",

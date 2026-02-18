@@ -107,7 +107,7 @@ import {
   ESP32P4_PMU_DATE_REG,
 } from "./const";
 import { getStubCode } from "./stubs";
-import { hexFormatter, sleep, slipEncode, toHex } from "./util";
+import { hexFormatter, padTo, sleep, slipEncode, toHex } from "./util";
 // @ts-expect-error pako ESM module doesn't have proper type definitions
 import { deflate } from "pako/dist/pako.esm.mjs";
 import { pack, unpack } from "./struct";
@@ -1727,6 +1727,9 @@ export class ESPLoader extends EventTarget {
         )}, FlashSizeFreq=${toHex(headerFlashSizeFreq)}`,
       );
     }
+
+    const paddedData = padTo(new Uint8Array(binaryData), 4);
+    binaryData = paddedData.buffer as ArrayBuffer;
 
     const uncompressedFilesize = binaryData.byteLength;
     let compressedFilesize = 0;
