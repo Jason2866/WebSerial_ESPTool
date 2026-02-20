@@ -1,11 +1,9 @@
 import { toByteArray } from "./util";
 
 export interface Logger {
-  /* eslint-disable @typescript-eslint/no-explicit-any */
   log(msg: string, ...args: any[]): void;
   error(msg: string, ...args: any[]): void;
   debug(msg: string, ...args: any[]): void;
-  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 export const baudRates = [
@@ -93,9 +91,11 @@ export const ESP32_SPI_MISO_DLEN_OFFS = 0x2c;
 export const ESP32_SPI_W0_OFFS = 0x80;
 export const ESP32_UART_DATE_REG_ADDR = 0x60000078;
 export const ESP32_BOOTLOADER_FLASH_OFFSET = 0x1000;
+export const ESP32_APB_CTL_DATE_ADDR = 0x3ff66000 + 0x7c;
 
 export const ESP32S2_SPI_REG_BASE = 0x3f402000;
 export const ESP32S2_BASEFUSEADDR = 0x3f41a000;
+export const ESP32S2_EFUSE_BLOCK1_ADDR = ESP32S2_BASEFUSEADDR + 0x044;
 export const ESP32S2_MACFUSEADDR = 0x3f41a044;
 export const ESP32S2_SPI_USR_OFFS = 0x18;
 export const ESP32S2_SPI_USR1_OFFS = 0x1c;
@@ -125,6 +125,7 @@ export const ESP32S2_UARTDEV_BUF_NO_USB_OTG = 2; // Value of the above indicatin
 
 export const ESP32S3_SPI_REG_BASE = 0x60002000;
 export const ESP32S3_BASEFUSEADDR = 0x60007000;
+export const ESP32S3_EFUSE_BLOCK1_ADDR = ESP32S3_BASEFUSEADDR + 0x044;
 export const ESP32S3_MACFUSEADDR = 0x60007000 + 0x044;
 export const ESP32S3_SPI_USR_OFFS = 0x18;
 export const ESP32S3_SPI_USR1_OFFS = 0x1c;
@@ -155,6 +156,7 @@ export const ESP32S3_UARTDEV_BUF_NO_USB_JTAG_SERIAL = 4; // The above var when U
 
 export const ESP32C2_SPI_REG_BASE = 0x60002000;
 export const ESP32C2_BASEFUSEADDR = 0x60008800;
+export const ESP32C2_EFUSE_BLOCK2_ADDR = ESP32C2_BASEFUSEADDR + 0x040;
 export const ESP32C2_MACFUSEADDR = ESP32C2_BASEFUSEADDR + 0x040;
 export const ESP32C2_SPI_USR_OFFS = 0x18;
 export const ESP32C2_SPI_USR1_OFFS = 0x1c;
@@ -210,6 +212,7 @@ export const ESP32C3_EFUSE_RD_MAC_SPI_SYS_5_REG = 0x60008858;
 
 export const ESP32C5_SPI_REG_BASE = 0x60003000;
 export const ESP32C5_BASEFUSEADDR = 0x600b4800;
+export const ESP32C5_EFUSE_BLOCK1_ADDR = ESP32C5_BASEFUSEADDR + 0x044;
 export const ESP32C5_MACFUSEADDR = 0x600b4800 + 0x044;
 export const ESP32C5_SPI_USR_OFFS = 0x18;
 export const ESP32C5_SPI_USR1_OFFS = 0x1c;
@@ -230,6 +233,7 @@ export const ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3; // The above var when U
 
 export const ESP32C6_SPI_REG_BASE = 0x60003000;
 export const ESP32C6_BASEFUSEADDR = 0x600b0800;
+export const ESP32C6_EFUSE_BLOCK1_ADDR = ESP32C6_BASEFUSEADDR + 0x044;
 export const ESP32C6_MACFUSEADDR = 0x600b0800 + 0x044;
 export const ESP32C6_SPI_USR_OFFS = 0x18;
 export const ESP32C6_SPI_USR1_OFFS = 0x1c;
@@ -270,6 +274,7 @@ export const ESP32C5_C6_RTC_CNTL_SWD_WPROTECT_REG =
 
 export const ESP32C61_SPI_REG_BASE = 0x60003000;
 export const ESP32C61_BASEFUSEADDR = 0x600b4800;
+export const ESP32C61_EFUSE_BLOCK1_ADDR = ESP32C61_BASEFUSEADDR + 0x044;
 export const ESP32C61_MACFUSEADDR = 0x600b4800 + 0x044;
 export const ESP32C61_SPI_USR_OFFS = 0x18;
 export const ESP32C61_SPI_USR1_OFFS = 0x1c;
@@ -287,6 +292,7 @@ export const ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_GT2 = 4; // revision > 
 
 export const ESP32H2_SPI_REG_BASE = 0x60003000;
 export const ESP32H2_BASEFUSEADDR = 0x600b0800;
+export const ESP32H2_EFUSE_BLOCK1_ADDR = ESP32H2_BASEFUSEADDR + 0x044;
 export const ESP32H2_MACFUSEADDR = 0x600b0800 + 0x044;
 export const ESP32H2_SPI_USR_OFFS = 0x18;
 export const ESP32H2_SPI_USR1_OFFS = 0x1c;
@@ -312,6 +318,7 @@ export const ESP32H2_UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3; // The above var when U
 
 export const ESP32H4_SPI_REG_BASE = 0x60099000;
 export const ESP32H4_BASEFUSEADDR = 0x600b1800;
+export const ESP32H4_EFUSE_BLOCK1_ADDR = ESP32H4_BASEFUSEADDR + 0x044;
 export const ESP32H4_MACFUSEADDR = 0x600b1800 + 0x044;
 export const ESP32H4_SPI_USR_OFFS = 0x18;
 export const ESP32H4_SPI_USR1_OFFS = 0x1c;
@@ -337,6 +344,7 @@ export const ESP32H4_UARTDEV_BUF_NO_USB_JTAG_SERIAL = 3; // The above var when U
 
 export const ESP32H21_SPI_REG_BASE = 0x60003000;
 export const ESP32H21_BASEFUSEADDR = 0x600b4000;
+export const ESP32H21_EFUSE_BLOCK1_ADDR = ESP32H21_BASEFUSEADDR + 0x044;
 export const ESP32H21_MACFUSEADDR = 0x600b4000 + 0x044;
 export const ESP32H21_SPI_USR_OFFS = 0x18;
 export const ESP32H21_SPI_USR1_OFFS = 0x1c;
