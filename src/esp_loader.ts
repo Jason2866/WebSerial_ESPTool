@@ -74,29 +74,6 @@ import {
   ESP32C5_PCR_SYSCLK_CONF_REG,
   ESP32C5_PCR_SYSCLK_XTAL_FREQ_V,
   ESP32C5_PCR_SYSCLK_XTAL_FREQ_S,
-  ESP32S2_UARTDEV_BUF_NO,
-  ESP32S2_UARTDEV_BUF_NO_USB_OTG,
-  ESP32S3_UARTDEV_BUF_NO,
-  ESP32S3_UARTDEV_BUF_NO_USB_OTG,
-  ESP32S3_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
-  ESP32C3_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
-  ESP32C3_BUF_UART_NO_OFFSET,
-  ESP32C5_UARTDEV_BUF_NO,
-  ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
-  ESP32C6_UARTDEV_BUF_NO,
-  ESP32C6_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
-  ESP32C61_UARTDEV_BUF_NO_REV_LE2,
-  ESP32C61_UARTDEV_BUF_NO_REV_GT2,
-  ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_LE2,
-  ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_GT2,
-  ESP32H2_UARTDEV_BUF_NO,
-  ESP32H2_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
-  ESP32H4_UARTDEV_BUF_NO,
-  ESP32H4_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
-  ESP32P4_UARTDEV_BUF_NO_REV0,
-  ESP32P4_UARTDEV_BUF_NO_REV300,
-  ESP32P4_UARTDEV_BUF_NO_USB_OTG,
-  ESP32P4_UARTDEV_BUF_NO_USB_JTAG_SERIAL,
   SlipReadError,
   ESP32P4_LP_SYSTEM_REG_ANA_XPD_PAD_GROUP_REG,
   ESP32P4_PMU_EXT_LDO_P0_0P1A_ANA_REG,
@@ -482,26 +459,6 @@ export class ESPLoader extends EventTarget {
       await this.powerOnFlash();
     }
 
-    // Detect if device is using USB-JTAG/Serial or USB-OTG (not external serial chip)
-    // This is needed to determine the correct reset strategy for console mode
-    try {
-      this._isUsbJtagOrOtg = await this.detectUsbConnectionType();
-      this.logger.debug(
-        `USB connection type: ${this._isUsbJtagOrOtg ? "USB-JTAG/OTG" : "External Serial Chip"}`,
-      );
-    } catch (err) {
-      this.logger.debug(`Could not detect USB connection type: ${err}`);
-    }
-
-    try {
-      const usbMode = await this.getUsbMode();
-      this.logger.debug(
-        `USB mode (register): ${usbMode.mode} (uartNo=${usbMode.uartNo})`,
-      );
-    } catch (err) {
-      this.logger.debug(`Could not detect USB mode: ${err}`);
-    }
-
     // Read the OTP data for this chip and store into this.efuses array
     const FlAddr = getSpiFlashAddresses(this.getChipFamily());
     const AddrMAC = FlAddr.macFuse;
@@ -837,103 +794,6 @@ export class ESPLoader extends EventTarget {
     return macBytes
       .map((b) => b.toString(16).padStart(2, "0").toUpperCase())
       .join(":");
-  }
-
-  /**
-   * Detect if device is using USB-JTAG/Serial or USB-OTG (not external serial chip)
-   * Stub implementation - returns undefined (not yet implemented in WebSerial_ESPTool)
-   */
-  async detectUsbConnectionType(): Promise<boolean> {
-    // Stub implementation - would need USB PID detection
-    return false;
-  }
-
-  /**
-   * Get USB mode (UART, USB-JTAG/Serial, or USB-OTG)
-   * Reads the UARTDEV_BUF_NO register to determine the USB mode
-   */
-  async getUsbMode(): Promise<{
-    mode: "uart" | "usb-jtag-serial" | "usb-otg";
-    uartNo: number;
-  }> {
-    const family = this._parent ? this._parent.chipFamily : this.chipFamily;
-    const revision = this._parent
-      ? (this._parent.chipRevision ?? 0)
-      : (this.chipRevision ?? 0);
-
-    let bufNoAddr: number | null = null;
-    let jtagSerialVal: number | null = null;
-    let otgVal: number | null = null;
-
-    switch (family) {
-      case CHIP_FAMILY_ESP32S2:
-        bufNoAddr = ESP32S2_UARTDEV_BUF_NO;
-        otgVal = ESP32S2_UARTDEV_BUF_NO_USB_OTG;
-        break;
-      case CHIP_FAMILY_ESP32S3:
-        bufNoAddr = ESP32S3_UARTDEV_BUF_NO;
-        jtagSerialVal = ESP32S3_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
-        otgVal = ESP32S3_UARTDEV_BUF_NO_USB_OTG;
-        break;
-      case CHIP_FAMILY_ESP32C3: {
-        const bssAddr = revision < 101 ? 0x3fcdf064 : 0x3fcdf060;
-        bufNoAddr = bssAddr + ESP32C3_BUF_UART_NO_OFFSET;
-        jtagSerialVal = ESP32C3_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
-        break;
-      }
-      case CHIP_FAMILY_ESP32C5:
-        bufNoAddr = ESP32C5_UARTDEV_BUF_NO;
-        jtagSerialVal = ESP32C5_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
-        break;
-      case CHIP_FAMILY_ESP32C6:
-        bufNoAddr = ESP32C6_UARTDEV_BUF_NO;
-        jtagSerialVal = ESP32C6_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
-        break;
-      case CHIP_FAMILY_ESP32C61:
-        bufNoAddr =
-          revision <= 200
-            ? ESP32C61_UARTDEV_BUF_NO_REV_LE2
-            : ESP32C61_UARTDEV_BUF_NO_REV_GT2;
-        jtagSerialVal =
-          revision <= 200
-            ? ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_LE2
-            : ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_GT2;
-        break;
-      case CHIP_FAMILY_ESP32H2:
-        bufNoAddr = ESP32H2_UARTDEV_BUF_NO;
-        jtagSerialVal = ESP32H2_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
-        break;
-      case CHIP_FAMILY_ESP32H4:
-        bufNoAddr = ESP32H4_UARTDEV_BUF_NO;
-        jtagSerialVal = ESP32H4_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
-        break;
-      case CHIP_FAMILY_ESP32P4:
-        bufNoAddr =
-          revision < 300
-            ? ESP32P4_UARTDEV_BUF_NO_REV0
-            : ESP32P4_UARTDEV_BUF_NO_REV300;
-        jtagSerialVal = ESP32P4_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
-        otgVal = ESP32P4_UARTDEV_BUF_NO_USB_OTG;
-        break;
-    }
-
-    if (bufNoAddr === null) {
-      return { mode: "uart", uartNo: 0 };
-    }
-
-    const uartNo = (await this.readRegister(bufNoAddr)) & 0xff;
-
-    if (otgVal !== null && uartNo === otgVal) {
-      this.logger.debug(`USB mode: USB-OTG (uartNo=${uartNo})`);
-      return { mode: "usb-otg", uartNo };
-    }
-    if (jtagSerialVal !== null && uartNo === jtagSerialVal) {
-      this.logger.debug(`USB mode: USB-JTAG/Serial (uartNo=${uartNo})`);
-      return { mode: "usb-jtag-serial", uartNo };
-    }
-
-    this.logger.debug(`USB mode: UART (uartNo=${uartNo})`);
-    return { mode: "uart", uartNo };
   }
 
   /**
