@@ -1015,7 +1015,8 @@ export class ESPLoader extends EventTarget {
   private async runSignalSequence(
     steps: Array<{ dtr?: boolean; rts?: boolean; delayMs?: number }>,
   ): Promise<void> {
-    const webusb = (this.port as any).isWebUSB === true;
+    const webusb =
+      (this.port as unknown as { isWebUSB?: boolean }).isWebUSB === true;
     for (const step of steps) {
       if (step.dtr !== undefined && step.rts !== undefined) {
         if (webusb) {
@@ -1549,7 +1550,7 @@ export class ESPLoader extends EventTarget {
               `Connected CDC/JTAG successfully with ${strategy.name} reset.`,
             );
             return;
-          } catch (_error) {
+          } catch {
             throw new Error("Sync timeout or abandoned");
           }
         }
@@ -2483,9 +2484,9 @@ export class ESPLoader extends EventTarget {
 
       // Restart Readloop
       this.readLoop();
-    } catch (_e) {
-      //      this.logger.error(`Reconfigure port error: ${e}`);
-      //      throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
+    } catch {
+      //      this.logger.error(`Reconfigure port error`);
+      //      throw new Error(`Unable to change the baud rate to ${baud}`);
     } finally {
       // Always reset flag, even on error or early return
       this._isReconfiguring = false;
@@ -3276,8 +3277,8 @@ export class ESPLoader extends EventTarget {
     // Wait for pending writes to complete
     try {
       await this._writeChain;
-    } catch (_err) {
-      //      this.logger.debug(`Pending write error during disconnect: ${err}`);
+    } catch {
+      //      this.logger.debug("Pending write error during disconnect");
     }
 
     // Release persistent writer before closing
@@ -3285,8 +3286,8 @@ export class ESPLoader extends EventTarget {
       try {
         await this._writer.close();
         this._writer.releaseLock();
-      } catch (_err) {
-        //        this.logger.debug(`Writer close/release error: ${err}`);
+      } catch {
+        //        this.logger.debug("Writer close/release error");
       }
       this._writer = undefined;
     } else {
@@ -3296,8 +3297,8 @@ export class ESPLoader extends EventTarget {
         const writer = this.port.writable.getWriter();
         await writer.close();
         writer.releaseLock();
-      } catch (_err) {
-        //        this.logger.debug(`Direct writer close error: ${err}`);
+      } catch {
+        //        this.logger.debug("Direct writer close error");
       }
     }
 
@@ -3325,7 +3326,7 @@ export class ESPLoader extends EventTarget {
       // Only cancel if reader is still active
       try {
         this._reader.cancel();
-      } catch (_err) {
+      } catch {
         // Reader already released, resolve immediately
         clearTimeout(timeout);
         resolve(undefined);
@@ -3356,8 +3357,8 @@ export class ESPLoader extends EventTarget {
     // Wait for pending writes to complete
     try {
       await this._writeChain;
-    } catch (_err) {
-      //      this.logger.debug(`Pending write error during release: ${err}`);
+    } catch {
+      //      this.logger.debug("Pending write error during release");
     }
 
     // Release writer
@@ -3556,7 +3557,9 @@ export class ESPLoader extends EventTarget {
   private async _ensureStreamsReady(): Promise<void> {
     if (this.isWebUSB()) {
       try {
-        await (this.port as any).recreateStreams();
+        await (
+          this.port as unknown as { recreateStreams(): Promise<void> }
+        ).recreateStreams();
         this.logger.debug("WebUSB streams recreated");
 
         let retries = 30;

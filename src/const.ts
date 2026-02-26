@@ -1,9 +1,9 @@
 import { toByteArray } from "./util";
 
 export interface Logger {
-  log(msg: string, ...args: any[]): void;
-  error(msg: string, ...args: any[]): void;
-  debug(msg: string, ...args: any[]): void;
+  log(msg: string, ...args: unknown[]): void;
+  error(msg: string, ...args: unknown[]): void;
+  debug(msg: string, ...args: unknown[]): void;
 }
 
 export const baudRates = [
