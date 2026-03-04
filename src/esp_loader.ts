@@ -113,8 +113,6 @@ export class ESPLoader extends EventTarget {
   private __isReconfiguring: boolean = false;
   private __abandonCurrentOperation: boolean = false;
   private _suppressDisconnect: boolean = false;
-  private __consoleMode: boolean = false;
-  public _isUsbJtagOrOtg: boolean | undefined = undefined;
 
   // Adaptive speed adjustment for flash read operations
   private __adaptiveBlockMultiplier: number = 1;
@@ -178,24 +176,6 @@ export class ESPLoader extends EventTarget {
     } else {
       this.__chipVariant = value;
     }
-  }
-
-  // Console mode with parent delegation
-  private get _consoleMode(): boolean {
-    return this._parent ? this._parent._consoleMode : this.__consoleMode;
-  }
-
-  private set _consoleMode(value: boolean) {
-    if (this._parent) {
-      this._parent._consoleMode = value;
-    } else {
-      this.__consoleMode = value;
-    }
-  }
-
-  // Public setter for console mode (used by script.js)
-  public setConsoleMode(value: boolean): void {
-    this._consoleMode = value;
   }
 
   private get _inputBuffer(): number[] {
@@ -348,14 +328,6 @@ export class ESPLoader extends EventTarget {
     } else {
       this.__isCDCDevice = value;
     }
-  }
-
-  /**
-   * Check if device is using USB-JTAG or USB-OTG (not external serial chip)
-   * Returns undefined if not yet determined
-   */
-  public get isUsbJtagOrOtg(): boolean | undefined {
-    return this._parent ? this._parent._isUsbJtagOrOtg : this._isUsbJtagOrOtg;
   }
 
   private detectUSBSerialChip(
@@ -782,21 +754,6 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
-   * Get MAC address from efuses
-   */
-  async getMacAddress(): Promise<string> {
-    if (!this._initializationSucceeded) {
-      throw new Error(
-        "getMacAddress() requires initialize() to have completed successfully",
-      );
-    }
-    const macBytes = this.macAddr(); // chip-family-aware
-    return macBytes
-      .map((b) => b.toString(16).padStart(2, "0").toUpperCase())
-      .join(":");
-  }
-
-  /**
    * Get ESP32-C5 crystal frequency from ROM expectation
    */
   async getC5CrystalFreqRomExpect(): Promise<number> {
@@ -996,15 +953,6 @@ export class ESPLoader extends EventTarget {
   async setDTR(state: boolean) {
     this.state_DTR = state;
     await this.port.setSignals({ dataTerminalReady: state });
-  }
-
-  async setDTRandRTS(dtr: boolean, rts: boolean) {
-    this.state_DTR = dtr;
-    this.state_RTS = rts;
-    await this.port.setSignals({
-      dataTerminalReady: dtr,
-      requestToSend: rts,
-    });
   }
 
   async hardReset(bootloader = false) {
@@ -1821,12 +1769,6 @@ export class ESPLoader extends EventTarget {
   async flashDeflFinish() {
     const buffer = pack("<I", 1);
     await this.checkCommand(ESP_FLASH_DEFL_END, buffer);
-  }
-
-  getBootloaderOffset() {
-    const bootFlashOffs = getSpiFlashAddresses(this.getChipFamily());
-    const BootldrFlashOffs = bootFlashOffs.flashOffs;
-    return BootldrFlashOffs;
   }
 
   async flashId() {
