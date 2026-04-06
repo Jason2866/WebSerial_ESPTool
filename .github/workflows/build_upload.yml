@@ -23,10 +23,10 @@ jobs:
           rm -rf dist
           rm -rf js/modules
           mkdir js/modules
-      - name: install node v22
+      - name: install node v25
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 25
           registry-url: 'https://registry.npmjs.org'
       - name: Update npm to latest
         run: npm install -g npm@latest
