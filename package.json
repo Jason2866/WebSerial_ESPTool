@@ -29,7 +29,7 @@
     "@types/node": "^25.5.0",
     "@types/pako": "^2.0.4",
     "@types/w3c-web-serial": "^1.0.7",
-    "eslint": "^10.0.3",
+    "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "prettier": "^3.7.3",
