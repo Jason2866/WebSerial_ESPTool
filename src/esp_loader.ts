@@ -1601,8 +1601,8 @@ export class ESPLoader extends EventTarget {
   /**
    * RTC watchdog timer reset for ESP32-S2, ESP32-S3, and ESP32-P4
    * Uses specific registers for each chip family
-   * Note: ESP32-C3, ESP32-C5, ESP32-C6 do NOT boot correctly after WDT reset
-   * Note: ESP32-C61, ESP32-H2 do NOT support WDT reset (no usable RTC WDT path)
+   * Note: ESP32-C3 does NOT boot correctly after WDT reset
+   * Note: ESP32-C5, ESP32-C6, ESP32-C61, ESP32-H2 do NOT support WDT reset (no usable RTC WDT path)
    */
   public async rtcWdtResetChipSpecific(): Promise<void> {
     this.logger.debug("Hard resetting with watchdog timer...");
@@ -1700,15 +1700,9 @@ export class ESPLoader extends EventTarget {
           usbMode = { mode: "usb-jtag-serial", uartNo: 0 };
         }
 
-        // Check if chip supports WDT reset
-        // WDT reset is required for native USB chips (USB-Serial-JTAG / USB-OTG)
-        // because DTR/RTS toggling does NOT control EN/IO0 over a native USB-CDC
-        // interface. Without WDT reset the chip stays in download mode forever.
-        //
-        // Supported by rtcWdtResetChipSpecific():
-        //   ESP32-S2, ESP32-S3, ESP32-P4
-        // NOT supported (WDT reset doesn't correctly boot to firmware):
-        //   ESP32-C3, ESP32-C5, ESP32-C6, ESP32-C61, ESP32-H2
+        // WDT reset is not needed for ESP32-C3
+        // WDT reset is supported by: ESP32-S2, ESP32-S3, ESP32-P4
+        // WDT reset is NOT supported by: ESP32-C5, ESP32-C6, ESP32-C61, ESP32-H2
         const supportsWdtReset =
           this.chipFamily === CHIP_FAMILY_ESP32S2 ||
           this.chipFamily === CHIP_FAMILY_ESP32S3 ||
