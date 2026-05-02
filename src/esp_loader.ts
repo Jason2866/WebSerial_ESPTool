@@ -1890,28 +1890,28 @@ export class ESPLoader extends EventTarget {
           this.logger.debug(
             `${this.chipName} does not support WDT reset - using classic reset instead`,
           );
-          // Fall through to classic reset below
         }
       } else {
         // External serial chip: Use classic reset
         this.logger.debug(
           "External serial chip detected - using classic reset",
         );
+      }
 
-        if (this.isWebUSB()) {
-          // WebUSB: Use longer delays for better compatibility
-          await this.setRTSWebUSB(true); // EN->LOW
-          await sleep(200);
-          await this.setRTSWebUSB(false);
-          await sleep(200);
-          this.logger.debug("Hard reset to firmware (WebUSB).");
-        } else {
-          // Web Serial: Standard reset
-          await this.setRTS(true); // EN->LOW
-          await sleep(100);
-          await this.setRTS(false);
-          this.logger.debug("Hard reset to firmware.");
-        }
+      // Classic reset: used for external serial chips and USB-JTAG chips that do not support WDT reset
+      if (this.isWebUSB()) {
+        // WebUSB: Use longer delays for better compatibility
+        await this.setRTSWebUSB(true); // EN->LOW
+        await sleep(200);
+        await this.setRTSWebUSB(false);
+        await sleep(200);
+        this.logger.debug("Hard reset to firmware (WebUSB).");
+      } else {
+        // Web Serial: Standard reset
+        await this.setRTS(true); // EN->LOW
+        await sleep(100);
+        await this.setRTS(false);
+        this.logger.debug("Hard reset to firmware.");
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
