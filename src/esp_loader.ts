@@ -84,14 +84,6 @@ import {
   ESP32S3_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
   ESP32C3_EFUSE_RD_MAC_SPI_SYS_3_REG,
   ESP32C3_EFUSE_RD_MAC_SPI_SYS_5_REG,
-  ESP32C3_RTC_CNTL_WDTWPROTECT_REG,
-  ESP32C3_RTC_CNTL_WDTCONFIG0_REG,
-  ESP32C3_RTC_CNTL_WDTCONFIG1_REG,
-  ESP32C3_RTC_CNTL_WDT_WKEY,
-  ESP32C5_C6_RTC_CNTL_WDTWPROTECT_REG,
-  ESP32C5_C6_RTC_CNTL_WDTCONFIG0_REG,
-  ESP32C5_C6_RTC_CNTL_WDTCONFIG1_REG,
-  ESP32C5_C6_RTC_CNTL_WDT_WKEY,
   ESP32C5_UART_CLKDIV_REG,
   ESP32C5_PCR_SYSCLK_CONF_REG,
   ESP32C5_PCR_SYSCLK_XTAL_FREQ_V,
@@ -1589,18 +1581,20 @@ export class ESPLoader extends EventTarget {
 
   /**
    * @name watchdogReset
-   * Watchdog reset for ESP32-S2/S3/C3 with USB-OTG or USB-JTAG/Serial
+   * Watchdog reset for ESP32-S2/S3/P4 with USB-OTG or USB-JTAG/Serial
    * Uses RTC watchdog timer to reset the chip - works when DTR/RTS signals are not available
    * This is an alias for rtcWdtResetChipSpecific() for backwards compatibility
+   * Note: ESP32-C3, ESP32-C5, ESP32-C6 do NOT boot correctly after WDT reset
    */
   async watchdogReset() {
     await this.rtcWdtResetChipSpecific();
   }
 
   /**
-   * RTC watchdog timer reset for ESP32-S2, ESP32-S3, ESP32-C3, ESP32-C5, ESP32-C6, and ESP32-P4
+   * RTC watchdog timer reset for ESP32-S2, ESP32-S3, and ESP32-P4
    * Uses specific registers for each chip family
-   * Note: ESP32-H2 does NOT support WDT reset
+   * Note: ESP32-C3 does NOT boot correctly after WDT reset
+   * Note: ESP32-C5, ESP32-C6, ESP32-C61, ESP32-H2 do NOT support WDT reset (no usable RTC WDT path)
    */
   public async rtcWdtResetChipSpecific(): Promise<void> {
     this.logger.debug("Hard resetting with watchdog timer...");
@@ -1620,20 +1614,6 @@ export class ESPLoader extends EventTarget {
       WDTCONFIG0_REG = ESP32S3_RTC_CNTL_WDTCONFIG0_REG;
       WDTCONFIG1_REG = ESP32S3_RTC_CNTL_WDTCONFIG1_REG;
       WDT_WKEY = ESP32S3_RTC_CNTL_WDT_WKEY;
-    } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
-      WDTWPROTECT_REG = ESP32C3_RTC_CNTL_WDTWPROTECT_REG;
-      WDTCONFIG0_REG = ESP32C3_RTC_CNTL_WDTCONFIG0_REG;
-      WDTCONFIG1_REG = ESP32C3_RTC_CNTL_WDTCONFIG1_REG;
-      WDT_WKEY = ESP32C3_RTC_CNTL_WDT_WKEY;
-    } else if (
-      this.chipFamily === CHIP_FAMILY_ESP32C5 ||
-      this.chipFamily === CHIP_FAMILY_ESP32C6
-    ) {
-      // C5 and C6 use LP_WDT (Low Power Watchdog Timer)
-      WDTWPROTECT_REG = ESP32C5_C6_RTC_CNTL_WDTWPROTECT_REG;
-      WDTCONFIG0_REG = ESP32C5_C6_RTC_CNTL_WDTCONFIG0_REG;
-      WDTCONFIG1_REG = ESP32C5_C6_RTC_CNTL_WDTCONFIG1_REG;
-      WDT_WKEY = ESP32C5_C6_RTC_CNTL_WDT_WKEY;
     } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
       // P4 uses LP_WDT (Low Power Watchdog Timer)
       WDTWPROTECT_REG = ESP32P4_RTC_CNTL_WDTWPROTECT_REG;
@@ -1698,7 +1678,6 @@ export class ESPLoader extends EventTarget {
           usbMode = { mode: "usb-jtag-serial", uartNo: 0 };
         }
 
-        // Check if chip supports WDT reset
         // WDT reset is not needed for ESP32-C3
         // WDT reset is supported by: ESP32-S2, ESP32-S3, ESP32-P4
         // WDT reset is NOT supported by: ESP32-C5, ESP32-C6, ESP32-C61, ESP32-H2
@@ -1842,60 +1821,75 @@ export class ESPLoader extends EventTarget {
       const isUsbJtagOrOtg = await this.detectUsbConnectionType();
 
       if (isUsbJtagOrOtg) {
-        // USB-JTAG/OTG devices: Use WDT reset
-        this.logger.debug("USB-JTAG/OTG detected - using WDT reset");
+        // USB-JTAG/OTG devices: Check if chip supports WDT reset
+        // Only S2, S3, P4 support WDT reset correctly
+        // C3, C5, C6, C61, H2 do NOT boot correctly after WDT reset
+        const supportsWdtReset =
+          this.chipFamily === CHIP_FAMILY_ESP32S2 ||
+          this.chipFamily === CHIP_FAMILY_ESP32S3 ||
+          this.chipFamily === CHIP_FAMILY_ESP32P4;
 
-        // Get USB mode details
-        let usbMode: {
-          mode: "uart" | "usb-jtag-serial" | "usb-otg";
-          uartNo: number;
-        };
-        try {
-          usbMode = await this.getUsbMode();
-          this.logger.debug(
-            `USB mode: ${usbMode.mode} (uartNo=${usbMode.uartNo})`,
-          );
-        } catch (err) {
-          this.logger.debug(`Could not get USB mode: ${err}`);
-          usbMode = { mode: "usb-jtag-serial", uartNo: 0 };
-        }
+        if (supportsWdtReset) {
+          this.logger.debug("USB-JTAG/OTG detected - using WDT reset");
 
-        // Clear force download flag for USB-OTG devices
-        if (usbMode.mode === "usb-otg") {
+          // Get USB mode details
+          let usbMode: {
+            mode: "uart" | "usb-jtag-serial" | "usb-otg";
+            uartNo: number;
+          };
           try {
-            const flagCleared = await this._clearForceDownloadBootIfNeeded();
-            if (flagCleared) {
-              this.logger.debug("Force download boot flag cleared");
-            }
+            usbMode = await this.getUsbMode();
+            this.logger.debug(
+              `USB mode: ${usbMode.mode} (uartNo=${usbMode.uartNo})`,
+            );
           } catch (err) {
-            this.logger.debug(`Could not clear force download flag: ${err}`);
+            this.logger.debug(`Could not get USB mode: ${err}`);
+            usbMode = { mode: "usb-jtag-serial", uartNo: 0 };
           }
-        }
 
-        // Perform WDT reset
-        await this.rtcWdtResetChipSpecific();
-        this.logger.debug(`${this.chipName}: WDT reset to firmware complete`);
-        return;
+          // Clear force download flag for USB-OTG devices
+          if (usbMode.mode === "usb-otg") {
+            try {
+              const flagCleared = await this._clearForceDownloadBootIfNeeded();
+              if (flagCleared) {
+                this.logger.debug("Force download boot flag cleared");
+              }
+            } catch (err) {
+              this.logger.debug(`Could not clear force download flag: ${err}`);
+            }
+          }
+
+          // Perform WDT reset
+          await this.rtcWdtResetChipSpecific();
+          this.logger.debug(`${this.chipName}: WDT reset to firmware complete`);
+          return;
+        } else {
+          // C3, C5, C6, etc. - use classic reset (like external serial chips)
+          this.logger.debug(
+            `${this.chipName} does not support WDT reset - using classic reset instead`,
+          );
+        }
       } else {
         // External serial chip: Use classic reset
         this.logger.debug(
           "External serial chip detected - using classic reset",
         );
+      }
 
-        if (this.isWebUSB()) {
-          // WebUSB: Use longer delays for better compatibility
-          await this.setRTSWebUSB(true); // EN->LOW
-          await sleep(200);
-          await this.setRTSWebUSB(false);
-          await sleep(200);
-          this.logger.debug("Hard reset to firmware (WebUSB).");
-        } else {
-          // Web Serial: Standard reset
-          await this.setRTS(true); // EN->LOW
-          await sleep(100);
-          await this.setRTS(false);
-          this.logger.debug("Hard reset to firmware.");
-        }
+      // Classic reset: used for external serial chips and USB-JTAG chips that do not support WDT reset
+      if (this.isWebUSB()) {
+        // WebUSB: Use longer delays for better compatibility
+        await this.setRTSWebUSB(true); // EN->LOW
+        await sleep(200);
+        await this.setRTSWebUSB(false);
+        await sleep(200);
+        this.logger.debug("Hard reset to firmware (WebUSB).");
+      } else {
+        // Web Serial: Standard reset
+        await this.setRTS(true); // EN->LOW
+        await sleep(100);
+        await this.setRTS(false);
+        this.logger.debug("Hard reset to firmware.");
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
