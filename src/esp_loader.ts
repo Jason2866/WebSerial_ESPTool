@@ -1589,18 +1589,20 @@ export class ESPLoader extends EventTarget {
 
   /**
    * @name watchdogReset
-   * Watchdog reset for ESP32-S2/S3/C3 with USB-OTG or USB-JTAG/Serial
+   * Watchdog reset for ESP32-S2/S3/P4 with USB-OTG or USB-JTAG/Serial
    * Uses RTC watchdog timer to reset the chip - works when DTR/RTS signals are not available
    * This is an alias for rtcWdtResetChipSpecific() for backwards compatibility
+   * Note: ESP32-C3, ESP32-C5, ESP32-C6 do NOT boot correctly after WDT reset
    */
   async watchdogReset() {
     await this.rtcWdtResetChipSpecific();
   }
 
   /**
-   * RTC watchdog timer reset for ESP32-S2, ESP32-S3, ESP32-C3, ESP32-C5, ESP32-C6, and ESP32-P4
+   * RTC watchdog timer reset for ESP32-S2, ESP32-S3, and ESP32-P4
    * Uses specific registers for each chip family
-   * Note: ESP32-H2 does NOT support WDT reset
+   * Note: ESP32-C3, ESP32-C5, ESP32-C6 do NOT boot correctly after WDT reset
+   * Note: ESP32-C61, ESP32-H2 do NOT support WDT reset (no usable RTC WDT path)
    */
   public async rtcWdtResetChipSpecific(): Promise<void> {
     this.logger.debug("Hard resetting with watchdog timer...");
@@ -1699,9 +1701,14 @@ export class ESPLoader extends EventTarget {
         }
 
         // Check if chip supports WDT reset
-        // WDT reset is not needed for ESP32-C3
-        // WDT reset is supported by: ESP32-S2, ESP32-S3, ESP32-P4
-        // WDT reset is NOT supported by: ESP32-C5, ESP32-C6, ESP32-C61, ESP32-H2
+        // WDT reset is required for native USB chips (USB-Serial-JTAG / USB-OTG)
+        // because DTR/RTS toggling does NOT control EN/IO0 over a native USB-CDC
+        // interface. Without WDT reset the chip stays in download mode forever.
+        //
+        // Supported by rtcWdtResetChipSpecific():
+        //   ESP32-S2, ESP32-S3, ESP32-P4
+        // NOT supported (WDT reset doesn't correctly boot to firmware):
+        //   ESP32-C3, ESP32-C5, ESP32-C6, ESP32-C61, ESP32-H2
         const supportsWdtReset =
           this.chipFamily === CHIP_FAMILY_ESP32S2 ||
           this.chipFamily === CHIP_FAMILY_ESP32S3 ||
@@ -1842,40 +1849,55 @@ export class ESPLoader extends EventTarget {
       const isUsbJtagOrOtg = await this.detectUsbConnectionType();
 
       if (isUsbJtagOrOtg) {
-        // USB-JTAG/OTG devices: Use WDT reset
-        this.logger.debug("USB-JTAG/OTG detected - using WDT reset");
+        // USB-JTAG/OTG devices: Check if chip supports WDT reset
+        // Only S2, S3, P4 support WDT reset correctly
+        // C3, C5, C6, C61, H2 do NOT boot correctly after WDT reset
+        const supportsWdtReset =
+          this.chipFamily === CHIP_FAMILY_ESP32S2 ||
+          this.chipFamily === CHIP_FAMILY_ESP32S3 ||
+          this.chipFamily === CHIP_FAMILY_ESP32P4;
 
-        // Get USB mode details
-        let usbMode: {
-          mode: "uart" | "usb-jtag-serial" | "usb-otg";
-          uartNo: number;
-        };
-        try {
-          usbMode = await this.getUsbMode();
-          this.logger.debug(
-            `USB mode: ${usbMode.mode} (uartNo=${usbMode.uartNo})`,
-          );
-        } catch (err) {
-          this.logger.debug(`Could not get USB mode: ${err}`);
-          usbMode = { mode: "usb-jtag-serial", uartNo: 0 };
-        }
+        if (supportsWdtReset) {
+          this.logger.debug("USB-JTAG/OTG detected - using WDT reset");
 
-        // Clear force download flag for USB-OTG devices
-        if (usbMode.mode === "usb-otg") {
+          // Get USB mode details
+          let usbMode: {
+            mode: "uart" | "usb-jtag-serial" | "usb-otg";
+            uartNo: number;
+          };
           try {
-            const flagCleared = await this._clearForceDownloadBootIfNeeded();
-            if (flagCleared) {
-              this.logger.debug("Force download boot flag cleared");
-            }
+            usbMode = await this.getUsbMode();
+            this.logger.debug(
+              `USB mode: ${usbMode.mode} (uartNo=${usbMode.uartNo})`,
+            );
           } catch (err) {
-            this.logger.debug(`Could not clear force download flag: ${err}`);
+            this.logger.debug(`Could not get USB mode: ${err}`);
+            usbMode = { mode: "usb-jtag-serial", uartNo: 0 };
           }
-        }
 
-        // Perform WDT reset
-        await this.rtcWdtResetChipSpecific();
-        this.logger.debug(`${this.chipName}: WDT reset to firmware complete`);
-        return;
+          // Clear force download flag for USB-OTG devices
+          if (usbMode.mode === "usb-otg") {
+            try {
+              const flagCleared = await this._clearForceDownloadBootIfNeeded();
+              if (flagCleared) {
+                this.logger.debug("Force download boot flag cleared");
+              }
+            } catch (err) {
+              this.logger.debug(`Could not clear force download flag: ${err}`);
+            }
+          }
+
+          // Perform WDT reset
+          await this.rtcWdtResetChipSpecific();
+          this.logger.debug(`${this.chipName}: WDT reset to firmware complete`);
+          return;
+        } else {
+          // C3, C5, C6, etc. - use classic reset (like external serial chips)
+          this.logger.debug(
+            `${this.chipName} does not support WDT reset - using classic reset instead`,
+          );
+          // Fall through to classic reset below
+        }
       } else {
         // External serial chip: Use classic reset
         this.logger.debug(
