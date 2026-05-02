@@ -15,6 +15,7 @@
   "type": "module",
   "scripts": {
     "build": "script/build",
+    "prepare": "[ -d dist ] || script/build",
     "format": "npm exec -- prettier --write src",
     "develop": "script/develop",
     "lint": "eslint src/",
