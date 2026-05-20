@@ -69,6 +69,10 @@ import {
   ESP32H2_EFUSE_BLOCK1_ADDR,
   ESP32P4_EFUSE_BLOCK1_ADDR,
   ESP32S31_EFUSE_BLOCK1_ADDR,
+  ESP32S31_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32S31_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32S31_RTC_CNTL_WDTCONFIG1_REG,
+  ESP32S31_RTC_CNTL_WDT_WKEY,
   SlipReadError,
   ESP32S2_RTC_CNTL_WDTWPROTECT_REG,
   ESP32S2_RTC_CNTL_WDTCONFIG0_REG,
@@ -1591,7 +1595,7 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
-   * RTC watchdog timer reset for ESP32-S2, ESP32-S3, and ESP32-P4
+   * RTC watchdog timer reset for ESP32-S2, ESP32-S3, ESP32-P4, and ESP32-S31
    * Uses specific registers for each chip family
    * Note: ESP32-C3 does NOT boot correctly after WDT reset
    * Note: ESP32-C5, ESP32-C6, ESP32-C61, ESP32-H2 do NOT support WDT reset (no usable RTC WDT path)
@@ -1620,6 +1624,12 @@ export class ESPLoader extends EventTarget {
       WDTCONFIG0_REG = ESP32P4_RTC_CNTL_WDTCONFIG0_REG;
       WDTCONFIG1_REG = ESP32P4_RTC_CNTL_WDTCONFIG1_REG;
       WDT_WKEY = ESP32P4_RTC_CNTL_WDT_WKEY;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32S31) {
+      // S31 uses LP_WDT (Low Power Watchdog Timer)
+      WDTWPROTECT_REG = ESP32S31_RTC_CNTL_WDTWPROTECT_REG;
+      WDTCONFIG0_REG = ESP32S31_RTC_CNTL_WDTCONFIG0_REG;
+      WDTCONFIG1_REG = ESP32S31_RTC_CNTL_WDTCONFIG1_REG;
+      WDT_WKEY = ESP32S31_RTC_CNTL_WDT_WKEY;
     } else {
       throw new Error(
         `rtcWdtResetChipSpecific() is not supported for ${this.chipFamily}`,
