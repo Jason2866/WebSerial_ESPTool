@@ -1694,7 +1694,8 @@ export class ESPLoader extends EventTarget {
         const supportsWdtReset =
           this.chipFamily === CHIP_FAMILY_ESP32S2 ||
           this.chipFamily === CHIP_FAMILY_ESP32S3 ||
-          this.chipFamily === CHIP_FAMILY_ESP32P4;
+          this.chipFamily === CHIP_FAMILY_ESP32P4 ||
+          this.chipFamily === CHIP_FAMILY_ESP32S31;
 
         if (!supportsWdtReset) {
           this.logger.debug(
@@ -1837,7 +1838,8 @@ export class ESPLoader extends EventTarget {
         const supportsWdtReset =
           this.chipFamily === CHIP_FAMILY_ESP32S2 ||
           this.chipFamily === CHIP_FAMILY_ESP32S3 ||
-          this.chipFamily === CHIP_FAMILY_ESP32P4;
+          this.chipFamily === CHIP_FAMILY_ESP32P4 ||
+          this.chipFamily === CHIP_FAMILY_ESP32S31;
 
         if (supportsWdtReset) {
           this.logger.debug("USB-JTAG/OTG detected - using WDT reset");
