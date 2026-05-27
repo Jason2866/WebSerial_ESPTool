@@ -190,6 +190,19 @@ export class ESPLoader extends EventTarget {
   private __consecutiveSuccessfulChunks: number = 0;
   private __lastAdaptiveAdjustment: number = 0;
   private __isCDCDevice: boolean = false;
+  private __isCP210x: boolean = false;
+
+  private get _isCP210x(): boolean {
+    return this._parent ? this._parent._isCP210x : this.__isCP210x;
+  }
+
+  private set _isCP210x(value: boolean) {
+    if (this._parent) {
+      this._parent._isCP210x = value;
+    } else {
+      this.__isCP210x = value;
+    }
+  }
 
   constructor(
     public port: SerialPort,
@@ -514,6 +527,18 @@ export class ESPLoader extends EventTarget {
         if (chipInfo.maxBaudrate) {
           this._maxUSBSerialBaudrate = chipInfo.maxBaudrate;
           this.logger.log(`Max baudrate: ${chipInfo.maxBaudrate}`);
+        }
+
+        // Silicon Labs CP210x family workaround:
+        // The Windows VCP driver has a small receive buffer that drops bytes
+        // during sustained high-speed flash reads. Flag the device so the
+        // readFlash code path uses smaller block/maxInFlight values.
+        if (portInfo.usbVendorId === 0x10c4) {
+          this._isCP210x = true;
+          this.logger.log(
+            "CP210x detected - using throttled flash read parameters " +
+              "(workaround for Silicon Labs Windows VCP driver buffer issue).",
+          );
         }
         // Detect ESP32-S2 Native USB
         if (portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x2) {
@@ -4435,6 +4460,14 @@ export class ESPLoader extends EventTarget {
             // Use current adaptive multipliers (initialized at start of readFlash)
             blockSize = baseBlockSize * this._adaptiveBlockMultiplier;
             maxInFlight = baseBlockSize * this._adaptiveMaxInFlightMultiplier;
+          } else if (this._isCP210x) {
+            // Silicon Labs CP210x on Windows: the VCP driver has a small
+            // receive buffer (~512 bytes typical) and drops bytes when the
+            // stub bursts large SLIP packets. Use a conservative block size
+            // matching the upstream esptool.py default and keep maxInFlight
+            // small enough that the driver can always drain in time.
+            blockSize = 1024;
+            maxInFlight = 2048;
           } else {
             // Web Serial (Desktop): Use multiples of 63 for consistency
             const base = 63;
