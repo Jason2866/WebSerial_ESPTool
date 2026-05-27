@@ -2228,15 +2228,11 @@ export class ESPLoader extends EventTarget {
         }
       }
     } else {
-      // Streaming version for non-CDC USB-Serial adapters (CH340, CP2102, etc.):
-      // process bytes directly from the input buffer one-by-one in a tight
-      // loop without going back to the outer wait loop after every byte.
-      // This mirrors what esptool-js PR #160 did for the same class of issue
-      // (CP210x on Windows) and removes the old 1-byte-per-iteration
-      // bottleneck while still leaving unprocessed bytes in _inputBuffer
-      // when we return on SLIP_END.
-      const startTime = Date.now();
-
+      // Byte-by-byte version: Stable for non CDC USB-Serial adapters (CH340, CP2102, etc.)
+      // Burst processing is NOT safe for UART bridge chips - they need to be
+      // serviced one byte at a time with cooperative yielding back to the
+      // event loop, otherwise the readLoop is starved and bytes are dropped.
+      let readBytes: number[] = [];
       while (true) {
         // Check abandon flag (for reset strategy timeout)
         if (this._abandonCurrentOperation) {
@@ -2245,32 +2241,26 @@ export class ESPLoader extends EventTarget {
           );
         }
 
-        // Check timeout
-        if (Date.now() - startTime > timeout) {
+        const stamp = Date.now();
+        readBytes = [];
+        while (Date.now() - stamp < timeout) {
+          if (this._inputBufferAvailable > 0) {
+            readBytes.push(this._readByte()!);
+            break;
+          } else {
+            // Reduced sleep time for faster response during high-speed transfers
+            await sleep(1);
+          }
+        }
+        if (readBytes.length == 0) {
           const waitingFor = partialPacket === null ? "header" : "content";
           throw new SlipReadError("Timed out waiting for packet " + waitingFor);
         }
-
-        // If no data available, wait a bit and re-check
-        if (this._inputBufferAvailable === 0) {
-          await sleep(1);
-          continue;
-        }
-
-        // Drain all currently available bytes through the SLIP state machine
-        // in one pass. We read directly from _inputBuffer (via _readByte),
-        // so an early return on SLIP_END naturally leaves the tail in place
-        // for the next readPacket() call.
-        while (this._inputBufferAvailable > 0) {
-          // Periodic timeout check to prevent hang on slow data
-          if (Date.now() - startTime > timeout) {
-            const waitingFor = partialPacket === null ? "header" : "content";
-            throw new SlipReadError(
-              "Timed out waiting for packet " + waitingFor,
-            );
-          }
-          const byte = this._readByte()!;
-
+        if (this.debug)
+          this.logger.debug(
+            "Read " + readBytes.length + " bytes: " + hexFormatter(readBytes),
+          );
+        for (const byte of readBytes) {
           if (partialPacket === null) {
             // waiting for packet header
             if (byte == this.SLIP_END) {
