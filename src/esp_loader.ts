@@ -529,15 +529,20 @@ export class ESPLoader extends EventTarget {
           this.logger.log(`Max baudrate: ${chipInfo.maxBaudrate}`);
         }
 
-        // Silicon Labs CP210x family workaround:
-        // The Windows VCP driver has a small receive buffer that drops bytes
-        // during sustained high-speed flash reads. Flag the device so the
-        // readFlash code path uses smaller block/maxInFlight values.
+        // Silicon Labs CP210x family workaround (issue #308, also
+        // espressif/esptool-js#87): the newer "CP210x Universal Windows
+        // Driver" (v10/v11, WDF-based, Win10 1803+/Win11) drops bytes or
+        // times out when the Web Serial API issues large overlapped reads
+        // during sustained high-speed bursts. Native tools (esptool.py,
+        // Arduino, PlatformIO) and the old 6.7.x VCP driver are not
+        // affected, and Linux/macOS work fine. Throttling readFlash to
+        // smaller block/maxInFlight values lets the driver drain its IRP
+        // queue between bursts and avoids the data loss.
         if (portInfo.usbVendorId === 0x10c4) {
           this._isCP210x = true;
           this.logger.log(
             "CP210x detected - using throttled flash read parameters " +
-              "(workaround for Silicon Labs Windows VCP driver buffer issue).",
+              "(workaround for Windows Universal VCP driver IRP timing).",
           );
         }
         // Detect ESP32-S2 Native USB
@@ -2223,8 +2228,15 @@ export class ESPLoader extends EventTarget {
         }
       }
     } else {
-      // Byte-by-byte version: Stable for non CDC USB-Serial adapters (CH340, CP2102, etc.)
-      let readBytes: number[] = [];
+      // Streaming version for non-CDC USB-Serial adapters (CH340, CP2102, etc.):
+      // process bytes directly from the input buffer one-by-one in a tight
+      // loop without going back to the outer wait loop after every byte.
+      // This mirrors what esptool-js PR #160 did for the same class of issue
+      // (CP210x on Windows) and removes the old 1-byte-per-iteration
+      // bottleneck while still leaving unprocessed bytes in _inputBuffer
+      // when we return on SLIP_END.
+      const startTime = Date.now();
+
       while (true) {
         // Check abandon flag (for reset strategy timeout)
         if (this._abandonCurrentOperation) {
@@ -2233,26 +2245,32 @@ export class ESPLoader extends EventTarget {
           );
         }
 
-        const stamp = Date.now();
-        readBytes = [];
-        while (Date.now() - stamp < timeout) {
-          if (this._inputBufferAvailable > 0) {
-            readBytes.push(this._readByte()!);
-            break;
-          } else {
-            // Reduced sleep time for faster response during high-speed transfers
-            await sleep(1);
-          }
-        }
-        if (readBytes.length == 0) {
+        // Check timeout
+        if (Date.now() - startTime > timeout) {
           const waitingFor = partialPacket === null ? "header" : "content";
           throw new SlipReadError("Timed out waiting for packet " + waitingFor);
         }
-        if (this.debug)
-          this.logger.debug(
-            "Read " + readBytes.length + " bytes: " + hexFormatter(readBytes),
-          );
-        for (const byte of readBytes) {
+
+        // If no data available, wait a bit and re-check
+        if (this._inputBufferAvailable === 0) {
+          await sleep(1);
+          continue;
+        }
+
+        // Drain all currently available bytes through the SLIP state machine
+        // in one pass. We read directly from _inputBuffer (via _readByte),
+        // so an early return on SLIP_END naturally leaves the tail in place
+        // for the next readPacket() call.
+        while (this._inputBufferAvailable > 0) {
+          // Periodic timeout check to prevent hang on slow data
+          if (Date.now() - startTime > timeout) {
+            const waitingFor = partialPacket === null ? "header" : "content";
+            throw new SlipReadError(
+              "Timed out waiting for packet " + waitingFor,
+            );
+          }
+          const byte = this._readByte()!;
+
           if (partialPacket === null) {
             // waiting for packet header
             if (byte == this.SLIP_END) {
@@ -4461,11 +4479,11 @@ export class ESPLoader extends EventTarget {
             blockSize = baseBlockSize * this._adaptiveBlockMultiplier;
             maxInFlight = baseBlockSize * this._adaptiveMaxInFlightMultiplier;
           } else if (this._isCP210x) {
-            // Silicon Labs CP210x on Windows: the VCP driver has a small
-            // receive buffer (~512 bytes typical) and drops bytes when the
-            // stub bursts large SLIP packets. Use a conservative block size
-            // matching the upstream esptool.py default and keep maxInFlight
-            // small enough that the driver can always drain in time.
+            // Silicon Labs CP210x workaround (issue #308): the newer
+            // CP210x Universal Windows Driver loses bytes / times out when
+            // the Web Serial API issues large overlapped reads during a
+            // sustained high-speed burst. Smaller blocks give the driver
+            // room to complete its IRPs between bursts.
             blockSize = 1024;
             maxInFlight = 2048;
           } else {
