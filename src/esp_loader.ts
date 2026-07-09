@@ -2795,10 +2795,7 @@ export class ESPLoader extends EventTarget {
       eraseSize = size;
     }
 
-    const timeout = Math.max(
-      timeoutPerMb(ERASE_REGION_TIMEOUT_PER_MB, size),
-      DEFAULT_TIMEOUT,
-    );
+    const timeout = timeoutPerMb(ERASE_REGION_TIMEOUT_PER_MB, size);
 
     const stamp = Date.now();
     let buffer = pack("<IIII", eraseSize, numBlocks, flashWriteSize, offset);
@@ -3119,7 +3116,17 @@ export class ESPLoader extends EventTarget {
   async memFinish(entrypoint = 0) {
     const timeout = this.IS_STUB ? DEFAULT_TIMEOUT : MEM_END_ROM_TIMEOUT;
     const data = pack("<II", entrypoint == 0 ? 1 : 0, entrypoint);
-    return await this.checkCommand(ESP_MEM_END, data, 0, timeout);
+    try {
+      return await this.checkCommand(ESP_MEM_END, data, 0, timeout);
+    } catch (err) {
+      if (this.IS_STUB) {
+        throw err;
+      }
+      if (this.debug) {
+        this.logger.debug(`Ignoring ROM MEM_END error: ${err}`);
+      }
+      return [0, []];
+    }
   }
 
   async runStub(skipFlashDetection = false): Promise<EspStubLoader> {
@@ -3156,16 +3163,7 @@ export class ESPLoader extends EventTarget {
         await this.memBlock(fieldData.slice(fromOffs, toOffs), seq);
       }
     }
-    try {
-      await this.memFinish(stub.entry);
-    } catch {
-      // Native USB chips may not return the ROM MEM_END response after the stub takes over.
-      if (this.debug) {
-        this.logger.debug(
-          "Failed to get MEM_END response from ROM, continuing...",
-        );
-      }
-    }
+    await this.memFinish(stub.entry);
 
     const p = await this.readPacket(2500);
     const pChar = String.fromCharCode(...p);
