@@ -23,6 +23,7 @@ interface LoadedStub {
   text_start: number;
   entry: number;
   data_start: number;
+  default?: LoadedStub;
 }
 
 export interface Stub {
@@ -68,11 +69,16 @@ export const getStubCode = async (
   } else if (chipFamily == CHIP_FAMILY_ESP32H2) {
     stubcode = await import("./esp32h2.json");
   } else if (chipFamily == CHIP_FAMILY_ESP32P4) {
-    // ESP32-P4: Use esp32p4r3.json for Rev. 300+, esp32p4.json for older revisions
-    if (chipRevision !== null && chipRevision !== undefined && chipRevision >= 300) {
-      stubcode = await import("./esp32p4r3.json");
-    } else {
+    // esp32p4.json for Rev 3.x (300+) and
+    // esp32p4-rev1.json for older revisions.
+    if (
+      chipRevision !== null &&
+      chipRevision !== undefined &&
+      chipRevision >= 300
+    ) {
       stubcode = await import("./esp32p4.json");
+    } else {
+      stubcode = await import("./esp32p4-rev1.json");
     }
   } else if (chipFamily == CHIP_FAMILY_ESP32S31) {
     stubcode = await import("./esp32s31.json");
@@ -81,10 +87,12 @@ export const getStubCode = async (
     return null;
   }
 
+  const sc = stubcode?.default ?? stubcode;
+
   // Base64 decode the text and data
   return {
-    ...stubcode,
-    text: toByteArray(atob(stubcode.text)),
-    data: toByteArray(atob(stubcode.data)),
+    ...sc,
+    text: toByteArray(atob(sc.text)),
+    data: toByteArray(atob(sc.data)),
   };
 };
