@@ -41,10 +41,7 @@ export const getStubCode = async (
   let stubcode!: LoadedStub;
 
   // Chips without stub support yet
-  if (
-    chipFamily == CHIP_FAMILY_ESP32H4 ||
-    chipFamily == CHIP_FAMILY_ESP32H21
-  ) {
+  if (chipFamily == CHIP_FAMILY_ESP32H21) {
     return null;
   }
 
@@ -68,6 +65,8 @@ export const getStubCode = async (
     stubcode = await import("./esp32c61.json");
   } else if (chipFamily == CHIP_FAMILY_ESP32H2) {
     stubcode = await import("./esp32h2.json");
+  } else if (chipFamily == CHIP_FAMILY_ESP32H4) {
+    stubcode = await import("./esp32h4.json");
   } else if (chipFamily == CHIP_FAMILY_ESP32P4) {
     // esp32p4.json for Rev 3.x (300+) and
     // esp32p4-rev1.json for older revisions.
