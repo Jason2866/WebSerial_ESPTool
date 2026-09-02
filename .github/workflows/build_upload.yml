@@ -28,8 +28,6 @@ jobs:
         with:
           node-version: 25
           registry-url: 'https://registry.npmjs.org'
-      - name: Update npm to latest
-        run: npm install -g npm@latest
       - name: Check npm version
         run: npm --version
       - name: Install NPM
