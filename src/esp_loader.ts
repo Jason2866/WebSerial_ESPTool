@@ -2022,6 +2022,10 @@ export class ESPLoader extends EventTarget {
     // Serialize command execution to prevent lock contention
     const executeCommand = async (): Promise<[number, number[]]> => {
       timeout = Math.min(timeout, MAX_TIMEOUT);
+      // A previous command can leave an extra SLIP packet in the receive
+      // buffer. Discard it before sending a new command so it cannot be
+      // mistaken for this command's response.
+      this._clearInputBuffer();
       await this.sendCommand(opcode, buffer, checksum);
       const [value, responseData] = await this.getResponse(opcode, timeout);
 
