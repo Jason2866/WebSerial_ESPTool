@@ -67,6 +67,7 @@ import {
   ESP32C6_EFUSE_BLOCK1_ADDR,
   ESP32C61_EFUSE_BLOCK1_ADDR,
   ESP32H2_EFUSE_BLOCK1_ADDR,
+  ESP32H4_EFUSE_BLOCK1_ADDR,
   ESP32P4_EFUSE_BLOCK1_ADDR,
   ESP32S31_EFUSE_BLOCK1_ADDR,
   ESP32S31_RTC_CNTL_WDTWPROTECT_REG,
@@ -98,6 +99,8 @@ import {
   ESP32P4_RTC_CNTL_WDT_WKEY,
   ESP32P4_RTC_CNTL_OPTION1_REG,
   ESP32P4_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK,
+  ESP32P4_EFUSE_RD_REPEAT_DATA1_REG,
+  ESP32P4_EFUSE_DOWNLOAD_MODE_XPD_ON_MASK,
   ESP32P4_LP_SYSTEM_REG_ANA_XPD_PAD_GROUP_REG,
   ESP32P4_PMU_EXT_LDO_P0_0P1A_ANA_REG,
   ESP32P4_PMU_ANA_0P1A_EN_CUR_LIM_0,
@@ -540,8 +543,12 @@ export class ESPLoader extends EventTarget {
     // Detect chip type
     await this.detectChip();
 
-    // Power on flash for ESP32-P4 Rev 301 (must be done before loading stub)
-    if (this.chipFamily === CHIP_FAMILY_ESP32P4 && this.chipRevision === 301) {
+    // Power on flash for ESP32-P4 Rev 3.1 (301) & Rev 3.2 (302)
+    // (MUST be done BEFORE loading stub)
+    if (
+      this.chipFamily === CHIP_FAMILY_ESP32P4 &&
+      (this.chipRevision === 301 || this.chipRevision === 302)
+    ) {
       await this.powerOnFlash();
     }
 
@@ -746,6 +753,9 @@ export class ESPLoader extends EventTarget {
         break;
       }
       case CHIP_FAMILY_ESP32H4: {
+        const w3 = await this.readRegister(ESP32H4_EFUSE_BLOCK1_ADDR + 4 * 3);
+        minor = (w3 >> 18) & 0x0f;
+        major = (w3 >> 22) & 0x03;
         break;
       }
       case CHIP_FAMILY_ESP32H21: {
@@ -769,20 +779,36 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
-   * Power on the flash chip for ESP32-P4 Rev 301 (ECO6)
-   * The flash chip is powered off by default on ECO6, when the default flash
-   * voltage changed from 1.8V to 3.3V. This is to prevent damage to 1.8V flash chips.
+   * Power on the flash chip for ESP32-P4 Rev 3.1 (301) & Rev 3.2 (302).
+   * The flash chip is powered off by default on P4 Rev 3.1 (301) & Rev 3.2 (302)
+   * when the default flash voltage changed from 1.8V to 3.3V.
+   * This is to prevent damage to 1.8V flash chips.
    */
   async powerOnFlash(): Promise<void> {
     if (this.chipFamily !== CHIP_FAMILY_ESP32P4) {
       return; // Only needed for ESP32-P4
     }
 
-    if (this.chipRevision !== 301) {
-      return; // Only needed for Rev 301 (ECO6)
+    const revision = this.chipRevision;
+    // Only Rev 3.1 (301) and Rev 3.2 (302) need the flash power handling below.
+    // All other revisions return immediately.
+    if (!revision || (revision !== 301 && revision !== 302)) {
+      return;
     }
 
-    this.logger.debug("Powering on flash for ESP32-P4 Rev 301 (ECO6)");
+    // Rev 3.2 (302) may already have flash XPD asserted by ROM in download mode.
+    // When that efuse bit is set, clear the PMU force-on state and skip the
+    // Rev 3.1-style full power-on sequence.
+    if (revision && revision === 302) {
+      const efuseValue = await this.readRegister(
+        ESP32P4_EFUSE_RD_REPEAT_DATA1_REG,
+      );
+
+      if (efuseValue & ESP32P4_EFUSE_DOWNLOAD_MODE_XPD_ON_MASK) {
+        await this.writeRegister(ESP32P4_PMU_DATE_REG, 0);
+        return;
+      }
+    }
 
     // Power up pad group
     await this.writeRegister(ESP32P4_LP_SYSTEM_REG_ANA_XPD_PAD_GROUP_REG, 1);
@@ -2769,26 +2795,18 @@ export class ESPLoader extends EventTarget {
       eraseSize = size;
     }
 
-    const timeout = this.IS_STUB
-      ? DEFAULT_TIMEOUT
-      : timeoutPerMb(ERASE_REGION_TIMEOUT_PER_MB, size);
+    const timeout = timeoutPerMb(ERASE_REGION_TIMEOUT_PER_MB, size);
 
     const stamp = Date.now();
     let buffer = pack("<IIII", eraseSize, numBlocks, flashWriteSize, offset);
+    // ESP32/ESP8266 ROM bootloaders use the legacy 4-word format,
+    // while stubs and newer ROMs accept the 5th "encrypted" word.
+    // Reference:
+    // https://github.com/espressif/esptool/blob/c7dd1c6ffe4266ba398d44b6c43678263570b8ac/esptool/loader.py#L1091
     if (
-      this.chipFamily == CHIP_FAMILY_ESP32 ||
-      this.chipFamily == CHIP_FAMILY_ESP32S2 ||
-      this.chipFamily == CHIP_FAMILY_ESP32S3 ||
-      this.chipFamily == CHIP_FAMILY_ESP32C2 ||
-      this.chipFamily == CHIP_FAMILY_ESP32C3 ||
-      this.chipFamily == CHIP_FAMILY_ESP32C5 ||
-      this.chipFamily == CHIP_FAMILY_ESP32C6 ||
-      this.chipFamily == CHIP_FAMILY_ESP32C61 ||
-      this.chipFamily == CHIP_FAMILY_ESP32H2 ||
-      this.chipFamily == CHIP_FAMILY_ESP32H4 ||
-      this.chipFamily == CHIP_FAMILY_ESP32H21 ||
-      this.chipFamily == CHIP_FAMILY_ESP32P4 ||
-      this.chipFamily == CHIP_FAMILY_ESP32S31
+      this.IS_STUB ||
+      (this.chipFamily != CHIP_FAMILY_ESP32 &&
+        this.chipFamily != CHIP_FAMILY_ESP8266)
     ) {
       buffer = buffer.concat(pack("<I", encrypted ? 1 : 0));
     }
@@ -3098,7 +3116,17 @@ export class ESPLoader extends EventTarget {
   async memFinish(entrypoint = 0) {
     const timeout = this.IS_STUB ? DEFAULT_TIMEOUT : MEM_END_ROM_TIMEOUT;
     const data = pack("<II", entrypoint == 0 ? 1 : 0, entrypoint);
-    return await this.checkCommand(ESP_MEM_END, data, 0, timeout);
+    try {
+      return await this.checkCommand(ESP_MEM_END, data, 0, timeout);
+    } catch (err) {
+      if (this.IS_STUB) {
+        throw err;
+      }
+      if (this.debug) {
+        this.logger.debug(`Ignoring ROM MEM_END error: ${err}`);
+      }
+      return [0, []];
+    }
   }
 
   async runStub(skipFlashDetection = false): Promise<EspStubLoader> {
@@ -3137,13 +3165,14 @@ export class ESPLoader extends EventTarget {
     }
     await this.memFinish(stub.entry);
 
-    const p = await this.readPacket(500);
+    const p = await this.readPacket(2500);
     const pChar = String.fromCharCode(...p);
 
     if (pChar != "OHAI") {
       throw new Error("Failed to start stub. Unexpected response: " + pChar);
     }
     this.logger.debug("Stub is now running...");
+    this._commandLock = Promise.resolve([0, []]);
     const espStubLoader = new EspStubLoader(this.port, this.logger, this);
 
     // Try to autodetect the flash size.
@@ -3920,10 +3949,11 @@ export class ESPLoader extends EventTarget {
         throw new Error("Port not ready after reconnect");
       }
 
-      // Power on flash for ESP32-P4 Rev 301 (must be done before loading stub)
+      // Power on flash for ESP32-P4 Rev 3.1 (301) & Rev 3.2 (302)
+      // (MUST be done BEFORE loading stub)
       if (
         this.chipFamily === CHIP_FAMILY_ESP32P4 &&
-        this.chipRevision === 301
+        (this.chipRevision === 301 || this.chipRevision === 302)
       ) {
         await this.powerOnFlash();
       }
@@ -4400,7 +4430,6 @@ export class ESPLoader extends EventTarget {
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
         let resp = new Uint8Array(0);
-        let lastAckedLength = 0; // Track last acknowledged length
 
         try {
           // Only log on first attempt or retries
@@ -4410,44 +4439,41 @@ export class ESPLoader extends EventTarget {
             );
           }
 
-          let blockSize: number;
-          let maxInFlight: number;
+          let packetSize: number;
+          let maxInFlightPackets: number;
 
           if (
             options?.blockSize !== undefined &&
             options?.maxInFlight !== undefined
           ) {
-            // Use user-provided values if in advanced mode
-            blockSize = options.blockSize;
-            maxInFlight = options.maxInFlight;
+            // READ_FLASH expects packet size and max in-flight packet count.
+            packetSize = options.blockSize;
+            maxInFlightPackets = options.maxInFlight;
             if (retryCount === 0) {
               this.logger.debug(
-                `Using custom parameters: blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
+                `Using custom parameters: packetSize=${packetSize}, maxInFlightPackets=${maxInFlightPackets}`,
               );
             }
           } else if (this.isWebUSB()) {
-            // WebUSB (Android): All devices use adaptive speed
-            // All have maxTransferSize=64, baseBlockSize=31
+            // WebUSB (Android): Use a smaller packet size, but keep the protocol
+            // semantics aligned with esptool: packet size plus max in-flight count.
             const maxTransferSize =
               (this.port as WebUSBSerialPort).maxTransferSize || 64;
-            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
-
-            // Use current adaptive multipliers (initialized at start of readFlash)
-            blockSize = baseBlockSize * this._adaptiveBlockMultiplier;
-            maxInFlight = baseBlockSize * this._adaptiveMaxInFlightMultiplier;
+            const basePacketSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
+            packetSize = basePacketSize * this._adaptiveBlockMultiplier;
+            maxInFlightPackets = this._adaptiveMaxInFlightMultiplier;
           } else {
-            // Web Serial (Desktop): Use multiples of 63 for consistency
-            const base = 63;
-            blockSize = base * 65; // 63 * 65 = 4095 (close to 0x1000)
-            maxInFlight = base * 130; // 63 * 130 = 8190 (close to blockSize * 2)
+            // Web Serial (Desktop): Match esptool's default READ_FLASH protocol.
+            packetSize = FLASH_SECTOR_SIZE;
+            maxInFlightPackets = 64;
           }
 
           const pkt = pack(
             "<IIII",
             currentAddr,
             chunkSize,
-            blockSize,
-            maxInFlight,
+            packetSize,
+            maxInFlightPackets,
           );
 
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
@@ -4501,22 +4527,11 @@ export class ESPLoader extends EventTarget {
               newResp.set(packetData, resp.length);
               resp = newResp;
 
-              // Send acknowledgment when we've received maxInFlight bytes
-              // The stub sends packets until (num_sent - num_acked) >= max_in_flight
-              // We MUST wait for all packets before sending ACK
-              const shouldAck =
-                resp.length >= chunkSize || // End of chunk
-                resp.length >= lastAckedLength + maxInFlight; // Received all packets
-
-              if (shouldAck) {
-                const ackData = pack("<I", resp.length);
-                const slipEncodedAck = slipEncode(ackData);
-                await this.writeToStream(slipEncodedAck);
-
-                // Update lastAckedLength to current response length
-                // This ensures next ACK is sent at the right time
-                lastAckedLength = resp.length;
-              }
+              // READ_FLASH ACKs are sent after each received SLIP data packet and
+              // contain the total number of bytes received so far.
+              const ackData = pack("<I", resp.length);
+              const slipEncodedAck = slipEncode(ackData);
+              await this.writeToStream(slipEncodedAck);
             }
           }
 

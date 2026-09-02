@@ -404,6 +404,8 @@ export const ESP32P4_GPIO_STRAP_REG = 0x500e0038;
 export const ESP32P4_GPIO_STRAP_SPI_BOOT_MASK = 0x8; // Not download mode
 export const ESP32P4_RTC_CNTL_OPTION1_REG = 0x50110008;
 export const ESP32P4_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK = 0x4; // Is download mode forced over USB?
+export const ESP32P4_EFUSE_RD_REPEAT_DATA1_REG = ESP32P4_BASEFUSEADDR + 0x034;
+export const ESP32P4_EFUSE_DOWNLOAD_MODE_XPD_ON_MASK = 0x1 << 16;
 
 // Flash power-on related registers and bits needed for ECO6 (Rev 301)
 export const ESP32P4_DR_REG_LPAON_BASE = 0x50110000;
