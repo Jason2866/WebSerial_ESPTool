@@ -2022,6 +2022,10 @@ export class ESPLoader extends EventTarget {
     // Serialize command execution to prevent lock contention
     const executeCommand = async (): Promise<[number, number[]]> => {
       timeout = Math.min(timeout, MAX_TIMEOUT);
+      // A previous command can leave an extra SLIP packet in the receive
+      // buffer. Discard it before sending a new command so it cannot be
+      // mistaken for this command's response.
+      this._clearInputBuffer();
       await this.sendCommand(opcode, buffer, checksum);
       const [value, responseData] = await this.getResponse(opcode, timeout);
 
@@ -2327,9 +2331,21 @@ export class ESPLoader extends EventTarget {
         continue;
       }
 
-      const [resp, opRet, , val] = unpack("<BBHI", packet.slice(0, 8));
+      const [resp, opRet, dataLength, val] = unpack(
+        "<BBHI",
+        packet.slice(0, 8),
+      );
 
       if (resp != 1) {
+        continue;
+      }
+      // A flash-data packet can coincidentally contain the requested opcode
+      // in its first bytes. Only command responses have a length field that
+      // describes the complete payload following the response header.
+      if (dataLength !== packet.length - 8) {
+        continue;
+      }
+      if (opcode === ESP_READ_FLASH && this.IS_STUB && dataLength !== 2) {
         continue;
       }
       const data = packet.slice(8);
