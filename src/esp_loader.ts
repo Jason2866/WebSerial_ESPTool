@@ -2331,9 +2331,21 @@ export class ESPLoader extends EventTarget {
         continue;
       }
 
-      const [resp, opRet, , val] = unpack("<BBHI", packet.slice(0, 8));
+      const [resp, opRet, dataLength, val] = unpack(
+        "<BBHI",
+        packet.slice(0, 8),
+      );
 
       if (resp != 1) {
+        continue;
+      }
+      // A flash-data packet can coincidentally contain the requested opcode
+      // in its first bytes. Only command responses have a length field that
+      // describes the complete payload following the response header.
+      if (dataLength !== packet.length - 8) {
+        continue;
+      }
+      if (opcode === ESP_READ_FLASH && this.IS_STUB && dataLength !== 2) {
         continue;
       }
       const data = packet.slice(8);
