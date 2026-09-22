@@ -2613,18 +2613,7 @@ export class ESPLoader extends EventTarget {
 
           // Send read flash command for this chunk
           // This must be inside the retry loop so we send a fresh command after errors
-          // Updated P4 stub uses the upstream 64-packet read window.
-          const maxInFlight =
-            this.chipFamily === CHIP_FAMILY_ESP32P4 && this.chipRevision === 302
-              ? 64
-              : 1024;
-          const pkt = pack(
-            "<IIII",
-            currentAddr,
-            chunkSize,
-            0x1000,
-            maxInFlight,
-          );
+          const pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, 1024);
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
           if (res != 0) {
