@@ -677,8 +677,8 @@ export class ESPLoader extends EventTarget {
         const date = await this.readRegister(ESP32P4_PMU_DATE_REG);
         if ((date & 3) === 3) {
           await this.writeRegister(ESP32P4_PMU_DATE_REG, date & ~3);
+          return;
         }
-        return;
       }
     }
 
