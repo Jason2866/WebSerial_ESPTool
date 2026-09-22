@@ -68,6 +68,7 @@ import {
   ESP32C61_EFUSE_BLOCK1_ADDR,
   ESP32H2_EFUSE_BLOCK1_ADDR,
   ESP32H4_EFUSE_BLOCK1_ADDR,
+  ESP32H21_EFUSE_BLOCK1_ADDR,
   ESP32P4_EFUSE_BLOCK1_ADDR,
   ESP32S31_EFUSE_BLOCK1_ADDR,
   ESP32S31_RTC_CNTL_WDTWPROTECT_REG,
@@ -753,12 +754,17 @@ export class ESPLoader extends EventTarget {
         break;
       }
       case CHIP_FAMILY_ESP32H4: {
+        // pkg: EFUSE_BLOCK1 word 4 bits 14:12, minor: word 3 bits 21:18, major: word 3 bits 23:22
         const w3 = await this.readRegister(ESP32H4_EFUSE_BLOCK1_ADDR + 4 * 3);
         minor = (w3 >> 18) & 0x0f;
         major = (w3 >> 22) & 0x03;
         break;
       }
       case CHIP_FAMILY_ESP32H21: {
+        // pkg: EFUSE_BLOCK1 word 5 bits 13:11, minor: word 5 bits 7:4, major: word 5 bits 9:8
+        const w5 = await this.readRegister(ESP32H21_EFUSE_BLOCK1_ADDR + 4 * 5);
+        minor = (w5 >> 4) & 0x0f;
+        major = (w5 >> 8) & 0x03;
         break;
       }
       case CHIP_FAMILY_ESP32P4: {
