@@ -103,6 +103,10 @@ export class ESPLoader extends EventTarget {
   connected = true;
   flashSize: string | null = null;
 
+  // UnixTight reset state for ESP32-P4 rev 3.2 over external USB-serial bridges
+  private _unixTightAttempted = false;
+  private _preferUnixTight = false;
+
   __inputBuffer?: number[];
   __inputBufferReadIndex?: number;
   __totalBytesRead?: number;
@@ -975,7 +979,45 @@ export class ESPLoader extends EventTarget {
     await this.port.setSignals({ dataTerminalReady: state });
   }
 
+  /**
+   * Returns true when the connected chip is an ESP32-P4 rev 3.2 accessed
+   * via an external USB-serial bridge (not native USB-JTAG/Serial).
+   * Those are the only boards that benefit from the UnixTight reset.
+   */
+  private canUseUnixTight(): boolean {
+    const info = this.port.getInfo();
+    return (
+      this.chipFamily === CHIP_FAMILY_ESP32P4 &&
+      this.chipRevision === 302 &&
+      info.usbVendorId !== 0x303a &&
+      info.usbProductId !== USB_JTAG_SERIAL_PID
+    );
+  }
+
+  /**
+   * UnixTight reset signal sequence
+   * Sets DTR and RTS simultaneously via setSignals() to avoid the Windows
+   * workaround that setRTS() applies (which would alter DTR as a side-effect).
+   */
+  private async resetUnixTight(): Promise<void> {
+    await this.port.setSignals({ dataTerminalReady: true, requestToSend: true });
+    await this.port.setSignals({ dataTerminalReady: false, requestToSend: false });
+    await this.port.setSignals({ dataTerminalReady: false, requestToSend: true });
+    await this.sleep(100);
+    await this.port.setSignals({ dataTerminalReady: true, requestToSend: false });
+    await this.sleep(50);
+    await this.port.setSignals({ dataTerminalReady: false, requestToSend: false });
+    await this.setDTR(false);
+    await this.sleep(200);
+  }
+
   async hardReset(bootloader = false) {
+    if (bootloader && this._preferUnixTight && this.canUseUnixTight()) {
+      this.logger.log("Using UnixTight reset for ESP32-P4 rev 3.2 reconnect.");
+      await this.resetUnixTight();
+      // reconnect() handles ROM sync and flash power initialisation after reset.
+      return;
+    }
     if (bootloader) {
       // enter flash mode
       if (this.port.getInfo().usbProductId === USB_JTAG_SERIAL_PID) {
@@ -2041,6 +2083,50 @@ export class ESPLoader extends EventTarget {
   }
 
   async runStub(skipFlashDetection = false): Promise<EspStubLoader> {
+    try {
+      return await this._runStubCore(skipFlashDetection);
+    } catch (initialError) {
+      // For ESP32-P4 rev 3.2 on external USB-serial bridges, retry once
+      // with the UnixTight reset sequence if the stub fails to initialise.
+      if (
+        !this.canUseUnixTight() ||
+        this._unixTightAttempted ||
+        !this.connected ||
+        !this.port.readable ||
+        !this.port.writable
+      ) {
+        throw initialError;
+      }
+      this._unixTightAttempted = true;
+      const initialMessage =
+        initialError instanceof Error
+          ? initialError.message
+          : String(initialError);
+      this.logger.log(
+        `ESP32-P4 rev 3.2 stub initialization failed (${initialMessage}); retrying once with UnixTight reset.`,
+      );
+      try {
+        await this.resetUnixTight();
+        await this.flushSerialBuffers();
+        await this.sync();
+        await this.powerOnFlash();
+        const stub = await this._runStubCore(skipFlashDetection);
+        this._preferUnixTight = true;
+        this.logger.log("ESP32-P4 rev 3.2 stub initialized after UnixTight reset.");
+        return stub;
+      } catch (retryError) {
+        const retryMessage =
+          retryError instanceof Error
+            ? retryError.message
+            : String(retryError);
+        throw new Error(
+          `ESP32-P4 rev 3.2 stub initialization failed: ${initialMessage}. UnixTight retry failed: ${retryMessage}`,
+        );
+      }
+    }
+  }
+
+  private async _runStubCore(skipFlashDetection = false): Promise<EspStubLoader> {
     this.logger.debug(
       `Loading stub for ${this.chipName}, revision: ${this.chipRevision}`,
     );
