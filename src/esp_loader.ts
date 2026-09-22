@@ -1000,13 +1000,28 @@ export class ESPLoader extends EventTarget {
    * workaround that setRTS() applies (which would alter DTR as a side-effect).
    */
   private async resetUnixTight(): Promise<void> {
-    await this.port.setSignals({ dataTerminalReady: true, requestToSend: true });
-    await this.port.setSignals({ dataTerminalReady: false, requestToSend: false });
-    await this.port.setSignals({ dataTerminalReady: false, requestToSend: true });
+    await this.port.setSignals({
+      dataTerminalReady: true,
+      requestToSend: true,
+    });
+    await this.port.setSignals({
+      dataTerminalReady: false,
+      requestToSend: false,
+    });
+    await this.port.setSignals({
+      dataTerminalReady: false,
+      requestToSend: true,
+    });
     await this.sleep(100);
-    await this.port.setSignals({ dataTerminalReady: true, requestToSend: false });
+    await this.port.setSignals({
+      dataTerminalReady: true,
+      requestToSend: false,
+    });
     await this.sleep(50);
-    await this.port.setSignals({ dataTerminalReady: false, requestToSend: false });
+    await this.port.setSignals({
+      dataTerminalReady: false,
+      requestToSend: false,
+    });
     await this.setDTR(false);
     await this.sleep(200);
   }
@@ -2112,13 +2127,13 @@ export class ESPLoader extends EventTarget {
         await this.powerOnFlash();
         const stub = await this._runStubCore(skipFlashDetection);
         this._preferUnixTight = true;
-        this.logger.log("ESP32-P4 rev 3.2 stub initialized after UnixTight reset.");
+        this.logger.log(
+          "ESP32-P4 rev 3.2 stub initialized after UnixTight reset.",
+        );
         return stub;
       } catch (retryError) {
         const retryMessage =
-          retryError instanceof Error
-            ? retryError.message
-            : String(retryError);
+          retryError instanceof Error ? retryError.message : String(retryError);
         throw new Error(
           `ESP32-P4 rev 3.2 stub initialization failed: ${initialMessage}. UnixTight retry failed: ${retryMessage}`,
         );
@@ -2126,7 +2141,9 @@ export class ESPLoader extends EventTarget {
     }
   }
 
-  private async _runStubCore(skipFlashDetection = false): Promise<EspStubLoader> {
+  private async _runStubCore(
+    skipFlashDetection = false,
+  ): Promise<EspStubLoader> {
     this.logger.debug(
       `Loading stub for ${this.chipName}, revision: ${this.chipRevision}`,
     );
