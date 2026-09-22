@@ -42,8 +42,7 @@ export const getStubCode = async (
   // Chips without stub support yet
   if (
     chipFamily == CHIP_FAMILY_ESP32H4 ||
-    chipFamily == CHIP_FAMILY_ESP32H21 ||
-    chipFamily == CHIP_FAMILY_ESP32S31
+    chipFamily == CHIP_FAMILY_ESP32H21
   ) {
     return null;
   }
@@ -69,12 +68,16 @@ export const getStubCode = async (
   } else if (chipFamily == CHIP_FAMILY_ESP32H2) {
     stubcode = await import("./esp32h2.json");
   } else if (chipFamily == CHIP_FAMILY_ESP32P4) {
-    // ESP32-P4: Use esp32p4r3.json for Rev. 300+, esp32p4.json for older revisions
-    if (chipRevision !== null && chipRevision !== undefined && chipRevision >= 300) {
+    // ESP32-P4: Use esp32p4r32.json for Rev. 302, esp32p4r3.json for Rev. 300+, esp32p4.json for older revisions
+    if (chipRevision === 302) {
+      stubcode = await import("./esp32p4r32.json");
+    } else if (chipRevision !== null && chipRevision !== undefined && chipRevision >= 300) {
       stubcode = await import("./esp32p4r3.json");
     } else {
       stubcode = await import("./esp32p4.json");
     }
+  } else if (chipFamily == CHIP_FAMILY_ESP32S31) {
+    stubcode = await import("./esp32s31.json");
   }
 
   // Base64 decode the text and data

@@ -75,6 +75,8 @@ import {
   ESP32C5_PCR_SYSCLK_XTAL_FREQ_V,
   ESP32C5_PCR_SYSCLK_XTAL_FREQ_S,
   SlipReadError,
+  ESP32P4_EFUSE_RD_REPEAT_DATA1_REG,
+  ESP32P4_EFUSE_DOWNLOAD_MODE_XPD_ON_MASK,
   ESP32P4_LP_SYSTEM_REG_ANA_XPD_PAD_GROUP_REG,
   ESP32P4_PMU_EXT_LDO_P0_0P1A_ANA_REG,
   ESP32P4_PMU_ANA_0P1A_EN_CUR_LIM_0,
@@ -426,8 +428,8 @@ export class ESPLoader extends EventTarget {
     // Detect chip type
     await this.detectChip();
 
-    // Power on flash for ESP32-P4 Rev 301 (must be done before loading stub)
-    if (this.chipFamily === CHIP_FAMILY_ESP32P4 && this.chipRevision === 301) {
+    // Power on flash for ESP32-P4 Rev 301/302 (must be done before loading stub)
+    if (this.chipFamily === CHIP_FAMILY_ESP32P4 && (this.chipRevision === 301 || this.chipRevision === 302)) {
       await this.powerOnFlash();
     }
 
@@ -635,8 +637,8 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
-   * Power on the flash chip for ESP32-P4 Rev 301 (ECO6)
-   * The flash chip is powered off by default on ECO6, when the default flash
+   * Power on the flash chip for ESP32-P4 Rev 301/302 (ECO6/ECO7)
+   * The flash chip is powered off by default on ECO6/ECO7, when the default flash
    * voltage changed from 1.8V to 3.3V. This is to prevent damage to 1.8V flash chips.
    */
   async powerOnFlash(): Promise<void> {
@@ -644,11 +646,24 @@ export class ESPLoader extends EventTarget {
       return; // Only needed for ESP32-P4
     }
 
-    if (this.chipRevision !== 301) {
-      return; // Only needed for Rev 301 (ECO6)
+    if (this.chipRevision !== 301 && this.chipRevision !== 302) {
+      return; // Only needed for Rev 301/302 (ECO6/ECO7)
     }
 
-    this.logger.debug("Powering on flash for ESP32-P4 Rev 301 (ECO6)");
+    // Rev 302 ROM can already power flash in download mode. Release its
+    // force-on state before attaching flash; preserve unrelated PMU bits.
+    if (this.chipRevision === 302) {
+      const efuse = await this.readRegister(ESP32P4_EFUSE_RD_REPEAT_DATA1_REG);
+      if (efuse & ESP32P4_EFUSE_DOWNLOAD_MODE_XPD_ON_MASK) {
+        const date = await this.readRegister(ESP32P4_PMU_DATE_REG);
+        if ((date & 3) === 3) {
+          await this.writeRegister(ESP32P4_PMU_DATE_REG, date & ~3);
+        }
+        return;
+      }
+    }
+
+    this.logger.debug(`Powering on flash for ESP32-P4 Rev ${this.chipRevision}`);
 
     // Power up pad group
     await this.writeRegister(ESP32P4_LP_SYSTEM_REG_ANA_XPD_PAD_GROUP_REG, 1);
@@ -2328,10 +2343,10 @@ export class ESPLoader extends EventTarget {
         throw new Error("Port not ready after reconnect");
       }
 
-      // Power on flash for ESP32-P4 Rev 301 (must be done before loading stub)
+      // Power on flash for ESP32-P4 Rev 301/302 (must be done before loading stub)
       if (
         this.chipFamily === CHIP_FAMILY_ESP32P4 &&
-        this.chipRevision === 301
+        (this.chipRevision === 301 || this.chipRevision === 302)
       ) {
         await this.powerOnFlash();
       }
@@ -2490,7 +2505,9 @@ export class ESPLoader extends EventTarget {
 
           // Send read flash command for this chunk
           // This must be inside the retry loop so we send a fresh command after errors
-          const pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, 1024);
+          // Updated P4 stub uses the upstream 64-packet read window.
+          const maxInFlight = this.chipFamily === CHIP_FAMILY_ESP32P4 && this.chipRevision === 302 ? 64 : 1024;
+          const pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, maxInFlight);
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
           if (res != 0) {
