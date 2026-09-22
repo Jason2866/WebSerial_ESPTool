@@ -429,7 +429,10 @@ export class ESPLoader extends EventTarget {
     await this.detectChip();
 
     // Power on flash for ESP32-P4 Rev 301/302 (must be done before loading stub)
-    if (this.chipFamily === CHIP_FAMILY_ESP32P4 && (this.chipRevision === 301 || this.chipRevision === 302)) {
+    if (
+      this.chipFamily === CHIP_FAMILY_ESP32P4 &&
+      (this.chipRevision === 301 || this.chipRevision === 302)
+    ) {
       await this.powerOnFlash();
     }
 
@@ -663,7 +666,9 @@ export class ESPLoader extends EventTarget {
       }
     }
 
-    this.logger.debug(`Powering on flash for ESP32-P4 Rev ${this.chipRevision}`);
+    this.logger.debug(
+      `Powering on flash for ESP32-P4 Rev ${this.chipRevision}`,
+    );
 
     // Power up pad group
     await this.writeRegister(ESP32P4_LP_SYSTEM_REG_ANA_XPD_PAD_GROUP_REG, 1);
@@ -2506,8 +2511,17 @@ export class ESPLoader extends EventTarget {
           // Send read flash command for this chunk
           // This must be inside the retry loop so we send a fresh command after errors
           // Updated P4 stub uses the upstream 64-packet read window.
-          const maxInFlight = this.chipFamily === CHIP_FAMILY_ESP32P4 && this.chipRevision === 302 ? 64 : 1024;
-          const pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, maxInFlight);
+          const maxInFlight =
+            this.chipFamily === CHIP_FAMILY_ESP32P4 && this.chipRevision === 302
+              ? 64
+              : 1024;
+          const pkt = pack(
+            "<IIII",
+            currentAddr,
+            chunkSize,
+            0x1000,
+            maxInFlight,
+          );
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
           if (res != 0) {
