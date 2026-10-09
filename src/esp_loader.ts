@@ -75,6 +75,52 @@ import {
   ESP32S31_RTC_CNTL_WDTCONFIG0_REG,
   ESP32S31_RTC_CNTL_WDTCONFIG1_REG,
   ESP32S31_RTC_CNTL_WDT_WKEY,
+  ESP32S31_RTC_CNTL_SWD_CONF_REG,
+  ESP32S31_RTC_CNTL_SWD_AUTO_FEED_EN,
+  ESP32S31_RTC_CNTL_SWD_WPROTECT_REG,
+  ESP32S31_RTC_CNTL_SWD_WKEY,
+  ESP32S3_RTC_CNTL_SWD_CONF_REG,
+  ESP32S3_RTC_CNTL_SWD_AUTO_FEED_EN,
+  ESP32S3_RTC_CNTL_SWD_WPROTECT_REG,
+  ESP32S3_RTC_CNTL_SWD_WKEY,
+  ESP32C3_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32C3_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32C3_RTC_CNTL_WDT_WKEY,
+  ESP32C3_RTC_CNTL_SWD_CONF_REG,
+  ESP32C3_RTC_CNTL_SWD_AUTO_FEED_EN,
+  ESP32C3_RTC_CNTL_SWD_WPROTECT_REG,
+  ESP32C3_RTC_CNTL_SWD_WKEY,
+  ESP32C5_C6_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32C5_C6_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32C5_C6_RTC_CNTL_WDT_WKEY,
+  ESP32C5_C6_RTC_CNTL_SWD_CONF_REG,
+  ESP32C5_C6_RTC_CNTL_SWD_AUTO_FEED_EN,
+  ESP32C5_C6_RTC_CNTL_SWD_WPROTECT_REG,
+  ESP32H2_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32H2_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32H2_RTC_CNTL_WDT_WKEY,
+  ESP32H2_RTC_CNTL_SWD_CONF_REG,
+  ESP32H2_RTC_CNTL_SWD_AUTO_FEED_EN,
+  ESP32H2_RTC_CNTL_SWD_WPROTECT_REG,
+  ESP32H2_RTC_CNTL_SWD_WKEY,
+  ESP32H4_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32H4_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32H4_RTC_CNTL_WDT_WKEY,
+  ESP32H4_RTC_CNTL_SWD_CONF_REG,
+  ESP32H4_RTC_CNTL_SWD_AUTO_FEED_EN,
+  ESP32H4_RTC_CNTL_SWD_WPROTECT_REG,
+  ESP32H4_RTC_CNTL_SWD_WKEY,
+  ESP32H21_RTC_CNTL_WDTWPROTECT_REG,
+  ESP32H21_RTC_CNTL_WDTCONFIG0_REG,
+  ESP32H21_RTC_CNTL_WDT_WKEY,
+  ESP32H21_RTC_CNTL_SWD_CONF_REG,
+  ESP32H21_RTC_CNTL_SWD_AUTO_FEED_EN,
+  ESP32H21_RTC_CNTL_SWD_WPROTECT_REG,
+  ESP32H21_RTC_CNTL_SWD_WKEY,
+  ESP32P4_RTC_CNTL_SWD_CONF_REG,
+  ESP32P4_RTC_CNTL_SWD_AUTO_FEED_EN,
+  ESP32P4_RTC_CNTL_SWD_WPROTECT_REG,
+  ESP32P4_RTC_CNTL_SWD_WKEY,
   SlipReadError,
   ESP32S2_RTC_CNTL_WDTWPROTECT_REG,
   ESP32S2_RTC_CNTL_WDTCONFIG0_REG,
@@ -564,13 +610,31 @@ export class ESPLoader extends EventTarget {
       this.logger.debug(`Could not detect USB connection type: ${err}`);
     }
 
+    let detectedUsbMode:
+      | { mode: "uart" | "usb-jtag-serial" | "usb-otg"; uartNo: number }
+      | undefined;
     try {
-      const usbMode = await this.getUsbMode();
+      detectedUsbMode = await this.getUsbMode();
       this.logger.debug(
-        `USB mode (register): ${usbMode.mode} (uartNo=${usbMode.uartNo})`,
+        `USB mode: ${detectedUsbMode.mode} (uartNo=${detectedUsbMode.uartNo})`,
       );
     } catch (err) {
       this.logger.debug(`Could not detect USB mode: ${err}`);
+    }
+
+    if (detectedUsbMode?.mode === "usb-jtag-serial") {
+      try {
+        const securityInfo = await this.getSecurityInfo();
+        if ((securityInfo.flags & (1 << 2)) === 0) {
+          await this.disableWatchdogsForUsbJtagSerial();
+        } else {
+          this.logger.debug(
+            "Skipping watchdog changes in Secure Download Mode",
+          );
+        }
+      } catch (err) {
+        this.logger.debug(`Could not disable watchdogs: ${err}`);
+      }
     }
 
     // Read the OTP data for this chip and store into this.efuses array
@@ -1683,6 +1747,108 @@ export class ESPLoader extends EventTarget {
 
     // Wait for reset to take effect
     await sleep(500);
+  }
+
+  private async disableWatchdogsForUsbJtagSerial(): Promise<void> {
+    let wdtProtectReg: number;
+    let wdtConfig0Reg: number;
+    let wdtKey: number;
+    let swdProtectReg: number;
+    let swdConfigReg: number;
+    let swdKey: number;
+    let swdAutoFeedEnable: number;
+
+    if (this.chipFamily === CHIP_FAMILY_ESP32S3) {
+      wdtProtectReg = ESP32S3_RTC_CNTL_WDTWPROTECT_REG;
+      wdtConfig0Reg = ESP32S3_RTC_CNTL_WDTCONFIG0_REG;
+      wdtKey = ESP32S3_RTC_CNTL_WDT_WKEY;
+      swdProtectReg = ESP32S3_RTC_CNTL_SWD_WPROTECT_REG;
+      swdConfigReg = ESP32S3_RTC_CNTL_SWD_CONF_REG;
+      swdKey = ESP32S3_RTC_CNTL_SWD_WKEY;
+      swdAutoFeedEnable = ESP32S3_RTC_CNTL_SWD_AUTO_FEED_EN;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32C3) {
+      wdtProtectReg = ESP32C3_RTC_CNTL_WDTWPROTECT_REG;
+      wdtConfig0Reg = ESP32C3_RTC_CNTL_WDTCONFIG0_REG;
+      wdtKey = ESP32C3_RTC_CNTL_WDT_WKEY;
+      swdProtectReg = ESP32C3_RTC_CNTL_SWD_WPROTECT_REG;
+      swdConfigReg = ESP32C3_RTC_CNTL_SWD_CONF_REG;
+      swdKey = ESP32C3_RTC_CNTL_SWD_WKEY;
+      swdAutoFeedEnable = ESP32C3_RTC_CNTL_SWD_AUTO_FEED_EN;
+    } else if (
+      this.chipFamily === CHIP_FAMILY_ESP32C5 ||
+      this.chipFamily === CHIP_FAMILY_ESP32C6 ||
+      this.chipFamily === CHIP_FAMILY_ESP32C61
+    ) {
+      wdtProtectReg = ESP32C5_C6_RTC_CNTL_WDTWPROTECT_REG;
+      wdtConfig0Reg = ESP32C5_C6_RTC_CNTL_WDTCONFIG0_REG;
+      wdtKey = ESP32C5_C6_RTC_CNTL_WDT_WKEY;
+      swdProtectReg = ESP32C5_C6_RTC_CNTL_SWD_WPROTECT_REG;
+      swdConfigReg = ESP32C5_C6_RTC_CNTL_SWD_CONF_REG;
+      swdKey = ESP32C5_C6_RTC_CNTL_WDT_WKEY;
+      swdAutoFeedEnable = ESP32C5_C6_RTC_CNTL_SWD_AUTO_FEED_EN;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32H2) {
+      wdtProtectReg = ESP32H2_RTC_CNTL_WDTWPROTECT_REG;
+      wdtConfig0Reg = ESP32H2_RTC_CNTL_WDTCONFIG0_REG;
+      wdtKey = ESP32H2_RTC_CNTL_WDT_WKEY;
+      swdProtectReg = ESP32H2_RTC_CNTL_SWD_WPROTECT_REG;
+      swdConfigReg = ESP32H2_RTC_CNTL_SWD_CONF_REG;
+      swdKey = ESP32H2_RTC_CNTL_SWD_WKEY;
+      swdAutoFeedEnable = ESP32H2_RTC_CNTL_SWD_AUTO_FEED_EN;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32H4) {
+      wdtProtectReg = ESP32H4_RTC_CNTL_WDTWPROTECT_REG;
+      wdtConfig0Reg = ESP32H4_RTC_CNTL_WDTCONFIG0_REG;
+      wdtKey = ESP32H4_RTC_CNTL_WDT_WKEY;
+      swdProtectReg = ESP32H4_RTC_CNTL_SWD_WPROTECT_REG;
+      swdConfigReg = ESP32H4_RTC_CNTL_SWD_CONF_REG;
+      swdKey = ESP32H4_RTC_CNTL_SWD_WKEY;
+      swdAutoFeedEnable = ESP32H4_RTC_CNTL_SWD_AUTO_FEED_EN;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32H21) {
+      wdtProtectReg = ESP32H21_RTC_CNTL_WDTWPROTECT_REG;
+      wdtConfig0Reg = ESP32H21_RTC_CNTL_WDTCONFIG0_REG;
+      wdtKey = ESP32H21_RTC_CNTL_WDT_WKEY;
+      swdProtectReg = ESP32H21_RTC_CNTL_SWD_WPROTECT_REG;
+      swdConfigReg = ESP32H21_RTC_CNTL_SWD_CONF_REG;
+      swdKey = ESP32H21_RTC_CNTL_SWD_WKEY;
+      swdAutoFeedEnable = ESP32H21_RTC_CNTL_SWD_AUTO_FEED_EN;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32P4) {
+      wdtProtectReg = ESP32P4_RTC_CNTL_WDTWPROTECT_REG;
+      wdtConfig0Reg = ESP32P4_RTC_CNTL_WDTCONFIG0_REG;
+      wdtKey = ESP32P4_RTC_CNTL_WDT_WKEY;
+      swdProtectReg = ESP32P4_RTC_CNTL_SWD_WPROTECT_REG;
+      swdConfigReg = ESP32P4_RTC_CNTL_SWD_CONF_REG;
+      swdKey = ESP32P4_RTC_CNTL_SWD_WKEY;
+      swdAutoFeedEnable = ESP32P4_RTC_CNTL_SWD_AUTO_FEED_EN;
+    } else if (this.chipFamily === CHIP_FAMILY_ESP32S31) {
+      wdtProtectReg = ESP32S31_RTC_CNTL_WDTWPROTECT_REG;
+      wdtConfig0Reg = ESP32S31_RTC_CNTL_WDTCONFIG0_REG;
+      wdtKey = ESP32S31_RTC_CNTL_WDT_WKEY;
+      swdProtectReg = ESP32S31_RTC_CNTL_SWD_WPROTECT_REG;
+      swdConfigReg = ESP32S31_RTC_CNTL_SWD_CONF_REG;
+      swdKey = ESP32S31_RTC_CNTL_SWD_WKEY;
+      swdAutoFeedEnable = ESP32S31_RTC_CNTL_SWD_AUTO_FEED_EN;
+    } else {
+      return;
+    }
+
+    await this.writeRegister(wdtProtectReg, wdtKey, undefined, 0);
+    try {
+      await this.writeRegister(wdtConfig0Reg, 0, undefined, 0);
+    } finally {
+      await this.writeRegister(wdtProtectReg, 0, undefined, 0);
+    }
+
+    await this.writeRegister(swdProtectReg, swdKey, undefined, 0);
+    try {
+      const swdConfig = await this.readRegister(swdConfigReg);
+      await this.writeRegister(
+        swdConfigReg,
+        swdConfig | swdAutoFeedEnable,
+        undefined,
+        0,
+      );
+    } finally {
+      await this.writeRegister(swdProtectReg, 0, undefined, 0);
+    }
   }
 
   /**
@@ -3467,12 +3633,12 @@ export class ESPLoader extends EventTarget {
       return false;
     }
 
-    // ESP32-S2/S3/C3/C5/C6/C61/H2/P4 USB-JTAG/OTG PIDs
+    // Espressif native USB PIDs: USB-OTG uses the chip ID as PID.
     // According to official Espressif documentation:
     // https://docs.espressif.com/projects/esp-iot-solution/en/latest/usb/usb_overview/usb_device_const_COM.html
-    // 0x0002 = ESP32-S2 USB-OTG, 0x0012 = ESP32-P4 USB-Serial-JTAG
-    // 0x1001 = ESP32-S3, C3, C5, C6, C61, H2 USB-Serial-JTAG
-    const usbJtagPids = [0x0002, 0x0012, 0x1001];
+    // 0x0002 = S2 OTG, 0x0009 = S3 OTG, 0x0012 = P4 OTG,
+    // 0x0020 = S31 OTG, 0x1001 = USB-Serial/JTAG.
+    const usbJtagPids = [0x0002, 0x0009, 0x0012, 0x0020, USB_JTAG_SERIAL_PID];
     const isUsbJtag = usbJtagPids.includes(pid || 0);
 
     this.logger.debug(
@@ -3490,6 +3656,49 @@ export class ESPLoader extends EventTarget {
     const revision = this._parent
       ? (this._parent.chipRevision ?? 0)
       : (this.chipRevision ?? 0);
+
+    const portInfo = this.port.getInfo();
+    if (portInfo.usbVendorId === 0x303a) {
+      const usbJtagFamilies: ChipFamily[] = [
+        CHIP_FAMILY_ESP32S3,
+        CHIP_FAMILY_ESP32C3,
+        CHIP_FAMILY_ESP32C5,
+        CHIP_FAMILY_ESP32C6,
+        CHIP_FAMILY_ESP32C61,
+        CHIP_FAMILY_ESP32H2,
+        CHIP_FAMILY_ESP32H4,
+        CHIP_FAMILY_ESP32H21,
+        CHIP_FAMILY_ESP32P4,
+        CHIP_FAMILY_ESP32S31,
+      ];
+      if (
+        portInfo.usbProductId === USB_JTAG_SERIAL_PID &&
+        usbJtagFamilies.includes(family)
+      ) {
+        this.logger.debug("USB mode: USB-JTAG/Serial detected by VID/PID");
+        return { mode: "usb-jtag-serial", uartNo: 0 };
+      }
+
+      let usbOtgPid: number | undefined;
+      switch (family) {
+        case CHIP_FAMILY_ESP32S2:
+          usbOtgPid = 0x0002;
+          break;
+        case CHIP_FAMILY_ESP32S3:
+          usbOtgPid = 0x0009;
+          break;
+        case CHIP_FAMILY_ESP32P4:
+          usbOtgPid = 0x0012;
+          break;
+        case CHIP_FAMILY_ESP32S31:
+          usbOtgPid = 0x0020;
+          break;
+      }
+      if (usbOtgPid !== undefined && portInfo.usbProductId === usbOtgPid) {
+        this.logger.debug("USB mode: USB-OTG detected by VID/PID");
+        return { mode: "usb-otg", uartNo: 0 };
+      }
+    }
 
     let bufNoAddr: number | null = null;
     let jtagSerialVal: number | null = null;
@@ -3529,6 +3738,7 @@ export class ESPLoader extends EventTarget {
             ? ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_LE2
             : ESP32C61_UARTDEV_BUF_NO_USB_JTAG_SERIAL_REV_GT2;
         break;
+      case CHIP_FAMILY_ESP32H21:
       case CHIP_FAMILY_ESP32H2:
         bufNoAddr = ESP32H2_UARTDEV_BUF_NO;
         jtagSerialVal = ESP32H2_UARTDEV_BUF_NO_USB_JTAG_SERIAL;
@@ -3583,7 +3793,9 @@ export class ESPLoader extends EventTarget {
       CHIP_FAMILY_ESP32C61, // USB-JTAG/Serial
       CHIP_FAMILY_ESP32H2, // USB-JTAG/Serial
       CHIP_FAMILY_ESP32H4, // USB-JTAG/Serial
+      CHIP_FAMILY_ESP32H21, // USB-JTAG/Serial
       CHIP_FAMILY_ESP32P4, // USB-OTG + USB-JTAG/Serial
+      CHIP_FAMILY_ESP32S31, // USB-OTG + USB-JTAG/Serial
     ];
 
     return usbChips.includes(family);
