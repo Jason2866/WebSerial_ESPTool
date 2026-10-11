@@ -383,9 +383,18 @@ async function clickConnect() {
   
   // Determine transport mode
   if (isAndroid) {
-    // Android: Always use WebUSB
-    useWebUSB = true;
-    logMsg(`Using: WebUSB (Android)`);
+    // Android: Respect transport selection, but warn about Web Serial limitation
+    if (transportMode === 'webserial') {
+      useWebUSB = false;
+      logMsg(`Using: Web Serial (Android - User selected, but Web Serial has limited support on Android)`);
+    } else if (transportMode === 'webusb') {
+      useWebUSB = true;
+      logMsg(`Using: WebUSB (Android - User selected)`);
+    } else {
+      // Auto mode: Use WebUSB on Android
+      useWebUSB = true;
+      logMsg(`Using: WebUSB (Android - Auto)`);
+    }
   } else {
     // Desktop: Respect transport selection
     if (transportMode === 'webusb') {
@@ -405,7 +414,14 @@ async function clickConnect() {
     // Use WebUSB
     console.log('[Connect] Using WebUSB');
     try {
-      const port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
+      let port;
+      if (isAndroid && transportMode === 'auto') {
+        // Android Auto flow: use requestSerialPort to get the port
+        port = await requestSerialPort(false, 'auto');
+      } else {
+        // Explicit WebUSB selection or desktop: use direct WebUSB request
+        port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
+      }
       esploader = await esploaderMod.connectWithPort(port, {
         log: (...args) => logMsg(...args),
         debug: (...args) => debugMsg(...args),
