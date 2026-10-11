@@ -368,18 +368,42 @@ async function clickConnect() {
   const userAgent = navigator.userAgent || '';
   const isAndroid = /Android/i.test(userAgent);
   
+  // Get transport selection from UI
+  const transportSelect = document.getElementById('transport');
+  const transportMode = transportSelect ? transportSelect.value : 'auto';
+  
   // Only log platform details to UI in debug mode (avoid fingerprinting surface)
   if (debugMode.checked) {
     const platformMsg = `Platform: ${isAndroid ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
     logMsg(platformMsg);
   }
-  logMsg(`Using: ${isAndroid ? 'WebUSB' : 'Web Serial'}`);
   
   let esploader;
+  let useWebUSB = false;
   
+  // Determine transport mode
   if (isAndroid) {
-    // Android: Use WebUSB directly
-    console.log('[Connect] Using WebUSB for Android');
+    // Android: Always use WebUSB
+    useWebUSB = true;
+    logMsg(`Using: WebUSB (Android)`);
+  } else {
+    // Desktop: Respect transport selection
+    if (transportMode === 'webusb') {
+      useWebUSB = true;
+      logMsg(`Using: WebUSB (Desktop - User selected)`);
+    } else if (transportMode === 'webserial') {
+      useWebUSB = false;
+      logMsg(`Using: Web Serial (Desktop - User selected)`);
+    } else {
+      // Auto mode: Web Serial on desktop
+      useWebUSB = false;
+      logMsg(`Using: Web Serial (Desktop - Auto)`);
+    }
+  }
+  
+  if (useWebUSB) {
+    // Use WebUSB
+    console.log('[Connect] Using WebUSB');
     try {
       const port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
       esploader = await esploaderMod.connectWithPort(port, {
@@ -392,8 +416,8 @@ async function clickConnect() {
       throw err;
     }
   } else {
-    // Desktop: Use Web Serial (standard esptool connect)
-    console.log('[Connect] Using Web Serial for Desktop');
+    // Use Web Serial (standard esptool connect)
+    console.log('[Connect] Using Web Serial');
     esploader = await esploaderMod.connect({
       log: (...args) => logMsg(...args),
       debug: (...args) => debugMsg(...args),
