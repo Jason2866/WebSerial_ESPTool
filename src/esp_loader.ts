@@ -4606,24 +4606,46 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
-    // Initialize adaptive speed multipliers for WebUSB devices on Android
-    if (this.isWebUSBOnAndroid()) {
-      if (this._isCDCDevice) {
-        // CDC devices (CH343): Start with maximum, adaptive adjustment enabled
-        this._adaptiveBlockMultiplier = 8; // blockSize = 248 bytes
-        this._adaptiveMaxInFlightMultiplier = 8; // maxInFlight = 248 bytes
-        this._consecutiveSuccessfulChunks = 0;
-        this.logger.debug(
-          `CDC device - Initialized: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
-        );
+    // Initialize adaptive speed multipliers for WebUSB devices
+    if (this.isWebUSB()) {
+      if (this.isWebUSBOnAndroid()) {
+        // WebUSB on Android: Use adaptive adjustment
+        if (this._isCDCDevice) {
+          // CDC devices (CH343): Start with maximum, adaptive adjustment enabled
+          this._adaptiveBlockMultiplier = 8; // blockSize = 248 bytes
+          this._adaptiveMaxInFlightMultiplier = 8; // maxInFlight = 248 bytes
+          this._consecutiveSuccessfulChunks = 0;
+          this.logger.debug(
+            `CDC device (Android) - Initialized: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+          );
+        } else {
+          // Non-CDC devices (CH340, CP2102): Fixed values, no adaptive adjustment
+          this._adaptiveBlockMultiplier = 1; // blockSize = 31 bytes (fixed)
+          this._adaptiveMaxInFlightMultiplier = 1; // maxInFlight = 31 bytes (fixed)
+          this._consecutiveSuccessfulChunks = 0;
+          this.logger.debug(
+            `Non-CDC device (Android) - Fixed values: blockSize=31, maxInFlight=31`,
+          );
+        }
       } else {
-        // Non-CDC devices (CH340, CP2102): Fixed values, no adaptive adjustment
-        this._adaptiveBlockMultiplier = 1; // blockSize = 31 bytes (fixed)
-        this._adaptiveMaxInFlightMultiplier = 1; // maxInFlight = 31 bytes (fixed)
-        this._consecutiveSuccessfulChunks = 0;
-        this.logger.debug(
-          `Non-CDC device - Fixed values: blockSize=31, maxInFlight=31`,
-        );
+        // WebUSB on Desktop: Use fixed values, no adaptive adjustment
+        if (this._isCDCDevice) {
+          // CDC devices (CH343): Fixed values
+          this._adaptiveBlockMultiplier = 8; // blockSize = 255 * 8 = 2040 bytes
+          this._adaptiveMaxInFlightMultiplier = 8; // maxInFlight = 255 * 8 = 2040 bytes
+          this._consecutiveSuccessfulChunks = 0;
+          this.logger.debug(
+            `CDC device (Desktop) - Fixed values: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+          );
+        } else {
+          // Non-CDC devices (CH340, CP2102): Fixed values
+          this._adaptiveBlockMultiplier = 8; // blockSize = 255 * 8 = 2040 bytes
+          this._adaptiveMaxInFlightMultiplier = 8; // maxInFlight = 255 * 8 = 2040 bytes
+          this._consecutiveSuccessfulChunks = 0;
+          this.logger.debug(
+            `Non-CDC device (Desktop) - Fixed values: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+          );
+        }
       }
     }
 
@@ -4776,7 +4798,8 @@ export class ESPLoader extends EventTarget {
           chunkSuccess = true;
 
           // ADAPTIVE SPEED ADJUSTMENT: Only for CDC devices on Android
-          // Non-CDC devices (CH340, CP2102) stay at fixed blockSize=31, maxInFlight=31
+          // Non-CDC devices (CH340, CP2102) stay at fixed values
+          // WebUSB on Desktop uses fixed values without adaptive adjustment
           if (
             this.isWebUSBOnAndroid() &&
             this._isCDCDevice &&
@@ -4835,6 +4858,7 @@ export class ESPLoader extends EventTarget {
 
           // ADAPTIVE SPEED ADJUSTMENT: Only for CDC devices on Android
           // Non-CDC devices stay at fixed values
+          // WebUSB on Desktop uses fixed values without adaptive adjustment
           if (
             this.isWebUSBOnAndroid() &&
             this._isCDCDevice &&

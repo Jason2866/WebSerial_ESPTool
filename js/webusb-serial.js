@@ -1012,18 +1012,19 @@ class WebUSBSerial {
  * This provides seamless support for both desktop (Web Serial) and Android (WebUSB)
  * @param {boolean} forceNew - If true, forces selection of a new device (ignores already paired devices)
  * @param {string} transport - Optional explicit transport mode: 'auto', 'webserial', or 'webusb'
+ * @param {function} logMsg - Optional logger function for UI messages
  */
-async function requestSerialPort(forceNew = false, transport = 'auto') {
+async function requestSerialPort(forceNew = false, transport = 'auto', logMsg = null) {
     // Detect if we're on Android
     const isAndroid = /Android/i.test(navigator.userAgent);
     const hasSerial = 'serial' in navigator;
     const hasUSB = 'usb' in navigator;
-    
+
     console.log(`[requestSerialPort] Platform: ${isAndroid ? 'Android' : 'Desktop'}, Web Serial: ${hasSerial}, WebUSB: ${hasUSB}, Transport: ${transport}`);
-    
+
     // Determine which transport to use
     let useWebUSB = false;
-    
+
     if (transport === 'webusb') {
         // Explicit WebUSB selection
         useWebUSB = true;
@@ -1040,15 +1041,25 @@ async function requestSerialPort(forceNew = false, transport = 'auto') {
             useWebUSB = true;
         }
     }
-    
+
+    // Track first error for better error reporting
+    let firstError = null;
+    let webUSBAttempted = false;
+
     // Try the selected transport
     if (useWebUSB) {
         if (!hasUSB) {
             throw new Error('WebUSB requested but not available in this browser');
         }
+        webUSBAttempted = true;
         try {
-            return await WebUSBSerial.requestPort(null, forceNew, isAndroid);
+            const port = await WebUSBSerial.requestPort(null, forceNew, isAndroid);
+            if (logMsg && transport === 'auto' && !isAndroid) {
+                logMsg(`Using: WebUSB (Desktop - Auto, Web Serial unavailable)`);
+            }
+            return port;
         } catch (err) {
+            firstError = err;
             if (transport === 'webusb') {
                 // Explicit WebUSB selection failed, don't fallback
                 throw new Error('WebUSB connection failed: ' + (err.message || err));
@@ -1056,7 +1067,7 @@ async function requestSerialPort(forceNew = false, transport = 'auto') {
             console.log('WebUSB failed, trying Web Serial...', err.message);
         }
     }
-    
+
     // Try Web Serial API
     if (hasSerial) {
         try {
@@ -1071,16 +1082,25 @@ async function requestSerialPort(forceNew = false, transport = 'auto') {
             console.log('Web Serial not available or cancelled, trying WebUSB...');
         }
     }
-    
-    // Fall back to WebUSB if in auto mode
-    if (transport === 'auto' && hasUSB) {
+
+    // Fall back to WebUSB if in auto mode and not already attempted
+    if (transport === 'auto' && hasUSB && !webUSBAttempted) {
         try {
-            return await WebUSBSerial.requestPort(null, forceNew, isAndroid);
+            const port = await WebUSBSerial.requestPort(null, forceNew, isAndroid);
+            if (logMsg && !isAndroid) {
+                logMsg(`Using: WebUSB (Desktop - Auto, Web Serial failed)`);
+            }
+            return port;
         } catch (err) {
             throw new Error('Neither Web Serial nor WebUSB available or user cancelled');
         }
     }
-    
+
+    // If WebUSB was already attempted and failed, report the first error
+    if (webUSBAttempted && firstError) {
+        throw new Error('WebUSB connection failed: ' + (firstError.message || firstError));
+    }
+
     throw new Error('Neither Web Serial API nor WebUSB is supported in this browser');
 }
 

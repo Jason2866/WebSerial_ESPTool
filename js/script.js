@@ -404,9 +404,9 @@ async function clickConnect() {
       useWebUSB = false;
       logMsg(`Using: Web Serial (Desktop - User selected)`);
     } else {
-      // Auto mode: Web Serial on desktop
+      // Auto mode: Try Web Serial first, fallback to WebUSB if needed
       useWebUSB = false;
-      logMsg(`Using: Web Serial (Desktop - Auto)`);
+      logMsg(`Using: Web Serial (Desktop - Auto, WebUSB fallback available)`);
     }
   }
   
@@ -417,9 +417,12 @@ async function clickConnect() {
       let port;
       if (isAndroid && transportMode === 'auto') {
         // Android Auto flow: use requestSerialPort to get the port
-        port = await requestSerialPort(false, 'auto');
+        port = await requestSerialPort(false, 'auto', logMsg);
+      } else if (!isAndroid && transportMode === 'auto') {
+        // Desktop Auto flow: use requestSerialPort to get the port (WebUSB fallback)
+        port = await requestSerialPort(false, 'auto', logMsg);
       } else {
-        // Explicit WebUSB selection or desktop: use direct WebUSB request
+        // Explicit WebUSB selection: use direct WebUSB request
         port = await WebUSBSerial.requestPort((...args) => logMsg(...args), false, isAndroid);
       }
       esploader = await esploaderMod.connectWithPort(port, {
@@ -434,12 +437,22 @@ async function clickConnect() {
   } else {
     // Use Web Serial (standard esptool connect)
     console.log('[Connect] Using Web Serial');
-    const port = await requestSerialPort(false, 'webserial');
-    esploader = await esploaderMod.connectWithPort(port, {
-      log: (...args) => logMsg(...args),
-      debug: (...args) => debugMsg(...args),
-      error: (...args) => errorMsg(...args),
-    });
+    if (transportMode === 'auto') {
+      // Auto mode: use requestSerialPort for WebUSB fallback
+      const port = await requestSerialPort(false, 'auto', logMsg);
+      esploader = await esploaderMod.connectWithPort(port, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    } else {
+      // Explicit Web Serial selection: use direct connect
+      esploader = await esploaderMod.connect({
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    }
   }
   
   // Handle ESP32-S2 Native USB reconnection requirement for BROWSER
