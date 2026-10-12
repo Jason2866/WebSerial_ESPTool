@@ -1075,7 +1075,7 @@ async function requestSerialPort(forceNew = false, transport = 'auto') {
     // Fall back to WebUSB if in auto mode
     if (transport === 'auto' && hasUSB) {
         try {
-            return await WebUSBSerial.requestPort(null, forceNew);
+            return await WebUSBSerial.requestPort(null, forceNew, isAndroid);
         } catch (err) {
             throw new Error('Neither Web Serial nor WebUSB available or user cancelled');
         }
