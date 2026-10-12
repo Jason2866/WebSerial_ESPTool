@@ -447,7 +447,8 @@ async function clickConnect() {
       });
     } else {
       // Explicit Web Serial selection: use direct connect
-      esploader = await esploaderMod.connect({
+      const port = await requestSerialPort(false, 'webserial');
+      esploader = await esploaderMod.connectWithPort(port, {
         log: (...args) => logMsg(...args),
         debug: (...args) => debugMsg(...args),
         error: (...args) => errorMsg(...args),
