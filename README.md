@@ -51,6 +51,11 @@ Use the **Transport** dropdown in the header to choose:
 - **Web Serial**: Force Web Serial API
 - **WebUSB**: Force WebUSB mode
 
+### Firefox
+- Firefox 151+ supports Web Serial on desktop.
+- Firefox does not support WebUSB. Devices that require direct WebUSB access are not available in Firefox.
+- Firefox for Android supports neither Web Serial nor WebUSB.
+
 ### Windows WebUSB Setup
 To use WebUSB mode on Windows with USB-to-serial chips (CP210x, CH340, etc.), you need to replace the manufacturer's VCP driver with WinUSB:
 
