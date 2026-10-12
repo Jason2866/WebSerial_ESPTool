@@ -434,7 +434,8 @@ async function clickConnect() {
   } else {
     // Use Web Serial (standard esptool connect)
     console.log('[Connect] Using Web Serial');
-    esploader = await esploaderMod.connect({
+    const port = await requestSerialPort(false, 'webserial');
+    esploader = await esploaderMod.connectWithPort(port, {
       log: (...args) => logMsg(...args),
       debug: (...args) => debugMsg(...args),
       error: (...args) => errorMsg(...args),
