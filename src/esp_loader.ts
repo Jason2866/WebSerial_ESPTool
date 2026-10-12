@@ -4841,10 +4841,8 @@ export class ESPLoader extends EventTarget {
               if (adjusted) {
                 const newBlockSize =
                   baseBlockSize * this._adaptiveBlockMultiplier;
-                const newMaxInFlight =
-                  baseBlockSize * this._adaptiveMaxInFlightMultiplier;
                 this.logger.debug(
-                  `Speed increased: blockSize=${256 * newBlockSize}, maxInFlight=${256 * newMaxInFlight}`,
+                  `Speed increased: blockSize=${newBlockSize}, maxInFlightPackets=${this._adaptiveMaxInFlightMultiplier}`,
                 );
                 this._lastAdaptiveAdjustment = Date.now();
               }
@@ -4879,11 +4877,9 @@ export class ESPLoader extends EventTarget {
               const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
               const newBlockSize =
                 baseBlockSize * this._adaptiveBlockMultiplier;
-              const newMaxInFlight =
-                baseBlockSize * this._adaptiveMaxInFlightMultiplier;
 
               this.logger.debug(
-                `Error at higher speed - reduced to minimum: blockSize=${256 * newBlockSize}, maxInFlight=${256 * newMaxInFlight}`,
+                `Error at higher speed - reduced to minimum: blockSize=${newBlockSize}, maxInFlightPackets=${this._adaptiveMaxInFlightMultiplier}`,
               );
             } else {
               // Already at minimum and still failing - this is a real error

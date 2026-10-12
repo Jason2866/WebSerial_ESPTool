@@ -23,13 +23,15 @@ jobs:
           rm -rf dist
           rm -rf js/modules
           mkdir js/modules
-      - name: install node v25
+      - name: Install Node.js 26
         uses: actions/setup-node@v7
         with:
-          node-version: 25
+          node-version: 26
           registry-url: 'https://registry.npmjs.org'
-      - name: Check npm version
-        run: npm --version
+      - name: Install npm 12
+        run: npm install --global npm@12
+      - name: Verify npm version
+        run: test "$(npm --version | cut -d. -f1)" = "12"
       - name: Install NPM
         run: npm install
       - name: Compile TypeScript

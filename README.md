@@ -47,7 +47,7 @@ WebSerial ESPTool supports multiple transport modes for connecting to your ESP d
 
 ### Selecting Transport Mode
 Use the **Transport** dropdown in the header to choose:
-- **Auto** (default): Web Serial on desktop, WebUSB on Android
+- **Auto** (default): Prefer Web Serial on desktop and WebUSB on Android. If the request fails or is canceled, Auto may try the other available transport.
 - **Web Serial**: Force Web Serial API
 - **WebUSB**: Force WebUSB mode
 

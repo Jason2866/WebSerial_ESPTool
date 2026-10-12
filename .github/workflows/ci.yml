@@ -16,10 +16,14 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 26
       - name: Remove old package-lock.json
         run: |
           rm -rf package-lock.json
+      - name: Install npm 12
+        run: npm install --global npm@12
+      - name: Verify npm version
+        run: test "$(npm --version | cut -d. -f1)" = "12"
       - run: npm install
       - run: npm ci
       - run: script/build
