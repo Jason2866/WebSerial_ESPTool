@@ -10,6 +10,7 @@ Complete API documentation for the `tasmota-webserial-esptool` library — a Web
 - [Quick Start](#quick-start)
 - [Factory Functions](#factory-functions)
   - [connect()](#connect)
+  - [ConnectOptions](#connectoptions)
   - [connectWithPort()](#connectwithport)
 - [Class: ESPLoader](#class-esploader)
   - [Constructor](#constructor)
@@ -86,7 +87,7 @@ The `ESPLoader` class provides a WebSerial/WebUSB-based interface for communicat
 - Partition table parsing
 - Baudrate configuration
 - Console mode (serial monitor)
-- WebUSB support for Android devices
+- WebUSB support for Android and desktop devices
 
 ---
 
@@ -112,13 +113,14 @@ import { ESPLoader, connect } from 'tasmota-webserial-esptool';
 
 This library requires the [Web Serial API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API) or a WebUSB polyfill.
 
-| Browser | Web Serial | WebUSB (Android) |
+| Browser | Web Serial | WebUSB |
 |---------|-----------|------------------|
-| Chrome (Desktop) | ✅ | — |
-| Edge (Desktop) | ✅ | — |
-| Opera (Desktop) | ✅ | — |
+| Chrome (Desktop) | ✅ | ✅ |
+| Edge (Desktop) | ✅ | ✅ |
+| Opera (Desktop) | ✅ | ✅ |
 | Chrome (Android) | — | ✅ (via WebUSB adapter) |
-| Firefox | ❌ | ❌ |
+| Firefox (Desktop) | ✅ (151+) | ❌ |
+| Firefox (Android) | ❌ | ❌ |
 | Safari | ❌ | ❌ |
 
 > **Note:** The page must be served over **HTTPS** or **localhost**.
@@ -163,15 +165,16 @@ await esploader.disconnect();
 
 ### `connect()`
 
-Prompts the user to select a serial port and creates an `ESPLoader` instance. Automatically handles both Web Serial and WebUSB (Android) environments.
+Prompts the user to select a serial port and creates an `ESPLoader` instance. Uses the existing default transport behavior unless a `requestPort` provider is supplied.
 
 ```typescript
-connect(logger: Logger): Promise<ESPLoader>
+connect(logger: Logger, options?: ConnectOptions): Promise<ESPLoader>
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `logger` | `Logger` | Logger interface for output messages |
+| `options` | `ConnectOptions` | Optional port request provider; omitted for existing default behavior |
 
 **Returns:** `Promise<ESPLoader>` — A new, unopened ESPLoader instance.
 
@@ -180,6 +183,28 @@ connect(logger: Logger): Promise<ESPLoader>
 
 ```javascript
 const esploader = await connect(logger);
+await esploader.initialize();
+```
+
+#### `ConnectOptions`
+
+Pass a `requestPort` provider to explicitly choose a transport. The provider is called instead of the default port picker; `connect()` opens the returned port if needed. The existing `connect(logger)` call and legacy global `requestSerialPort` hook remain supported.
+
+```typescript
+type ConnectOptions = {
+  requestPort?: () => Promise<SerialPort>;
+};
+```
+
+To force WebUSB on desktop, use the package's WebUSB helper subpath:
+
+```javascript
+import { connect } from 'tasmota-webserial-esptool';
+import { requestSerialPort } from 'tasmota-webserial-esptool/js/webusb-serial.js';
+
+const esploader = await connect(logger, {
+  requestPort: () => requestSerialPort(false, 'webusb'),
+});
 await esploader.initialize();
 ```
 
