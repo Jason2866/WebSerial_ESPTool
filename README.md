@@ -29,7 +29,7 @@ WebSerial ESPTool brings you hassle-free firmware flashing and backup for your E
 
 ---
 
-## � Transport Options
+## 🔌 Transport Options
 
 WebSerial ESPTool supports multiple transport modes for connecting to your ESP devices:
 
@@ -70,7 +70,7 @@ To use WebUSB mode on Windows with USB-to-serial chips (CP210x, CH340, etc.), yo
 
 ---
 
-## �🏆 The Story
+## 🏆 The Story
 
 Originally created by [Melissa LeBlanc-Williams](https://github.com/makermelissa), further developed by [Nabu Casa](https://www.nabucasa.com) and Adafruit, and now with new features.
 
