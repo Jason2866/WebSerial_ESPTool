@@ -420,7 +420,7 @@ async function clickConnect() {
         port = await requestSerialPort(false, 'auto');
       } else {
         // Explicit WebUSB selection or desktop: use direct WebUSB request
-        port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
+        port = await WebUSBSerial.requestPort((...args) => logMsg(...args), false, isAndroid);
       }
       esploader = await esploaderMod.connectWithPort(port, {
         log: (...args) => logMsg(...args),

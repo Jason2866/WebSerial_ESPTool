@@ -1,16 +1,17 @@
 /**
  * WebUSBSerial - Web Serial API-like wrapper for WebUSB
- * Provides a familiar interface for serial communication over USB on Android
- * 
+ * Provides a familiar interface for serial communication over USB
+ *
  * This enables to work on Android devices where Web Serial API
- * is not available but WebUSB is supported.
- * 
+ * is not available but WebUSB is supported. It can also be used on Desktop.
+ *
  * IMPORTANT: For Android compatibility, this class uses smaller transfer sizes
  * to prevent SLIP synchronization errors. The maxTransferSize is set to 64 bytes
  * (or endpoint packetSize if smaller) to ensure SLIP frames don't get split.
+ * On Desktop, larger transfer sizes are used for better performance.
  */
 class WebUSBSerial {
-    constructor(logger = null) {
+    constructor(logger = null, isAndroid = false) {
         this.device = null;
         this.interfaceNumber = null;
         this.endpointIn = null;
@@ -24,22 +25,30 @@ class WebUSBSerial {
             'close': [],
             'disconnect': []
         };
-        // Transfer size optimized for WebUSB on Android
+
+        // Flag to indicate if running on Android (affects maxTransferSize)
+        this.isAndroid = isAndroid;
+
+        // Transfer size optimized for WebUSB
         // CRITICAL: blockSize = (maxTransferSize - 2) / 2
-        // Set to 64 bytes for maximum compatibility with all USB-Serial adapters
-        // With 64 bytes: blockSize = (64-2)/2 = 31 bytes per SLIP packet
-        this.maxTransferSize = 64;
-        
+        // On Android: Set to 64 bytes for maximum compatibility (Andoid does not support more!)
+        // On Desktop: Set to 512 bytes for better performance (seems max. value for Desktop)
+        if (this.isAndroid) {
+            this.maxTransferSize = 64; // Android: blockSize = (64-2)/2 = 31 bytes per SLIP packet
+        } else {
+            this.maxTransferSize = 512; // Desktop: blockSize = (512-2)/2 = 255 bytes per SLIP packet
+        }
+
         // Flag to indicate this is WebUSB (used by esptool to adjust block sizes)
         this.isWebUSB = true;
-        
+
         // Command queue for serializing control transfers (critical for CP2102)
         this._commandQueue = Promise.resolve();
-        
+
         // Track current DTR/RTS state to preserve unspecified signals
         this._currentDTR = false;
         this._currentRTS = false;
-        
+
         // Logger function (defaults to console.log if not provided)
         this._log = logger || ((...args) => console.log(...args));
     }
@@ -48,8 +57,9 @@ class WebUSBSerial {
      * Request USB device (mimics navigator.serial.requestPort())
      * @param {function|object} logger - Logger function or object with log() method
      * @param {boolean} forceNew - If true, forces selection of a new device (ignores already paired devices)
+     * @param {boolean} isAndroid - If true, indicates this is running on Android (affects maxTransferSize)
      */
-    static async requestPort(logger = null, forceNew = false) {
+    static async requestPort(logger = null, forceNew = false, isAndroid = false) {
         const filters = [
             { vendorId: 0x303A }, // Espressif
             { vendorId: 0x0403 }, // FTDI
@@ -96,7 +106,7 @@ class WebUSBSerial {
             device = await navigator.usb.requestDevice({ filters });
         }
 
-        const port = new WebUSBSerial(logger);
+        const port = new WebUSBSerial(logger, isAndroid);
         port.device = device;
         return port;
     }
@@ -1037,7 +1047,7 @@ async function requestSerialPort(forceNew = false, transport = 'auto') {
             throw new Error('WebUSB requested but not available in this browser');
         }
         try {
-            return await WebUSBSerial.requestPort(null, forceNew);
+            return await WebUSBSerial.requestPort(null, forceNew, isAndroid);
         } catch (err) {
             if (transport === 'webusb') {
                 // Explicit WebUSB selection failed, don't fallback

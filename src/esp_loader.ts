@@ -188,6 +188,7 @@ import { pack, unpack } from "./struct";
 // Interface for WebUSB Serial Port (extends SerialPort with WebUSB-specific methods)
 interface WebUSBSerialPort extends SerialPort {
   isWebUSB?: boolean;
+  isAndroid?: boolean;
   maxTransferSize?: number;
   setSignals(signals: {
     dataTerminalReady?: boolean;
@@ -1303,6 +1304,15 @@ export class ESPLoader extends EventTarget {
   private isWebUSB(): boolean {
     // WebUSBSerial class has isWebUSB flag - this is the most reliable check
     return (this.port as WebUSBSerialPort).isWebUSB === true;
+  }
+
+  /**
+   * Check if we're using WebUSB on Android (vs WebUSB on Desktop)
+   * Desktop WebUSB can use larger block sizes than Android
+   */
+  private isWebUSBOnAndroid(): boolean {
+    const webUSBPort = this.port as WebUSBSerialPort;
+    return webUSBPort.isWebUSB === true && webUSBPort.isAndroid === true;
   }
 
   /**
@@ -4596,8 +4606,8 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
-    // Initialize adaptive speed multipliers for WebUSB devices
-    if (this.isWebUSB()) {
+    // Initialize adaptive speed multipliers for WebUSB devices on Android
+    if (this.isWebUSBOnAndroid()) {
       if (this._isCDCDevice) {
         // CDC devices (CH343): Start with maximum, adaptive adjustment enabled
         this._adaptiveBlockMultiplier = 8; // blockSize = 248 bytes
@@ -4618,8 +4628,8 @@ export class ESPLoader extends EventTarget {
     }
 
     // Chunk size: Amount of data to request from ESP in one command
-    // For WebUSB (Android), use smaller chunks to avoid timeouts and buffer issues
-    // For Web Serial (Desktop), use larger chunks for better performance
+    // For WebUSB on Android, use smaller chunks to avoid USB transfer limitations
+    // For Web Serial or WebUSB on Desktop, use larger chunks for better performance
     let CHUNK_SIZE: number;
     if (options?.chunkSize !== undefined) {
       // Use user-provided chunkSize if in advanced mode
@@ -4627,11 +4637,14 @@ export class ESPLoader extends EventTarget {
       this.logger.log(
         `Using custom chunk size: 0x${CHUNK_SIZE.toString(16)} bytes`,
       );
-    } else if (this.isWebUSB()) {
-      // WebUSB: Use smaller chunks to avoid SLIP timeout issues
+    } else if (this.isWebUSBOnAndroid()) {
+      // WebUSB on Android: Use small chunks to avoid USB transfer limitations
       CHUNK_SIZE = 0x4 * 0x1000; // 4KB = 16384 bytes
+    } else if (this.isWebUSB()) {
+      // WebUSB on Desktop: Use medium chunks for good performance
+      CHUNK_SIZE = 0x10 * 0x1000;
     } else {
-      // Web Serial: Use larger chunks for better performance
+      // Web Serial on Desktop: Use large chunks for best performance
       CHUNK_SIZE = 0x40 * 0x1000;
     }
 
@@ -4674,7 +4687,7 @@ export class ESPLoader extends EventTarget {
               );
             }
           } else if (this.isWebUSB()) {
-            // WebUSB (Android): Use a smaller packet size, but keep the protocol
+            // WebUSB (all platforms): Use a smaller packet size, but keep the protocol
             // semantics aligned with esptool: packet size plus max in-flight count.
             const maxTransferSize =
               (this.port as WebUSBSerialPort).maxTransferSize || 64;
@@ -4682,7 +4695,7 @@ export class ESPLoader extends EventTarget {
             packetSize = basePacketSize * this._adaptiveBlockMultiplier;
             maxInFlightPackets = this._adaptiveMaxInFlightMultiplier;
           } else {
-            // Web Serial (Desktop): Match esptool's default READ_FLASH protocol.
+            // Web Serial: Match esptool's default READ_FLASH protocol.
             packetSize = FLASH_SECTOR_SIZE;
             maxInFlightPackets = 64;
           }
@@ -4762,9 +4775,13 @@ export class ESPLoader extends EventTarget {
 
           chunkSuccess = true;
 
-          // ADAPTIVE SPEED ADJUSTMENT: Only for CDC devices
+          // ADAPTIVE SPEED ADJUSTMENT: Only for CDC devices on Android
           // Non-CDC devices (CH340, CP2102) stay at fixed blockSize=31, maxInFlight=31
-          if (this.isWebUSB() && this._isCDCDevice && retryCount === 0) {
+          if (
+            this.isWebUSBOnAndroid() &&
+            this._isCDCDevice &&
+            retryCount === 0
+          ) {
             this._consecutiveSuccessfulChunks++;
 
             // After 2 consecutive successful chunks, increase speed gradually
@@ -4804,7 +4821,7 @@ export class ESPLoader extends EventTarget {
                 const newMaxInFlight =
                   baseBlockSize * this._adaptiveMaxInFlightMultiplier;
                 this.logger.debug(
-                  `Speed increased: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
+                  `Speed increased: blockSize=${256 * newBlockSize}, maxInFlight=${256 * newMaxInFlight}`,
                 );
                 this._lastAdaptiveAdjustment = Date.now();
               }
@@ -4816,9 +4833,13 @@ export class ESPLoader extends EventTarget {
         } catch (err) {
           retryCount++;
 
-          // ADAPTIVE SPEED ADJUSTMENT: Only for CDC devices
+          // ADAPTIVE SPEED ADJUSTMENT: Only for CDC devices on Android
           // Non-CDC devices stay at fixed values
-          if (this.isWebUSB() && this._isCDCDevice && retryCount === 1) {
+          if (
+            this.isWebUSBOnAndroid() &&
+            this._isCDCDevice &&
+            retryCount === 1
+          ) {
             // Only reduce if we're above minimum
             if (
               this._adaptiveBlockMultiplier > 1 ||
@@ -4838,13 +4859,11 @@ export class ESPLoader extends EventTarget {
                 baseBlockSize * this._adaptiveMaxInFlightMultiplier;
 
               this.logger.debug(
-                `Error at higher speed - reduced to minimum: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
+                `Error at higher speed - reduced to minimum: blockSize=${256 * newBlockSize}, maxInFlight=${256 * newMaxInFlight}`,
               );
             } else {
               // Already at minimum and still failing - this is a real error
-              this.logger.debug(
-                `Error at minimum speed (blockSize=31, maxInFlight=31) - not a speed issue`,
-              );
+              this.logger.debug(`Error at minimum speed - not a speed issue`);
             }
           }
 
