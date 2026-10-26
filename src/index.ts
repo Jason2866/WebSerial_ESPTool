@@ -6,6 +6,11 @@ import { ESPLoader } from "./esp_loader";
 export type { Logger } from "./const";
 export { ESPLoader } from "./esp_loader";
 
+export type ConnectOptions = {
+  /** Override the port picker/transport. The returned port is opened by connect(). */
+  requestPort?: () => Promise<SerialPort>;
+};
+
 export {
   CHIP_FAMILY_ESP32,
   CHIP_FAMILY_ESP32S2,
@@ -57,25 +62,29 @@ export {
   FLASH_READ_TIMEOUT,
 } from "./const";
 
-export const connect = async (logger: Logger) => {
+export const connect = async (logger: Logger, options: ConnectOptions = {}) => {
   // - Request a port and open a connection.
-  // Try to use requestSerialPort if available (supports WebUSB for Android)
+  // An explicit provider takes precedence; otherwise preserve the legacy global hook.
   let port: SerialPort;
-  const customRequestPort = (
-    globalThis as { requestSerialPort?: () => Promise<SerialPort> }
-  ).requestSerialPort;
-  if (typeof customRequestPort === "function") {
-    port = await customRequestPort();
+  if (options?.requestPort) {
+    port = await options.requestPort();
   } else {
-    // Check if Web Serial API is available
-    if (!navigator.serial) {
-      throw new Error(
-        "Web Serial API is not supported in this browser. " +
-          "Please use Chrome, Edge, or Opera on desktop, or Chrome on Android. " +
-          "Note: The page must be served over HTTPS or localhost.",
-      );
+    const customRequestPort = (
+      globalThis as { requestSerialPort?: () => Promise<SerialPort> }
+    ).requestSerialPort;
+    if (typeof customRequestPort === "function") {
+      port = await customRequestPort();
+    } else {
+      // Check if Web Serial API is available
+      if (!navigator.serial) {
+        throw new Error(
+          "Web Serial API is not supported in this browser. " +
+            "Please use Chrome, Edge, Opera, or Firefox 151+ on desktop, or Chrome on Android. " +
+            "Note: The page must be served over HTTPS or localhost.",
+        );
+      }
+      port = await navigator.serial.requestPort();
     }
-    port = await navigator.serial.requestPort();
   }
 
   // Only open if not already open (requestSerialPort may return an opened port)

@@ -1,16 +1,17 @@
 /**
  * WebUSBSerial - Web Serial API-like wrapper for WebUSB
- * Provides a familiar interface for serial communication over USB on Android
- * 
+ * Provides a familiar interface for serial communication over USB
+ *
  * This enables to work on Android devices where Web Serial API
- * is not available but WebUSB is supported.
- * 
+ * is not available but WebUSB is supported. It can also be used on Desktop.
+ *
  * IMPORTANT: For Android compatibility, this class uses smaller transfer sizes
  * to prevent SLIP synchronization errors. The maxTransferSize is set to 64 bytes
  * (or endpoint packetSize if smaller) to ensure SLIP frames don't get split.
+ * On Desktop, larger transfer sizes are used for better performance.
  */
 class WebUSBSerial {
-    constructor(logger = null) {
+    constructor(logger = null, isAndroid = false) {
         this.device = null;
         this.interfaceNumber = null;
         this.endpointIn = null;
@@ -24,22 +25,30 @@ class WebUSBSerial {
             'close': [],
             'disconnect': []
         };
-        // Transfer size optimized for WebUSB on Android
+
+        // Flag to indicate if running on Android (affects maxTransferSize)
+        this.isAndroid = isAndroid;
+
+        // Transfer size optimized for WebUSB
         // CRITICAL: blockSize = (maxTransferSize - 2) / 2
-        // Set to 64 bytes for maximum compatibility with all USB-Serial adapters
-        // With 64 bytes: blockSize = (64-2)/2 = 31 bytes per SLIP packet
-        this.maxTransferSize = 64;
-        
+        // On Android: Set to 64 bytes for maximum compatibility (Andoid does not support more!)
+        // On Desktop: Set to 512 bytes for better performance (seems max. value for Desktop)
+        if (this.isAndroid) {
+            this.maxTransferSize = 64; // Android: blockSize = (64-2)/2 = 31 bytes per SLIP packet
+        } else {
+            this.maxTransferSize = 512; // Desktop: blockSize = (512-2)/2 = 255 bytes per SLIP packet
+        }
+
         // Flag to indicate this is WebUSB (used by esptool to adjust block sizes)
         this.isWebUSB = true;
-        
+
         // Command queue for serializing control transfers (critical for CP2102)
         this._commandQueue = Promise.resolve();
-        
+
         // Track current DTR/RTS state to preserve unspecified signals
         this._currentDTR = false;
         this._currentRTS = false;
-        
+
         // Logger function (defaults to console.log if not provided)
         this._log = logger || ((...args) => console.log(...args));
     }
@@ -48,8 +57,9 @@ class WebUSBSerial {
      * Request USB device (mimics navigator.serial.requestPort())
      * @param {function|object} logger - Logger function or object with log() method
      * @param {boolean} forceNew - If true, forces selection of a new device (ignores already paired devices)
+     * @param {boolean} isAndroid - If true, indicates this is running on Android (affects maxTransferSize)
      */
-    static async requestPort(logger = null, forceNew = false) {
+    static async requestPort(logger = null, forceNew = false, isAndroid = false) {
         const filters = [
             { vendorId: 0x303A }, // Espressif
             { vendorId: 0x0403 }, // FTDI
@@ -96,7 +106,7 @@ class WebUSBSerial {
             device = await navigator.usb.requestDevice({ filters });
         }
 
-        const port = new WebUSBSerial(logger);
+        const port = new WebUSBSerial(logger, isAndroid);
         port.device = device;
         return port;
     }
@@ -1001,44 +1011,96 @@ class WebUSBSerial {
  * Unified port request function that tries WebUSB first on Android, Web Serial on Desktop
  * This provides seamless support for both desktop (Web Serial) and Android (WebUSB)
  * @param {boolean} forceNew - If true, forces selection of a new device (ignores already paired devices)
+ * @param {string} transport - Optional explicit transport mode: 'auto', 'webserial', or 'webusb'
+ * @param {function} logMsg - Optional logger function for UI messages
  */
-async function requestSerialPort(forceNew = false) {
+async function requestSerialPort(forceNew = false, transport = 'auto', logMsg = null) {
     // Detect if we're on Android
     const isAndroid = /Android/i.test(navigator.userAgent);
     const hasSerial = 'serial' in navigator;
     const hasUSB = 'usb' in navigator;
-    
-    console.log(`[requestSerialPort] Platform: ${isAndroid ? 'Android' : 'Desktop'}, Web Serial: ${hasSerial}, WebUSB: ${hasUSB}`);
-    
-    // On Android, prefer WebUSB (Web Serial doesn't work properly)
-    if (isAndroid && hasUSB) {
+
+    console.log(`[requestSerialPort] Platform: ${isAndroid ? 'Android' : 'Desktop'}, Web Serial: ${hasSerial}, WebUSB: ${hasUSB}, Transport: ${transport}`);
+
+    // Determine which transport to use
+    let useWebUSB = false;
+
+    if (transport === 'webusb') {
+        // Explicit WebUSB selection
+        useWebUSB = true;
+    } else if (transport === 'webserial') {
+        // Explicit Web Serial selection
+        useWebUSB = false;
+    } else {
+        // Auto mode: platform-based selection
+        if (isAndroid && hasUSB) {
+            useWebUSB = true;
+        } else if (hasSerial) {
+            useWebUSB = false;
+        } else if (hasUSB) {
+            useWebUSB = true;
+        }
+    }
+
+    // Track first error for better error reporting
+    let firstError = null;
+    let webUSBAttempted = false;
+
+    // Try the selected transport
+    if (useWebUSB) {
+        if (!hasUSB) {
+            throw new Error('WebUSB requested but not available in this browser');
+        }
+        webUSBAttempted = true;
         try {
-            return await WebUSBSerial.requestPort(null, forceNew);
+            const port = await WebUSBSerial.requestPort(null, forceNew, isAndroid);
+            if (logMsg && transport === 'auto' && !isAndroid) {
+                logMsg(`Using: WebUSB (Desktop - Auto, Web Serial unavailable)`);
+            }
+            return port;
         } catch (err) {
+            firstError = err;
+            if (transport === 'webusb') {
+                // Explicit WebUSB selection failed, don't fallback
+                throw new Error('WebUSB connection failed: ' + (err.message || err));
+            }
             console.log('WebUSB failed, trying Web Serial...', err.message);
         }
     }
-    
-    // Try Web Serial API (preferred on desktop)
+
+    // Try Web Serial API
     if (hasSerial) {
         try {
             // Web Serial API doesn't support device reuse in the same way
             // It always shows the picker, but the browser remembers permissions
             return await navigator.serial.requestPort();
         } catch (err) {
+            if (transport === 'webserial') {
+                // Explicit Web Serial selection failed, don't fallback
+                throw new Error('Web Serial connection failed: ' + (err.message || err));
+            }
             console.log('Web Serial not available or cancelled, trying WebUSB...');
         }
     }
-    
-    // Fall back to WebUSB
-    if (hasUSB) {
+
+    // Fall back to WebUSB if in auto mode and not already attempted
+    if (transport === 'auto' && hasUSB && !webUSBAttempted) {
         try {
-            return await WebUSBSerial.requestPort(null, forceNew);
+            const port = await WebUSBSerial.requestPort(null, forceNew, isAndroid);
+            if (logMsg && !isAndroid) {
+                logMsg(`Using: WebUSB (Desktop - Auto, Web Serial failed)`);
+            }
+            return port;
         } catch (err) {
             throw new Error('Neither Web Serial nor WebUSB available or user cancelled');
         }
     }
-    
+
+    // If WebUSB was already attempted and failed, report the first error
+    if (webUSBAttempted && firstError) {
+        throw new Error('WebUSB connection failed: ' + (firstError.message || firstError));
+    }
+
     throw new Error('Neither Web Serial API nor WebUSB is supported in this browser');
 }
 

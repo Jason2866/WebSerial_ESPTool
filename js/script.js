@@ -368,20 +368,63 @@ async function clickConnect() {
   const userAgent = navigator.userAgent || '';
   const isAndroid = /Android/i.test(userAgent);
   
+  // Get transport selection from UI
+  const transportSelect = document.getElementById('transport');
+  const transportMode = transportSelect ? transportSelect.value : 'auto';
+  
   // Only log platform details to UI in debug mode (avoid fingerprinting surface)
   if (debugMode.checked) {
     const platformMsg = `Platform: ${isAndroid ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
     logMsg(platformMsg);
   }
-  logMsg(`Using: ${isAndroid ? 'WebUSB' : 'Web Serial'}`);
   
   let esploader;
+  let useWebUSB = false;
   
+  // Determine transport mode
   if (isAndroid) {
-    // Android: Use WebUSB directly
-    console.log('[Connect] Using WebUSB for Android');
+    // Android: Respect transport selection, but warn about Web Serial limitation
+    if (transportMode === 'webserial') {
+      useWebUSB = false;
+      logMsg(`Using: Web Serial (Android - User selected, but Web Serial has limited support on Android)`);
+    } else if (transportMode === 'webusb') {
+      useWebUSB = true;
+      logMsg(`Using: WebUSB (Android - User selected)`);
+    } else {
+      // Auto mode: Use WebUSB on Android
+      useWebUSB = true;
+      logMsg(`Using: WebUSB (Android - Auto)`);
+    }
+  } else {
+    // Desktop: Respect transport selection
+    if (transportMode === 'webusb') {
+      useWebUSB = true;
+      logMsg(`Using: WebUSB (Desktop - User selected)`);
+    } else if (transportMode === 'webserial') {
+      useWebUSB = false;
+      logMsg(`Using: Web Serial (Desktop - User selected)`);
+    } else {
+      // Auto mode: Try Web Serial first, fallback to WebUSB if needed
+      useWebUSB = false;
+      logMsg(`Using: Web Serial (Desktop - Auto, WebUSB fallback available)`);
+    }
+  }
+  
+  if (useWebUSB) {
+    // Use WebUSB
+    console.log('[Connect] Using WebUSB');
     try {
-      const port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
+      let port;
+      if (isAndroid && transportMode === 'auto') {
+        // Android Auto flow: use requestSerialPort to get the port
+        port = await requestSerialPort(false, 'auto', logMsg);
+      } else if (!isAndroid && transportMode === 'auto') {
+        // Desktop Auto flow: use requestSerialPort to get the port (WebUSB fallback)
+        port = await requestSerialPort(false, 'auto', logMsg);
+      } else {
+        // Explicit WebUSB selection: use direct WebUSB request
+        port = await WebUSBSerial.requestPort((...args) => logMsg(...args), false, isAndroid);
+      }
       esploader = await esploaderMod.connectWithPort(port, {
         log: (...args) => logMsg(...args),
         debug: (...args) => debugMsg(...args),
@@ -392,13 +435,25 @@ async function clickConnect() {
       throw err;
     }
   } else {
-    // Desktop: Use Web Serial (standard esptool connect)
-    console.log('[Connect] Using Web Serial for Desktop');
-    esploader = await esploaderMod.connect({
-      log: (...args) => logMsg(...args),
-      debug: (...args) => debugMsg(...args),
-      error: (...args) => errorMsg(...args),
-    });
+    // Use Web Serial (standard esptool connect)
+    console.log('[Connect] Using Web Serial');
+    if (transportMode === 'auto') {
+      // Auto mode: use requestSerialPort for WebUSB fallback
+      const port = await requestSerialPort(false, 'auto', logMsg);
+      esploader = await esploaderMod.connectWithPort(port, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    } else {
+      // Explicit Web Serial selection: use direct connect
+      const port = await requestSerialPort(false, 'webserial');
+      esploader = await esploaderMod.connectWithPort(port, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    }
   }
   
   // Handle ESP32-S2 Native USB reconnection requirement for BROWSER
