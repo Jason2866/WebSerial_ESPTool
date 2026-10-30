@@ -469,6 +469,10 @@ export const ESP32S31_RTC_CNTL_SWD_AUTO_FEED_EN = 1 << 18;
 export const ESP32S31_RTC_CNTL_SWD_WPROTECT_REG =
   ESP32S31_DR_REG_LP_WDT_BASE + 0x0020; // LP_WDT_SWD_WPROTECT_REG
 export const ESP32S31_RTC_CNTL_SWD_WKEY = 0x50d83aa1;
+export const ESP32S31_RTC_CNTL_WDT_WKEY = 0x50d83aa1;
+  ESP32S31_DR_REG_LP_WDT_BASE + 0x0020; // LP_WDT_SWD_WPROTECT_REG
+export const ESP32S31_RTC_CNTL_OPTION1_REG = 0x20700008;
+export const ESP32S31_RTC_CNTL_FORCE_DOWNLOAD_BOOT_MASK = 0x4; // Is download mode forced over USB?
 
 export interface SpiFlashAddresses {
   regBase: number;
